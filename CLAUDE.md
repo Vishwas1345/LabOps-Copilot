@@ -75,18 +75,28 @@ npm run dev:web              # web only
 npm run db:up                # start PostgreSQL via Docker Compose
 npm run db:generate          # regenerate Prisma client
 npm run db:push              # apply schema to the database
+npm run lint                 # ESLint across both workspaces
+npm run lint:fix             # ESLint with autofix
+npm run typecheck            # tsc --noEmit across both workspaces
+npm run test                 # Vitest unit tests, both workspaces
+npm run coverage             # Vitest with v8 coverage + thresholds
 ```
 
-Type checking:
+Full container stack:
 
 ```bash
-npm run build -w @labops/api     # tsc -p tsconfig.json
-npx tsc --noEmit -p apps/web     # frontend typecheck
+docker compose up --build    # postgres, redis, api, web
 ```
 
-**There is currently no linter, formatter, or test script configured.** Do not
-invent `npm run lint` or `npm test` in documentation or assume they exist. If a
-task requires them, add the tooling and the script in the same change.
+**Checks must pass before a commit.** In order: `npm run lint`,
+`npm run typecheck`, `npm run test`. CI runs the same three plus coverage and a
+quality gate — see `.github/workflows/`.
+
+Vitest coverage thresholds are set at 70% for lines, functions, branches and
+statements. The api and web `vitest.config.ts` files exclude entry points and
+wiring that only an integration or E2E suite can reach; each exclusion carries a
+comment saying so. Shrinking those exclusions to make a number look better is
+the same as disabling a test.
 
 Environment: `apps/api/.env` (copy from `apps/api/.env.example`) and
 `apps/web/.env`. Never commit a real secret. `.env` is git-ignored.
@@ -302,8 +312,10 @@ Non-negotiable:
   revalidated, a failed recovery must not resolve the incident, and no test
   output may contain a secret.
 
-Vitest is not yet installed. When adding tests, install it, wire the scripts, and
-update §3 of this file.
+Vitest is configured in both workspaces. The api `test` script is unit-only;
+integration tests (real Postgres + Redis) land as `test:integration` and are
+wired into `api.yml`. No test may depend on a live LLM — use the fixture
+provider.
 
 ---
 

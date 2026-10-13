@@ -230,8 +230,14 @@ The home page renders live API and database status.
 ### Docker Compose
 
 The compose file is the reproducible baseline for local development and CI. It
-currently provides PostgreSQL; the API, worker and web services are added as
-those components are built.
+runs PostgreSQL, Redis, the API and the web app:
+
+```bash
+docker compose up --build
+```
+
+For the faster dev loop, run `npm run db:up` for infrastructure only and
+`npm run dev` for the API and web app with hot reload.
 
 ---
 
@@ -283,6 +289,19 @@ labops-copilot/
 | `npm run db:up` | Start PostgreSQL via Docker Compose |
 | `npm run db:generate` | Generate the Prisma client |
 | `npm run db:push` | Apply the schema to the database |
+| `npm run lint` | ESLint across both workspaces |
+| `npm run lint:fix` | ESLint with autofix |
+| `npm run typecheck` | Type check both workspaces |
+| `npm run test` | Vitest unit tests, both workspaces |
+| `npm run coverage` | Vitest with v8 coverage and 70% thresholds |
+
+### Checks before you commit
+
+```bash
+npm run lint && npm run typecheck && npm run test
+```
+
+CI runs the same three, plus coverage and a quality gate.
 
 ---
 

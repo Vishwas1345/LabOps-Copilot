@@ -1,0 +1,141 @@
+name: web
+
+# Frontend pipeline. Invoked by changes.yml, never triggered directly.
+#
+# Jobs: build, lint, test, coverage, quality-gate.
+
+on:
+  workflow_call:
+    inputs:
+      deploy:
+        description: Run the image build step. Only set by the release pipeline.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/web
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        # The web workspace does not use Prisma directly, but the root install
+        # triggers a postinstall that resolves the shared client.
+        run: npm run db:generate
+        working-directory: .
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ vars.API_URL || 'http://localhost:4000' }}
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm run test -w @labops/web
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    needs: [build, lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Collect coverage
+        run: npm run coverage -w @labops/web
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-coverage
+          path: apps/web/coverage
+          retention-days: 7
+
+  quality-gate:
+    name: quality gate
+    runs-on: ubuntu-latest
+    needs: [build, lint, test, coverage]
+    steps:
+      - name: Assert every preceding job succeeded
+        # Fails loudly rather than silently passing on a skipped dependency.
+        run: |
+          if [ "${{ needs.build.result }}" != "success" ] \
+          || [ "${{ needs.lint.result }}" != "success" ] \
+          || [ "${{ needs.test.result }}" != "success" ] \
+          || [ "${{ needs.coverage.result }}" != "success" ]; then
+            echo "::error::web pipeline incomplete"
+            exit 1
+          fi
+          echo "web pipeline green: build, lint, test, coverage"
+
+  image:
+    name: build image
+    runs-on: ubuntu-latest
+    needs: [quality-gate]
+    if: inputs.deploy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          tags: labops-web:${{ github.sha }}

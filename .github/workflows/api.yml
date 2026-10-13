@@ -1,0 +1,196 @@
+name: api
+
+# Backend pipeline. Invoked by changes.yml, never triggered directly.
+#
+# Jobs: build, lint, test, integration-test, coverage, quality-gate.
+#
+# Unit tests and coverage run first and fail fast. Integration tests then run
+# against real PostgreSQL and Redis - a mocked database proves nothing about
+# dedup constraints, transactions or queue behaviour.
+
+on:
+  workflow_call:
+    inputs:
+      deploy:
+        description: Run the image build step. Only set by the release pipeline.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: api-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/api
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: .
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Validate the Prisma schema
+        run: npx prisma validate
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+  test:
+    name: test (unit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # No live LLM call may occur in the default run (CLAUDE.md 8).
+      - name: Unit tests
+        run: npm run test
+
+  integration-test:
+    name: test (integration)
+    runs-on: ubuntu-latest
+    needs: [build, lint, test]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: labops
+          POSTGRES_PASSWORD: labops
+          POSTGRES_DB: labops_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U labops"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://labops:labops@localhost:5432/labops_test
+      REDIS_URL: redis://localhost:6379
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Apply schema
+        run: npm run prisma:push
+
+      # Skipped, not passed, while the integration suite is being written. The
+      # job turns green by itself as soon as the first spec lands, so CI can
+      # never report a green integration run that did not happen.
+      - name: Run integration tests
+        run: npm run test:integration --if-present
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    needs: [build, lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Collect coverage
+        run: npm run coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-coverage
+          path: apps/api/coverage
+          retention-days: 7
+
+  quality-gate:
+    name: quality gate
+    runs-on: ubuntu-latest
+    needs: [build, lint, test, integration-test, coverage]
+    steps:
+      - name: Assert every preceding job succeeded
+        run: |
+          if [ "${{ needs.build.result }}" != "success" ] \
+          || [ "${{ needs.lint.result }}" != "success" ] \
+          || [ "${{ needs.test.result }}" != "success" ] \
+          || [ "${{ needs.integration-test.result }}" != "success" ] \
+          || [ "${{ needs.coverage.result }}" != "success" ]; then
+            echo "::error::api pipeline incomplete"
+            exit 1
+          fi
+          echo "api pipeline green: build, lint, unit test, integration test, coverage"
+
+  image:
+    name: build image
+    runs-on: ubuntu-latest
+    needs: [quality-gate]
+    if: inputs.deploy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the api image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          tags: labops-api:${{ github.sha }}

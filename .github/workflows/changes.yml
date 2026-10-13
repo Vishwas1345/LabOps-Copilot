@@ -1,0 +1,86 @@
+name: changes
+
+# Detects whether a push or pull request touched the frontend, the backend, or
+# both, and dispatches the matching service workflow. A change confined to
+# apps/web never runs the api pipeline, and vice versa.
+#
+# Why a dispatcher rather than `on: paths:` filters on each workflow: a single
+# detection point means one place decides what "affected" means, and the run
+# summary states explicitly which service was skipped and why.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: changes-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: detect affected services
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      api: ${{ steps.filter.outputs.api }}
+      tooling: ${{ steps.filter.outputs.tooling }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          list-files: shell
+          # Shared build tooling lives at the root. A change to it can break
+          # either service, so it fans out to both.
+          filters: |
+            web:
+              - 'apps/web/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'eslint.config.mjs'
+            api:
+              - 'apps/api/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'eslint.config.mjs'
+              - 'docker-compose.yml'
+              - 'db/**'
+              - 'prisma/**'
+            tooling:
+              - '.github/workflows/**'
+              - 'CLAUDE.md'
+              - 'ARCHITECTURE.md'
+              - '.claude/**'
+
+      - name: Summarise detection result
+        run: |
+          {
+            echo "### Affected services"
+            echo ""
+            echo "| Service | Runs |"
+            echo "| ------- | ----- |"
+            echo "| web (apps/web) | ${{ steps.filter.outputs.web }} |"
+            echo "| api (apps/api) | ${{ steps.filter.outputs.api }} |"
+            echo ""
+            echo "Shared tooling changed: ${{ steps.filter.outputs.tooling }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  web:
+    name: web pipeline
+    needs: detect
+    if: needs.detect.outputs.web == 'true'
+    uses: ./.github/workflows/web.yml
+
+  api:
+    name: api pipeline
+    needs: detect
+    if: needs.detect.outputs.api == 'true'
+    uses: ./.github/workflows/api.yml
