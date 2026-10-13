@@ -1,0 +1,17 @@
+{
+  "name": "labops-copilot",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w @labops/api\" \"npm run dev -w @labops/web\"",
+    "dev:api": "npm run dev -w @labops/api",
+    "dev:web": "npm run dev -w @labops/web",
+    "db:up": "docker compose up -d postgres",
+    "db:generate": "npm run prisma:generate -w @labops/api",
+    "db:push": "npm run prisma:push -w @labops/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
