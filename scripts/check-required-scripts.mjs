@@ -19,7 +19,10 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const REQUIRED = [
   { workspace: 'package.json', scripts: ['lint', 'typecheck', 'test', 'coverage'] },
-  { workspace: 'apps/api/package.json', scripts: ['build', 'lint', 'typecheck', 'test', 'coverage'] },
+  {
+    workspace: 'apps/api/package.json',
+    scripts: ['build', 'lint', 'typecheck', 'test', 'coverage', 'prisma:validate'],
+  },
   { workspace: 'apps/web/package.json', scripts: ['build', 'lint', 'typecheck', 'test', 'coverage'] },
 ];
 

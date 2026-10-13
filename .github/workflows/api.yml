@@ -4,11 +4,11 @@ name: api
 #
 # Jobs: build, lint, test, integration-test, coverage, quality-gate, image.
 #
-# The gate is split in two on purpose:
-#   - checks that belong to one job run in that job (lint, coverage thresholds)
-#   - checks that span the whole pipeline run in quality-gate, which uses
-#     `if: always()` so it reports even when something upstream already failed.
-#     Without always() the gate is unreachable exactly when it matters.
+# Every command runs from the repository root with an explicit -w workspace
+# flag. There is deliberately no `defaults.run.working-directory` here: a
+# default silently applies to every step including `npm ci`, which installs
+# only the current directory's dependencies and leaves the root devDependencies
+# (eslint, typescript, vitest) uninstalled.
 
 on:
   workflow_call:
@@ -25,10 +25,6 @@ concurrency:
   group: api-${{ github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    working-directory: apps/api
-
 jobs:
   build:
     name: build
@@ -44,15 +40,18 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-        working-directory: .
 
       # `npm run build` is tsc, which type-checks as it emits. Running a
       # separate --noEmit pass first would duplicate the whole compile.
       - name: Build
-        run: npm run build
+        run: npm run build -w @labops/api
 
       - name: Validate the Prisma schema
-        run: npx prisma validate
+        run: npm run prisma:validate -w @labops/api
+        env:
+          # Prisma requires the variable to be present even though `validate`
+          # parses the schema without opening a connection.
+          DATABASE_URL: postgresql://labops:labops@localhost:5432/labops
 
   lint:
     name: lint
@@ -69,7 +68,7 @@ jobs:
       - run: npm ci
 
       - name: Lint
-        run: npm run lint
+        run: npm run lint -w @labops/api
 
   test:
     name: test (unit)
@@ -87,7 +86,7 @@ jobs:
 
       # No live LLM call may occur in the default run (CLAUDE.md 8).
       - name: Unit tests
-        run: npm run test
+        run: npm run test -w @labops/api
 
   integration-test:
     name: test (integration)
@@ -132,16 +131,16 @@ jobs:
       - run: npm ci
 
       - name: Generate Prisma client
-        run: npm run prisma:generate
+        run: npm run prisma:generate -w @labops/api
 
       - name: Apply schema
-        run: npm run prisma:push
+        run: npm run prisma:push -w @labops/api
 
       # Skipped, not passed, while the integration suite is being written, so
       # CI can never report a green integration run that did not happen. The
       # job turns green by itself the moment the first spec lands.
       - name: Run integration tests
-        run: npm run test:integration --if-present
+        run: npm run test:integration -w @labops/api --if-present
 
   coverage:
     name: coverage
@@ -160,7 +159,7 @@ jobs:
 
       # Thresholds live in vitest.config.ts, so a drop below 70% fails here.
       - name: Collect coverage
-        run: npm run coverage
+        run: npm run coverage -w @labops/api
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -175,14 +174,15 @@ jobs:
     timeout-minutes: 10
     needs: [build, lint, test, integration-test, coverage]
     # Runs even when a dependency failed, so the pipeline always reports why.
+    # Without this the gate never executes an assertion: GitHub already fails
+    # the workflow when a needs job fails, so a normally-scheduled gate is
+    # unreachable exactly when it is needed.
     if: always()
 
     # No `npm ci` here on purpose: every check below reads committed manifests
-    # and the lockfile, not installed packages. Skipping the install saves a
-    # full dependency restore.
+    # and the lockfile, not installed packages.
     steps:
-      - name: Check out
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -221,7 +221,7 @@ jobs:
       - name: Fail on new high or critical advisories
         run: node scripts/audit-gate.mjs
 
-      - name: Scan the working tree for secrets
+      - name: Scan the repository for secrets
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

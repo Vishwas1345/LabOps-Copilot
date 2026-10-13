@@ -4,10 +4,15 @@ name: web
 #
 # Jobs: build, lint, test, coverage, quality-gate, image.
 #
-# No integration-test job here: the frontend has no database or queue of its
-# own. The end-to-end journey is Playwright's job and is not wired up yet -
-# adding it before any E2E spec exists would only produce a green run that
-# tested nothing.
+# Every command runs from the repository root with an explicit -w workspace
+# flag. There is deliberately no `defaults.run.working-directory` here: a
+# default silently applies to every step including `npm ci`, which installs
+# only the current directory's dependencies and leaves the root devDependencies
+# (eslint, typescript, vitest) uninstalled.
+#
+# No integration-test job: the frontend owns no database or queue. The
+# end-to-end journey is Playwright's job and is not wired up yet - adding it
+# before any E2E spec exists would only produce a green run that tested nothing.
 
 on:
   workflow_call:
@@ -24,10 +29,6 @@ concurrency:
   group: web-${{ github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    working-directory: apps/web
-
 jobs:
   build:
     name: build
@@ -43,12 +44,11 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-        working-directory: .
 
-      # Baked at build time by Next.js, so it must be set during the build and
-      # not only at runtime.
+      # Baked in at build time by Next.js, so it must be set during the build
+      # and not only at runtime.
       - name: Build
-        run: npm run build
+        run: npm run build -w @labops/web
         env:
           NEXT_PUBLIC_API_URL: ${{ vars.API_URL || 'http://localhost:4000' }}
 
@@ -67,7 +67,7 @@ jobs:
       - run: npm ci
 
       - name: Lint
-        run: npm run lint
+        run: npm run lint -w @labops/web
 
   test:
     name: test (unit)
@@ -84,7 +84,7 @@ jobs:
       - run: npm ci
 
       - name: Unit tests
-        run: npm run test
+        run: npm run test -w @labops/web
 
   coverage:
     name: coverage
@@ -103,7 +103,7 @@ jobs:
 
       # Thresholds live in vitest.config.ts, so a drop below 70% fails here.
       - name: Collect coverage
-        run: npm run coverage
+        run: npm run coverage -w @labops/web
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -118,13 +118,15 @@ jobs:
     timeout-minutes: 10
     needs: [build, lint, test, coverage]
     # Runs even when a dependency failed, so the pipeline always reports why.
+    # Without this the gate never executes an assertion: GitHub already fails
+    # the workflow when a needs job fails, so a normally-scheduled gate is
+    # unreachable exactly when it is needed.
     if: always()
 
     # No `npm ci` here on purpose: every check below reads committed manifests
     # and the lockfile, not installed packages.
     steps:
-      - name: Check out
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -161,7 +163,7 @@ jobs:
       - name: Fail on new high or critical advisories
         run: node scripts/audit-gate.mjs
 
-      - name: Scan the working tree for secrets
+      - name: Scan the repository for secrets
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

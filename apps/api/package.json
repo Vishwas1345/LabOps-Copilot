@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
     "prisma:generate": "prisma generate",
-    "prisma:push": "prisma db push"
+    "prisma:push": "prisma db push",
+    "prisma:validate": "prisma validate"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.1",
