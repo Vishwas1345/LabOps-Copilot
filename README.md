@@ -408,6 +408,40 @@ fabricated.
 
 ---
 
+## Continuous integration
+
+Three workflows under `.github/workflows/`:
+
+| Workflow | Role |
+|---|---|
+| `changes.yml` | Detects whether a commit touched `apps/web`, `apps/api`, or shared root tooling, then dispatches only the matching pipeline |
+| `api.yml` | build, lint, unit tests, integration tests (real Postgres + Redis), coverage, quality gate |
+| `web.yml` | build, lint, unit tests, coverage, quality gate |
+
+A change confined to the frontend never starts the backend pipeline. Changes to
+the root manifests or the ESLint config fan out to both, since shared tooling
+can break either service.
+
+Every service pipeline ends in a quality gate that runs even when an upstream
+job failed (`if: always()`) — a gate that only runs when everything passed can
+never catch anything. The gate performs a secret scan, a dependency audit, and
+a check that the scripts the pipeline depends on still exist.
+
+### Dependency audit
+
+`npm audit` cannot currently reach zero: six advisories require prisma 7, vitest
+5 or next 16, all major upgrades. Those six are recorded in
+`.github/audit-baseline.json` with a reason and a review date, and
+`scripts/audit-gate.mjs` fails the build on any **new** high or critical
+advisory. Regenerate the baseline with:
+
+```bash
+node scripts/audit-gate.mjs --update
+```
+
+Removing an entry from the baseline does not fix anything — it only stops the
+build complaining.
+
 ## Roadmap
 
 Built vertically so a working end-to-end workflow exists early.

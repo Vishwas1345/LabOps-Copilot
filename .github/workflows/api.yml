@@ -2,17 +2,19 @@ name: api
 
 # Backend pipeline. Invoked by changes.yml, never triggered directly.
 #
-# Jobs: build, lint, test, integration-test, coverage, quality-gate.
+# Jobs: build, lint, test, integration-test, coverage, quality-gate, image.
 #
-# Unit tests and coverage run first and fail fast. Integration tests then run
-# against real PostgreSQL and Redis - a mocked database proves nothing about
-# dedup constraints, transactions or queue behaviour.
+# The gate is split in two on purpose:
+#   - checks that belong to one job run in that job (lint, coverage thresholds)
+#   - checks that span the whole pipeline run in quality-gate, which uses
+#     `if: always()` so it reports even when something upstream already failed.
+#     Without always() the gate is unreachable exactly when it matters.
 
 on:
   workflow_call:
     inputs:
       deploy:
-        description: Run the image build step. Only set by the release pipeline.
+        description: Build the container image. Only set by the release pipeline.
         type: boolean
         default: false
 
@@ -31,6 +33,7 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -43,9 +46,8 @@ jobs:
         run: npm ci
         working-directory: .
 
-      - name: Type check
-        run: npm run typecheck
-
+      # `npm run build` is tsc, which type-checks as it emits. Running a
+      # separate --noEmit pass first would duplicate the whole compile.
       - name: Build
         run: npm run build
 
@@ -55,6 +57,7 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -71,6 +74,7 @@ jobs:
   test:
     name: test (unit)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -88,6 +92,7 @@ jobs:
   integration-test:
     name: test (integration)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [build, lint, test]
     services:
       postgres:
@@ -132,15 +137,16 @@ jobs:
       - name: Apply schema
         run: npm run prisma:push
 
-      # Skipped, not passed, while the integration suite is being written. The
-      # job turns green by itself as soon as the first spec lands, so CI can
-      # never report a green integration run that did not happen.
+      # Skipped, not passed, while the integration suite is being written, so
+      # CI can never report a green integration run that did not happen. The
+      # job turns green by itself the moment the first spec lands.
       - name: Run integration tests
         run: npm run test:integration --if-present
 
   coverage:
     name: coverage
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [build, lint, test]
     steps:
       - uses: actions/checkout@v4
@@ -152,6 +158,7 @@ jobs:
 
       - run: npm ci
 
+      # Thresholds live in vitest.config.ts, so a drop below 70% fails here.
       - name: Collect coverage
         run: npm run coverage
 
@@ -165,23 +172,64 @@ jobs:
   quality-gate:
     name: quality gate
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [build, lint, test, integration-test, coverage]
+    # Runs even when a dependency failed, so the pipeline always reports why.
+    if: always()
+
+    # No `npm ci` here on purpose: every check below reads committed manifests
+    # and the lockfile, not installed packages. Skipping the install saves a
+    # full dependency restore.
     steps:
-      - name: Assert every preceding job succeeded
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Aggregate pipeline results
+        run: |
+          {
+            echo "### api pipeline"
+            echo ""
+            echo "| Job | Result |"
+            echo "| --- | ------ |"
+            echo "| build | ${{ needs.build.result }} |"
+            echo "| lint | ${{ needs.lint.result }} |"
+            echo "| test (unit) | ${{ needs.test.result }} |"
+            echo "| test (integration) | ${{ needs.integration-test.result }} |"
+            echo "| coverage | ${{ needs.coverage.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if any required job did not succeed
         run: |
           if [ "${{ needs.build.result }}" != "success" ] \
           || [ "${{ needs.lint.result }}" != "success" ] \
           || [ "${{ needs.test.result }}" != "success" ] \
           || [ "${{ needs.integration-test.result }}" != "success" ] \
           || [ "${{ needs.coverage.result }}" != "success" ]; then
-            echo "::error::api pipeline incomplete"
+            echo "::error::api pipeline incomplete - see the table above"
             exit 1
           fi
-          echo "api pipeline green: build, lint, unit test, integration test, coverage"
+
+      - name: Verify the pipeline contract is intact
+        run: node scripts/check-required-scripts.mjs
+
+      - name: Fail on new high or critical advisories
+        run: node scripts/audit-gate.mjs
+
+      - name: Scan the working tree for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   image:
     name: build image
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [quality-gate]
     if: inputs.deploy
     steps:

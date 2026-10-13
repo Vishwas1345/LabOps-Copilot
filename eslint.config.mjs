@@ -66,6 +66,16 @@ export default tseslint.config(
   },
 
   {
+    // Build and CI tooling. Plain JavaScript running on Node - not part of
+    // either service's type-checked surface.
+    files: ['**/*.js', '**/*.mjs', '**/*.cjs'],
+    languageOptions: {
+      sourceType: 'module',
+      globals: globals.node,
+    },
+  },
+
+  {
     // CLAUDE.md 7: never console.log in backend source
     files: ['apps/api/**/*.ts'],
     rules: { 'no-console': 'error' },

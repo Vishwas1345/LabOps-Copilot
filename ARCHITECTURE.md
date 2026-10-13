@@ -677,10 +677,38 @@ flowchart LR
   WEBS --> APIS
 ```
 
-**CI (GitHub Actions)** — install with lockfile → lint/format → typecheck →
-unit tests → start postgres + redis → integration tests → build web and api →
-Playwright smoke → build images. Deploy only from protected `main`, and only if
-a target exists.
+**CI (GitHub Actions)** — three workflows:
+
+`changes.yml` is the only entry point. It uses `dorny/paths-filter` to decide
+whether a commit touched `apps/web`, `apps/api`, or shared root tooling, then
+dispatches only the matching pipeline via `workflow_call`. A frontend-only
+change never starts the backend pipeline. Root manifests and the ESLint config
+map to **both** services, because a shared-tooling change can break either.
+
+`api.yml` — build (`tsc` plus `prisma validate`), lint, unit tests, integration
+tests against real PostgreSQL and Redis service containers, coverage with
+thresholds, quality gate. `web.yml` — build, lint, unit tests, coverage with
+thresholds, quality gate.
+
+Two design points worth calling out, because the obvious version of both is
+broken:
+
+- **The quality gate uses `if: always()`.** A gate that only runs when its
+  dependencies passed is unreachable exactly when it is needed — GitHub already
+  fails the workflow when a `needs` job fails, so such a gate never executes a
+  single assertion. Running unconditionally makes it the one place that always
+  reports the pipeline's state, and lets it own the checks that span jobs.
+- **The dependency audit is a baseline gate, not a boolean.** `npm audit` cannot
+  reach zero here: prisma 7, vitest 5 and next 16 are all major upgrades. The
+  six known advisories are recorded in `.github/audit-baseline.json` with a
+  reason and a review date, and the gate fails on anything *new*. A non-blocking
+  audit step would be a gate in name only.
+
+Gates are split by ownership: checks that belong to one job run in that job
+(lint, coverage thresholds), and checks that span the pipeline run in the gate
+(secret scan, dependency audit, required-script contract).
+
+Deploy only from protected `main`, and only if a target exists.
 
 **Production shape** — same containers, managed Postgres and Redis, TLS
 terminated at the edge, secrets injected from the platform's secret store,

@@ -2,13 +2,18 @@ name: web
 
 # Frontend pipeline. Invoked by changes.yml, never triggered directly.
 #
-# Jobs: build, lint, test, coverage, quality-gate.
+# Jobs: build, lint, test, coverage, quality-gate, image.
+#
+# No integration-test job here: the frontend has no database or queue of its
+# own. The end-to-end journey is Playwright's job and is not wired up yet -
+# adding it before any E2E spec exists would only produce a green run that
+# tested nothing.
 
 on:
   workflow_call:
     inputs:
       deploy:
-        description: Run the image build step. Only set by the release pipeline.
+        description: Build the container image. Only set by the release pipeline.
         type: boolean
         default: false
 
@@ -27,25 +32,21 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Check out
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Generate Prisma client
-        # The web workspace does not use Prisma directly, but the root install
-        # triggers a postinstall that resolves the shared client.
-        run: npm run db:generate
         working-directory: .
 
+      # Baked at build time by Next.js, so it must be set during the build and
+      # not only at runtime.
       - name: Build
         run: npm run build
         env:
@@ -54,6 +55,7 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -68,8 +70,9 @@ jobs:
         run: npm run lint
 
   test:
-    name: test
+    name: test (unit)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -81,11 +84,12 @@ jobs:
       - run: npm ci
 
       - name: Unit tests
-        run: npm run test -w @labops/web
+        run: npm run test
 
   coverage:
     name: coverage
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [build, lint, test]
     steps:
       - uses: actions/checkout@v4
@@ -97,8 +101,9 @@ jobs:
 
       - run: npm ci
 
+      # Thresholds live in vitest.config.ts, so a drop below 70% fails here.
       - name: Collect coverage
-        run: npm run coverage -w @labops/web
+        run: npm run coverage
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -110,23 +115,61 @@ jobs:
   quality-gate:
     name: quality gate
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [build, lint, test, coverage]
+    # Runs even when a dependency failed, so the pipeline always reports why.
+    if: always()
+
+    # No `npm ci` here on purpose: every check below reads committed manifests
+    # and the lockfile, not installed packages.
     steps:
-      - name: Assert every preceding job succeeded
-        # Fails loudly rather than silently passing on a skipped dependency.
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Aggregate pipeline results
+        run: |
+          {
+            echo "### web pipeline"
+            echo ""
+            echo "| Job | Result |"
+            echo "| --- | ------ |"
+            echo "| build | ${{ needs.build.result }} |"
+            echo "| lint | ${{ needs.lint.result }} |"
+            echo "| test (unit) | ${{ needs.test.result }} |"
+            echo "| coverage | ${{ needs.coverage.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if any required job did not succeed
         run: |
           if [ "${{ needs.build.result }}" != "success" ] \
           || [ "${{ needs.lint.result }}" != "success" ] \
           || [ "${{ needs.test.result }}" != "success" ] \
           || [ "${{ needs.coverage.result }}" != "success" ]; then
-            echo "::error::web pipeline incomplete"
+            echo "::error::web pipeline incomplete - see the table above"
             exit 1
           fi
-          echo "web pipeline green: build, lint, test, coverage"
+
+      - name: Verify the pipeline contract is intact
+        run: node scripts/check-required-scripts.mjs
+
+      - name: Fail on new high or critical advisories
+        run: node scripts/audit-gate.mjs
+
+      - name: Scan the working tree for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   image:
     name: build image
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [quality-gate]
     if: inputs.deploy
     steps:

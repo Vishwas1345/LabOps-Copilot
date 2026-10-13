@@ -1,0 +1,61 @@
+{
+  "comment": "Known high/critical advisories accepted pending a dependency upgrade. Regenerate with: node scripts/audit-gate.mjs --update. Removing an entry does not fix anything - it only stops the build complaining.",
+  "generatedAt": "2026-10-13",
+  "reviewNote": "prisma 7+, vitest 5 and next 16 are all major upgrades. They are deliberately deferred until the vertical slice is complete, because a major upgrade mid-feature is where integration bugs hide. Revisit before any release.",
+  "accepted": [
+    {
+      "key": "package:prisma",
+      "package": "prisma",
+      "severity": "high",
+      "advisory": "no direct advisory (transitive)",
+      "url": null,
+      "direct": true,
+      "reason": "Fixed in prisma 7. The project is pinned to prisma 6 per ARCHITECTURE.md 2. 6.19.3 is the newest 6.x."
+    },
+    {
+      "key": "package:@prisma/config",
+      "package": "@prisma/config",
+      "severity": "high",
+      "advisory": "no direct advisory (transitive)",
+      "url": null,
+      "direct": false,
+      "reason": "Transitive of prisma; resolves when prisma moves to 7. Dev-only, never shipped in the runtime image."
+    },
+    {
+      "key": "GHSA-GGR8-5VV4-36MX",
+      "package": "deepmerge-ts",
+      "severity": "high",
+      "advisory": "GHSA-GGR8-5VV4-36MX",
+      "url": "https://github.com/advisories/GHSA-ggr8-5vv4-36mx",
+      "direct": false,
+      "reason": "Transitive of prisma via @prisma/config. Dev-only, never shipped in the runtime image."
+    },
+    {
+      "key": "GHSA-82FW-GWWQ-J7X9",
+      "package": "vitest",
+      "severity": "critical",
+      "advisory": "GHSA-82FW-GWWQ-J7X9",
+      "url": "https://github.com/advisories/GHSA-82fw-gwwq-j7x9",
+      "direct": true,
+      "reason": "Fixed in vitest 5. Dev-only dependency, never present in a runtime image and never reachable from a deployed service. Deferred alongside the rest of the vitest 5 migration."
+    },
+    {
+      "key": "GHSA-5GMW-XHRV-C9V3,GHSA-85C8-PPGW-CCPR",
+      "package": "tinypool",
+      "severity": "critical",
+      "advisory": "GHSA-5GMW-XHRV-C9V3, GHSA-85C8-PPGW-CCPR",
+      "url": "https://github.com/advisories/GHSA-5gmw-xhrv-c9v3",
+      "direct": false,
+      "reason": "Transitive of vitest via vite. Resolves when vitest moves to 5. Dev-only."
+    },
+    {
+      "key": "GHSA-QX2V-QP2M-JG93,GHSA-6G55-P6WH-862Q,GHSA-FXQJ-RQCC-2CMP,GHSA-R28C-9Q8G-F849",
+      "package": "postcss",
+      "severity": "high",
+      "advisory": "GHSA-QX2V-QP2M-JG93, GHSA-6G55-P6WH-862Q, GHSA-FXQJ-RQCC-2CMP, GHSA-R28C-9Q8G-F849",
+      "url": "https://github.com/advisories/GHSA-qx2v-qp2m-jg93",
+      "direct": false,
+      "reason": "Transitive of next 15.5.27. Fixed by next 16, which is a major upgrade carrying App Router migration risk. Highest priority to clear before any release."
+    }
+  ]
+}
