@@ -5,3 +5,6 @@ dist
 .env.local
 *.log
 apps/api/generated
+
+# Internal project documents, not part of the public repository
+LabOps_Copilot_Project_Specification-2.md
