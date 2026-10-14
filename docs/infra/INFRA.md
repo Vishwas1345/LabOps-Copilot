@@ -17,7 +17,7 @@ operational reference.
 | `worker` (BullMQ) | none | Runs queued jobs and the reconciler (startup, then every 60 s); never serves HTTP | Exists; runs correlation (Phase 5) |
 | `postgres` 16 | 5432 | All durable business state | Exists |
 | `redis` 7 | 6379 (host port overridable) | Queue transport; never the source of truth | Exists |
-| `migrate` (one-shot) | none | Applies Prisma migrations, then exits; api starts only after it succeeds | Exists |
+| `migrate` (one-shot) | none | Applies Prisma migrations, seeds the demo operator, then exits; api starts only after it succeeds | Exists |
 
 Runtime: Node.js 22 (`.nvmrc`), npm workspaces (`apps/api`, `apps/web`).
 
@@ -85,6 +85,9 @@ reach another project's instance.
 | `API_PORT` | api | `4000` | Port |
 | `CORS_ORIGIN` | api | `http://localhost:3000` | Allowed browser origin |
 | `LOG_LEVEL` | api | `info` | Pino level (test runs use `warn`) |
+| `SESSION_COOKIE_SECURE` | api | `true` (`false` in compose and `.env.example`) | Session cookie only over https; off only for local http |
+| `SEED_OPERATOR_USERNAME` | migrate (seed) | `operator` | Operator the seed creates or resets |
+| `SEED_OPERATOR_PASSWORD` | migrate (seed) | unset: seeds nobody | 12+ characters; root `.env` for compose, a masked random value in CI; never committed |
 | `DEMO_ENABLED` | api | `false` (`true` in compose and `.env.example`) | Registers `/api/demo/*`; when off the routes do not exist (404) |
 | `REDIS_URL` | api, worker | required; `redis://redis:6379` in compose | BullMQ transport |
 | `QUEUE_PREFIX` | api, worker | `labops` | Namespaces queue keys; test runs use a unique `labops-test-*` prefix and clean it up |
@@ -96,7 +99,6 @@ reach another project's instance.
 
 | Variable | Phase | Purpose |
 |---|---|---|
-| `SESSION_SECRET` | 6 | Signs operator session cookies |
 | `APPROVAL_TTL_MINUTES` | 9 | Approval expiry (default 30) |
 | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TIMEOUT_MS` | 11 | Model provider; `fixture` by default |
 | `CREDENTIALS_KEY` | 13 | Encryption key for stored integration credentials |
@@ -167,8 +169,11 @@ same database as `DATABASE_URL`. Locally it reads `apps/api/.env` and needs
 **Compose smoke test:** builds both images, boots the full stack, then runs
 `scripts/compose-smoke.sh`: migrations exited 0, `/health` reports ok, the
 web page shows "API: ok" through `API_INTERNAL_URL`, and the demo scenario
-runs and ingests events (at least 19 labs end up failed), the worker runs a
-correlate job, and the scenario's 12-lab incident exists. It catches Dockerfile and
+runs and ingests events (at least 19 labs end up failed), `/api/labs` refuses
+an anonymous request, the seeded operator signs in, the worker runs a correlate
+job, and the scenario's 12-lab incident exists. It needs
+`SEED_OPERATOR_PASSWORD` (the value compose seeded); CI generates a masked one
+per run. It catches Dockerfile and
 startup bugs that unit and integration tests cannot see. Run it locally against
 a running stack with `scripts/compose-smoke.sh`.
 

@@ -1,6 +1,6 @@
 # LabOps Copilot — Implementation Plan
 
-**Status:** Approved. Phases 0–5 done (LOC-5 to LOC-10); next is Phase 6.
+**Status:** Approved. Phases 0–6 done (LOC-5 to LOC-11); next is Phase 7.
 
 Phase 2 deviations, both deliberate: the demo endpoint returns 201/200, not
 202, because nothing is queued until Phase 4; and the simulator's
@@ -24,6 +24,14 @@ signals wait for labs with more than one event; concurrent runs are stopped
 by an advisory lock as well as the `windowKey` index, since overlapping
 windows can pick different anchors; and no `investigate` job is enqueued
 yet, because Phase 7 adds the queue together with its handler.
+
+Phase 6 deviations: sessions are server-side (`OperatorSession`, keyed by the
+SHA-256 of a random cookie token) instead of a signed stateless cookie, so
+logout and password resets really revoke and no `SESSION_SECRET` exists; no
+`role` column until roles exist (RBAC is a stretch goal); no web or CORS
+`credentials` change until the Phase 12 login UI, since no browser call needs
+a session yet; and the guard is global deny-by-default rather than a
+per-route `requireOperator`, so a forgotten route is closed, not open.
 **Source:** `SPEC.md` (this folder), `ARCHITECTURE.md`, `CLAUDE.md`; infrastructure details in `docs/infra/INFRA.md`
 **Starting point:** skeleton — Fastify `/health` + `/api/labs`, one-table Prisma schema
 (`apps/api/prisma/schema.prisma`), lab transition map (`apps/api/src/labs/transitions.ts`),

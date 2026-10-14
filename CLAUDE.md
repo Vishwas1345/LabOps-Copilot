@@ -132,9 +132,11 @@ Environment: `apps/api/.env` (copy from `apps/api/.env.example`) and
 Backend modules live under `apps/api/src/<domain>/`:
 `labs`, `events`, `integrations`, `incidents`, `investigations`, `policies`,
 `approvals`, `jobs`, `recovery`, `audit`, `secrets`, `observability`,
-`events-stream`, `config`.
+`events-stream`, `config`, `auth`.
 
-Cross-cutting and dependency-free: `audit`, `observability`, `config`.
+Cross-cutting and dependency-free: `audit`, `observability`, `config`, `auth`.
+Every route needs a signed-in operator unless it sets `config: { public: true }`;
+human actions take their audit actor from `actorOf(request)`, never the body.
 
 ### Dependency direction — strictly downward only
 
