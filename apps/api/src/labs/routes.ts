@@ -7,7 +7,7 @@ import type {
 } from 'fastify';
 import { AppError } from '../http/errors.js';
 import { labParams, listLabsQuery } from './schemas.js';
-import { getLab, LabNotFoundError, listLabs } from './service.js';
+import { getLab, labCountsByStatus, LabNotFoundError, listLabs } from './service.js';
 
 // HTTP only: validate, delegate to the service, shape the response.
 // Authorisation arrives with operator auth (Phase 6).
@@ -19,6 +19,9 @@ export function registerLabRoutes<Logger extends FastifyBaseLogger>(
     Logger
   >,
 ): void {
+  // Static path: Fastify matches it before /api/labs/:id.
+  app.get('/api/labs/summary', async () => ({ data: await labCountsByStatus() }));
+
   app.get('/api/labs', async (request) => {
     const query = listLabsQuery.parse(request.query);
     const page = await listLabs(query);
