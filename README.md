@@ -195,12 +195,16 @@ cp apps/api/.env.example apps/api/.env
 
 Defaults match the compose credentials, so no edit is needed for local use.
 
-### 4. Create the database schema and generate the client
+### 4. Apply migrations and generate the client
 
 ```bash
 npm run db:generate
-npm run db:push
+npm run db:migrate
 ```
+
+Schema changes are checked-in migrations under `apps/api/prisma/migrations`.
+To create one after editing `schema.prisma`, run
+`npm run prisma:migrate:dev -w @labops/api -- --name <change>`.
 
 ### 5. Run the app
 
@@ -230,7 +234,8 @@ The home page renders live API and database status.
 ### Docker Compose
 
 The compose file is the reproducible baseline for local development and CI. It
-runs PostgreSQL, Redis, the API and the web app:
+runs PostgreSQL, Redis, a one-shot `migrate` service, the API and the web app.
+The API starts only after migrations have applied:
 
 ```bash
 docker compose up --build
@@ -289,11 +294,12 @@ labops-copilot/
 | `npm run dev:web` | Run the web app only |
 | `npm run db:up` | Start PostgreSQL via Docker Compose |
 | `npm run db:generate` | Generate the Prisma client |
-| `npm run db:push` | Apply the schema to the database |
+| `npm run db:migrate` | Apply checked-in migrations to the database |
 | `npm run lint` | ESLint across both workspaces |
 | `npm run lint:fix` | ESLint with autofix |
 | `npm run typecheck` | Type check both workspaces |
 | `npm run test` | Vitest unit tests, both workspaces |
+| `npm run test:integration -w @labops/api` | API integration tests against a real, migrated PostgreSQL |
 | `npm run coverage` | Vitest with v8 coverage and 70% thresholds |
 
 ### Checks before you commit
@@ -366,8 +372,10 @@ This is scripted in `apps/api` under the demo scenario module as it is built.
 
 ## Testing
 
-Planned test layers, each mirroring an architectural boundary so a failure
-points directly at a boundary:
+Test layers, each mirroring an architectural boundary so a failure points
+directly at a boundary. Unit and integration suites exist today; the scopes
+below grow phase by phase (see `docs/specs/labops-copilot/PLAN.md`), and
+Playwright arrives in Phase 14:
 
 | Layer | Scope |
 |---|---|
@@ -449,17 +457,17 @@ build complaining.
 
 ## Roadmap
 
-Built vertically so a working end-to-end workflow exists early.
+Built vertically so a working end-to-end workflow exists early. The full
+phase-by-phase plan, with what each phase delivers and how it is verified, is
+`docs/specs/labops-copilot/PLAN.md`.
 
-| Phase | Contents | State |
+| Phases | Contents | State |
 |---|---|---|
-| 1 | Repository, Next.js, Fastify, TypeScript, Prisma, Postgres, compose, health check | In progress |
-| 2 | Lab simulator, event pipeline, integration foundation and settings | Not started |
-| 3 | Deterministic incident correlation with explanations | Not started |
-| 4 | AI investigation with structured outputs and uncertainty | Not started |
-| 5 | Policies, approvals, BullMQ jobs, verification, audit | Not started |
-| 6 | Pino, OpenTelemetry, unit / integration / E2E tests, CI | Not started |
-| 7 | Deployment, seeded demo, README and architecture docs, walkthrough | Not started |
+| 0 | Config validation, error envelope, migrations, integration-test gate | Done |
+| 1–5 | Audit trail, simulator, event ingestion, queue and worker, correlation | Not started |
+| 6–9 | Operator auth, AI investigation, policies, approval, execution, verification | Not started |
+| 10–12 | Live updates, real LLM provider, operator dashboard | Not started |
+| 13–15 | Integration settings, E2E tests and metrics, delivery | Not started |
 
 ---
 

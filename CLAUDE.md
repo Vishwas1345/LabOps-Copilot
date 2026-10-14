@@ -91,18 +91,19 @@ npm run dev:api              # API only
 npm run dev:web              # web only
 npm run db:up                # start PostgreSQL via Docker Compose
 npm run db:generate          # regenerate Prisma client
-npm run db:push              # apply schema to the database
+npm run db:migrate           # apply checked-in migrations
 npm run lint                 # ESLint across both workspaces
 npm run lint:fix             # ESLint with autofix
 npm run typecheck            # tsc --noEmit across both workspaces
 npm run test                 # Vitest unit tests, both workspaces
+npm run test:integration -w @labops/api   # real Postgres; needs db:up + db:migrate
 npm run coverage             # Vitest with v8 coverage + thresholds
 ```
 
 Full container stack:
 
 ```bash
-docker compose up --build    # postgres, redis, api, web
+docker compose up --build    # postgres, redis, migrate, api, web
 ```
 
 **Checks must pass before a commit.** In order: `npm run lint`,
@@ -396,7 +397,9 @@ The recipes below are the short form.
 
 1. Update `apps/api/prisma/schema.prisma`.
 2. Add constraints for every invariant it must hold (§6) — prefer DB enforcement.
-3. `npm run db:generate && npm run db:push`.
+3. `npm run prisma:migrate:dev -w @labops/api -- --name <change>` to write the
+   migration (raw SQL for partial indexes, CHECKs and triggers goes in it),
+   then `npm run db:generate`. CI fails if the schema and migrations drift.
 4. Note it in the ER diagram in `ARCHITECTURE.md §6`.
 
 ### Add an executable recovery action
