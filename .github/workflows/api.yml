@@ -41,6 +41,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The source imports generated Prisma types (LabStatus, ActorType, ...),
+      # so tsc needs the client generated first.
+      - name: Generate Prisma client
+        run: npm run prisma:generate -w @labops/api
+
       # `npm run build` is tsc, which type-checks as it emits. Running a
       # separate --noEmit pass first would duplicate the whole compile.
       - name: Build
