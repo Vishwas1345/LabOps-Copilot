@@ -5,7 +5,14 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
     // No live LLM call may ever be part of the default run (CLAUDE.md 8).
-    exclude: ['**/node_modules/**', '**/dist/**', 'src/**/*.live.test.ts'],
+    // Integration specs need a real database; they run under
+    // vitest.integration.config.ts, never in the unit run.
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      'src/**/*.live.test.ts',
+      'src/**/*.int.test.ts',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary', 'lcov'],

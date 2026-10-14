@@ -147,11 +147,10 @@ jobs:
       - name: Check schema matches migrations
         run: npm run prisma:drift -w @labops/api
 
-      # Skipped, not passed, while the integration suite is being written, so
-      # CI can never report a green integration run that did not happen. The
-      # job turns green by itself the moment the first spec lands.
+      # No --if-present: a missing script must fail this job, not pass it
+      # green with zero tests run.
       - name: Run integration tests
-        run: npm run test:integration -w @labops/api --if-present
+        run: npm run test:integration -w @labops/api
 
   coverage:
     name: coverage
