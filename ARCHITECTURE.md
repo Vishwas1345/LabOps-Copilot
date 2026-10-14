@@ -172,18 +172,28 @@ above them. Circular imports are a build error, enforced by an ESLint
 ### Frontend structure
 
 ```
-apps/web/src/app/
-  (dashboard)/            overview, incidents, labs, jobs, audit
-    incidents/[id]/       timeline, evidence, correlation rationale,
-                         investigation, approval, execution, audit
-    integrations/cloudlabs/
-  api/                    thin BFF route handlers (server-side proxy + auth)
-  components/             ui primitives (shadcn), panels, graph (React Flow)
-  lib/                    SSE client, fetch client, formatters, types
+apps/web/src/
+  middleware.ts           no session cookie -> /login (the API still decides)
+  app/
+    layout.tsx            persistent "Simulated data" badge on every page
+    login/                sign-in form + server action (BFF)
+    (dashboard)/          overview, incidents, incidents/[id], audit;
+                          server actions: investigate, approve, reject,
+                          run demo, sign out; error state for bad responses
+  components/ui/          shadcn primitives, copied into the repo
+  lib/                    API access (cookie forwarding), Zod response
+                          schemas, formatters, URL query building
 ```
 
-The browser never talks to PostgreSQL, Redis or the LLM directly. It calls the
-API; `NEXT_PUBLIC_*` variables hold URLs only.
+**The browser talks only to the web server (a BFF).** Sign-in runs as a
+server action: the web server calls the API and copies its session token into
+an httpOnly, SameSite=Lax cookie on the web origin. Pages (server components)
+and actions (server actions, origin-checked by Next) forward that cookie to
+the API over `API_INTERNAL_URL`. The browser never holds an API credential,
+never makes a cross-origin call, and never talks to PostgreSQL, Redis or the
+LLM; `NEXT_PUBLIC_*` variables hold URLs only. Every API response is
+Zod-parsed; a malformed one shows an error state, never half-rendered data.
+Live updates (Phase 10) will replace the in-flight 2 s refresh.
 
 ---
 
@@ -893,7 +903,8 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | AI investigation: evidence pack, delimited prompt, strict output, fixture provider, investigate job and endpoints | Done (Phase 7) | Real provider and an opt-in live test (Phase 11) |
 | Policy engine, allow-list, recovery proposals (automatic and operator) | Done (Phase 8) | — |
 | Approval, execution with revalidation, verification, expiry sweep | Done (Phase 9) | Four-eyes approval with roles (stretch) |
-| SSE, dashboard, React Flow | Not started | Phases 10, 12, 15 |
+| Operator dashboard: login, overview, incidents, incident detail with approval, audit | Done (Phase 12) | Live updates (Phase 10) |
+| SSE, React Flow | Not started | Phases 10, 15 |
 | Integrations (adapter, settings, secrets) | Not started | Phase 13 |
 
 Build order follows the spec's phases: vertical slice first — simulator →

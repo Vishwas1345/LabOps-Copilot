@@ -31,8 +31,16 @@ wait_for "api /health reports ok" \
   sh -c "curl -fs '$API_URL/health' | grep -q '\"status\":\"ok\"'"
 
 # React splits the text with a comment marker, hence the optional <!-- -->.
-wait_for "web page shows API ok" \
-  sh -c "curl -fs '$WEB_URL' | grep -Eq 'API: (<!-- -->)?ok'"
+# The login page renders the API status server-side through API_INTERNAL_URL.
+wait_for "web login page shows API ok" \
+  sh -c "curl -fs '$WEB_URL/login' | grep -Eq 'API: (<!-- -->)?ok'"
+
+# Signed out, every dashboard page redirects to login.
+location="$(curl -s -o /dev/null -w '%{redirect_url}' "$WEB_URL/incidents")"
+case "$location" in
+  */login) echo "ok: signed-out dashboard redirects to login" ;;
+  *) echo "FAILED: /incidents signed out went to '$location'" >&2; exit 1 ;;
+esac
 
 # The demo is enabled in compose: run the scenario (201, or 200 on a replay)
 # and confirm ingestion moved labs, i.e. the whole event path works in the stack.

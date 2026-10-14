@@ -12,7 +12,7 @@ operational reference.
 
 | Process | Port | Role | Status |
 |---|---|---|---|
-| `web` (Next.js) | 3000 | Operator UI; server components call the API | Exists |
+| `web` (Next.js) | 3000 | Operator UI; holds the session cookie and calls the API server-side (BFF) | Exists |
 | `api` (Fastify) | 4000 | HTTP API: validate, persist, enqueue; SSE | Exists (labs, events, jobs, incidents) |
 | `worker` (BullMQ) | none | Runs queued jobs and the reconciler (startup, then every 60 s); never serves HTTP | Exists; runs correlation, investigations and recovery execution; also sweeps expired approvals |
 | `postgres` 16 | 5432 | All durable business state | Exists |
@@ -95,7 +95,8 @@ reach another project's instance.
 | `REDIS_URL` | api, worker | required; `redis://redis:6379` in compose | BullMQ transport |
 | `QUEUE_PREFIX` | api, worker | `labops` | Namespaces queue keys; test runs use a unique `labops-test-*` prefix and clean it up |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | api, worker | unset | When set, spans export over OTLP/HTTP; unset, spans exist but are not exported |
-| `NEXT_PUBLIC_API_URL` | web | `http://localhost:4000` | API URL for the browser (URLs only, never tokens) |
+| `NEXT_PUBLIC_API_URL` | web | `http://localhost:4000` | API URL fallback (URLs only, never tokens) |
+| `SESSION_COOKIE_SECURE` | web | `true` (`false` in compose) | The web origin's session cookie only over https; off only for local http |
 | `API_INTERNAL_URL` | web | falls back to `NEXT_PUBLIC_API_URL` | API URL for server-side rendering |
 
 **Planned**
@@ -173,7 +174,8 @@ same database as `DATABASE_URL`. Locally it reads `apps/api/.env` and needs
 
 **Compose smoke test:** builds both images, boots the full stack, then runs
 `scripts/compose-smoke.sh`: migrations exited 0, `/health` reports ok, the
-web page shows "API: ok" through `API_INTERNAL_URL`, and the demo scenario
+web login page shows "API: ok" through `API_INTERNAL_URL`, a signed-out
+dashboard request redirects to `/login`, and the demo scenario
 runs and ingests events (at least 19 labs end up failed), `/api/labs` refuses
 an anonymous request, the seeded operator signs in, the worker runs a correlate
 job, the scenario's 12-lab incident exists, and the worker completes an
@@ -197,6 +199,7 @@ excludes server components, which only E2E can reach.
 |---|---|---|
 | Nothing sets the `deploy` input, so images are never built in CI | Add a release trigger once a deployment target exists | 15 |
 | No Playwright job | Compose up, then run the journey | 14 |
+| Dashboard logins all reach the API from the web server's IP, so the per-IP login limit is effectively global (5/min) | Forward the client IP from the web server and trust it only from that host, once the API is no longer reachable directly | 15 |
 | Login rate limit keys on the socket IP (`trustProxy` off) | Behind a load balancer every client would share one IP, so set `trustProxy` to the real proxy hops only (a blanket `true` lets clients spoof `X-Forwarded-For`) | 15 |
 | `main` has no branch protection | Require the quality gates before merge | Settings change; do it before Phase 1 |
 | Docs-only changes trigger no pipeline | Intended: `docs/**` is not in any filter | — |

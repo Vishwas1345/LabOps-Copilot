@@ -249,8 +249,11 @@ echo "SEED_OPERATOR_PASSWORD=$(openssl rand -hex 16)" >> .env
 docker compose up --build
 ```
 
-Sign in as `operator` with that password via `POST /api/auth/login`; every
-`/api/*` route except login and the demo trigger needs the session cookie.
+Open `http://localhost:3000` and sign in as `operator` with that password.
+With no data yet, the overview offers **Run demo scenario**; then open the
+12-lab incident, **Investigate**, read the diagnosis and the policy decisions,
+**Approve**, and watch it verify and resolve. Every `/api/*` route except login
+and the demo trigger needs a session.
 
 For the faster dev loop, run `npm run db:up` for infrastructure only and
 `npm run dev` for the API and web app with hot reload.
@@ -494,7 +497,8 @@ phase-by-phase plan, with what each phase delivers and how it is verified, is
 | 7 | AI investigation: bounded evidence, delimited prompt, strict output, fixture provider | Done |
 | 8 | Policy engine: allow-list, seven fixed steps, recorded proposals | Done |
 | 9 | Approval, execution with revalidation, verified resolution. **The full backend workflow runs end to end** | Done |
-| 10–12 | Live updates, real LLM provider, operator dashboard | Not started |
+| 12 | Operator dashboard: the whole workflow in a browser (built before 10 and 11) | Done |
+| 10–11 | Live updates, real LLM provider | Not started |
 | 13–15 | Integration settings, E2E tests and metrics, delivery | Not started |
 
 ---
