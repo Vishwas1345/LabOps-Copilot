@@ -38,9 +38,11 @@ export class ProposalConflictError extends Error {
   }
 }
 
-// Proposals come from a finished investigation (investigating) or from an
-// operator during manual review; nowhere else.
-const PROPOSABLE = new Set(['investigating', 'manual_review']);
+// Each source owns one starting state, so two flows never move one incident:
+// a diagnosis proposes from `investigating` (only the investigation leaves
+// that state), an operator only from `manual_review`.
+const startingState = (fromInvestigation: boolean) =>
+  fromInvestigation ? 'investigating' : 'manual_review';
 const UNFINISHED: RecoveryAction['status'][] = ['awaiting_approval', 'approved', 'running'];
 const EXECUTED: RecoveryAction['status'][] = ['running', 'succeeded', 'failed'];
 
@@ -122,7 +124,7 @@ export function proposeAction(
     }
     // After the idempotent lookup: a repeat of an allowed proposal finds the
     // incident already awaiting approval, and must get the proposal back.
-    if (!PROPOSABLE.has(scope.status)) {
+    if (scope.status !== startingState(options.investigationId !== undefined)) {
       throw new ProposalConflictError(incidentId);
     }
 

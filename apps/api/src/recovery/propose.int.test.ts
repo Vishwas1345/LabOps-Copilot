@@ -8,6 +8,7 @@ import { correlationWindow } from '../events/correlation-window.js';
 import { ingestEvent } from '../events/service.js';
 import { correlateWindow } from '../incidents/correlate.job.js';
 import type { IncidentStatus } from '../incidents/transitions.js';
+import { fixtureProvider } from '../investigations/fixture-provider.js';
 import { createInvestigateJob } from '../investigations/investigate.job.js';
 import type { InvestigationOutput } from '../investigations/output-schema.js';
 import { requestInvestigation } from '../investigations/service.js';
@@ -243,9 +244,28 @@ describe('POST /api/incidents/:id/recovery-proposals', () => {
     expect(new Set(responses.map((r) => r.json().data.recoveryActionId)).size).toBe(1);
   });
 
+  // Negative: the probe that found this. A proposal accepted mid-investigation
+  // was orphaned when the investigation moved the incident on.
+  it('refuses an operator proposal while an investigation is running', async () => {
+    const { incidentId, labIds } = await incident({ count: 1, status: 'open' });
+    const { investigationId } = await requestInvestigation(incidentId, ACTOR);
+
+    const response = await propose(incidentId, retry(labIds));
+    await createInvestigateJob(fixtureProvider, {
+      timeoutMs: 1000,
+      approvalTtlMs: 30 * 60_000,
+    }).handle({ investigationId }, log);
+
+    expect(response.statusCode).toBe(409);
+    expect(await prisma.recoveryAction.count({ where: { incidentId } })).toBe(0);
+    // The single-lab diagnosis is insufficient, and nothing is left dangling.
+    expect(await statusOf(incidentId)).toBe('open');
+  });
+
   it.each<[string, () => Promise<string>, object, number]>([
     ['an unknown incident', async () => 'does-not-exist', retry([]), 404],
     ['an incident that is open', async () => (await incident({ status: 'open' })).incidentId, retry(['x']), 409],
+    ['an incident still investigating', async () => (await incident({ status: 'investigating' })).incidentId, retry(['x']), 409],
     ['an action outside the allow-list', async () => (await incident()).incidentId, { actionType: 'DELETE_LAB', targetIds: [] }, 400],
     ['an unknown field', async () => (await incident()).incidentId, { ...retry(['x']), approvedBy: 'me' }, 400],
   ])('rejects %s', async (_label, incidentIdOf, body, status) => {
