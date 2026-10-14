@@ -2,9 +2,11 @@
 // expiry sweep; never serves HTTP.
 
 import { loadConfig } from './config/env.js';
+import type { Config } from './config/env.js';
 import { prisma } from './db.js';
 import { handleCorrelate } from './incidents/correlate.job.js';
 import { fixtureProvider } from './investigations/fixture-provider.js';
+import type { LlmProvider } from './investigations/provider.js';
 import { createInvestigateJob } from './investigations/investigate.job.js';
 import { closeQueues } from './jobs/queues.js';
 import { reconcileJobs } from './jobs/reconcile.js';
@@ -16,6 +18,14 @@ import { initTracing } from './observability/tracing.js';
 
 const RECONCILE_INTERVAL_MS = 60_000;
 
+// A closed registry rather than an index into an object literal: an
+// unregistered provider name fails loudly at startup instead of quietly
+// becoming undefined. The worker cannot investigate without a provider.
+function providerFor(name: Config['LLM_PROVIDER']): LlmProvider {
+  if (name === 'fixture') return fixtureProvider;
+  throw new Error(`LLM provider selected but not wired up: ${name}`);
+}
+
 async function main() {
   const config = loadConfig();
   const tracing = initTracing({
@@ -24,9 +34,7 @@ async function main() {
   });
   const log = logger.child({ process: 'worker' });
 
-  // Only the fixture exists until Phase 11; config rejects any other name.
-  const providers = { fixture: fixtureProvider };
-  const investigate = createInvestigateJob(providers[config.LLM_PROVIDER], {
+  const investigate = createInvestigateJob(providerFor(config.LLM_PROVIDER), {
     timeoutMs: config.LLM_TIMEOUT_MS,
     approvalTtlMs: config.APPROVAL_TTL_MINUTES * 60_000,
   });
