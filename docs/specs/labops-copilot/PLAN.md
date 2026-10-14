@@ -1,6 +1,6 @@
 # LabOps Copilot — Implementation Plan
 
-**Status:** Approved. Phases 0–8 done (LOC-5 to LOC-13); next is Phase 9.
+**Status:** Approved. Phases 0–9 done (LOC-5 to LOC-14): the backend workflow runs end to end. Next is Phase 10.
 
 Phase 2 deviations, both deliberate: the demo endpoint returns 201/200, not
 202, because nothing is queued until Phase 4; and the simulator's
@@ -56,6 +56,15 @@ wired to execution in Phase 9; the automatic proposal runs in the
 investigation's own transaction, so a diagnosis never sits unjudged; and each
 source has one starting state (diagnosis from `investigating`, operator from
 `manual_review`), so an operator cannot propose while an investigation runs.
+
+Phase 9 deviations, agreed in planning: an incident resolves only when every
+lab in it is `ready`, not just the targets (D1); the expiry sweep runs on the
+worker's existing tick with `SKIP LOCKED`, not as a BullMQ repeatable job
+(D2); approve and reject live in `recovery/`, since `RecoveryAction` is its
+table (D3); self-approval is allowed until roles exist (D4). The scenario's
+`recoveryOutcomes` field moved to one shared table the executor reads, and
+the simulator health check is the lab's stored status (a real adapter would
+probe).
 
 **Source:** `SPEC.md` (this folder), `ARCHITECTURE.md`, `CLAUDE.md`; infrastructure details in `docs/infra/INFRA.md`
 **Starting point:** skeleton — Fastify `/health` + `/api/labs`, one-table Prisma schema
