@@ -14,9 +14,9 @@ operational reference.
 |---|---|---|---|
 | `web` (Next.js) | 3000 | Operator UI; server components call the API | Exists |
 | `api` (Fastify) | 4000 | HTTP API: validate, persist, enqueue; SSE | Exists (`/health`, `/api/labs`) |
-| `worker` (BullMQ) | none | Correlation, investigation, recovery, verification; never serves HTTP | Planned, Phase 4 |
+| `worker` (BullMQ) | none | Runs queued jobs and the reconciler (startup, then every 60 s); never serves HTTP | Exists (Phase 4); correlate handler is a placeholder until Phase 5 |
 | `postgres` 16 | 5432 | All durable business state | Exists |
-| `redis` 7 | 6379 | Queue transport and SSE pub/sub; never the source of truth | Runs in compose; first used in Phase 4 |
+| `redis` 7 | 6379 (host port overridable) | Queue transport; never the source of truth | Exists |
 | `migrate` (one-shot) | none | Applies Prisma migrations, then exits; api starts only after it succeeds | Exists |
 
 Runtime: Node.js 22 (`.nvmrc`), npm workspaces (`apps/api`, `apps/web`).
@@ -56,7 +56,7 @@ production dependencies only, running as the non-root `node` user.
 | api | `apps/api/Dockerfile` | Generates the Prisma client at build time and copies it into the runtime stage |
 | web | `apps/web/Dockerfile` | Copies `.next`, `public/` and `next.config.mjs`; runs `next start`. The config is plain JS because the runtime image has no TypeScript: a `.ts` config made `next start` try to install it at boot and crash |
 
-The worker will reuse the api image with a different command (same codebase,
+The worker reuses the api image with `node dist/worker.js` (same codebase,
 different entrypoint), so there is no third Dockerfile.
 
 **Compose networking gotcha.** Inside the `web` container, `localhost` is the web
@@ -66,11 +66,10 @@ container itself. Server-side code therefore uses `API_INTERNAL_URL`
 unprefixed variables are read at runtime and never reach the browser.
 
 **Host port clashes.** Compose publishes 5432, 6379, 4000 and 3000 on the host.
-If another project already holds one (for example a Redis on 6379), that service
-fails to start. Nothing inside the stack needs the host ports, so a local,
-uncommitted override removes them:
-`printf 'services:\n  redis:\n    ports: !reset []\n' > compose.local.yml` and
-`docker compose -f docker-compose.yml -f compose.local.yml up`.
+If another project already holds 6379, set `REDIS_HOST_PORT=6380` in a root
+`.env` (git-ignored; compose reads it) and point `REDIS_URL` in
+`apps/api/.env` at that port. Integration tests use Redis, so they must never
+reach another project's instance.
 
 ---
 
@@ -86,7 +85,9 @@ uncommitted override removes them:
 | `CORS_ORIGIN` | api | `http://localhost:3000` | Allowed browser origin |
 | `LOG_LEVEL` | api | `info` | Pino level (test runs use `warn`) |
 | `DEMO_ENABLED` | api | `false` (`true` in compose and `.env.example`) | Registers `/api/demo/*`; when off the routes do not exist (404) |
-| `REDIS_URL` | api | `redis://redis:6379` in compose | Set, not yet read |
+| `REDIS_URL` | api, worker | required; `redis://redis:6379` in compose | BullMQ transport |
+| `QUEUE_PREFIX` | api, worker | `labops` | Namespaces queue keys; test runs use a unique `labops-test-*` prefix and clean it up |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | api, worker | unset | When set, spans export over OTLP/HTTP; unset, spans exist but are not exported |
 | `NEXT_PUBLIC_API_URL` | web | `http://localhost:4000` | API URL for the browser (URLs only, never tokens) |
 | `API_INTERNAL_URL` | web | falls back to `NEXT_PUBLIC_API_URL` | API URL for server-side rendering |
 
@@ -96,7 +97,6 @@ uncommitted override removes them:
 |---|---|---|
 | `SESSION_SECRET` | 6 | Signs operator session cookies |
 | `APPROVAL_TTL_MINUTES` | 9 | Approval expiry (default 30) |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | 4 | Trace export target |
 | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TIMEOUT_MS` | 11 | Model provider; `fixture` by default |
 | `CREDENTIALS_KEY` | 13 | Encryption key for stored integration credentials |
 
@@ -121,6 +121,20 @@ placeholders only.
 - CI validates the schema in the api `build` job.
 
 ---
+
+## 5a. Jobs: outbox, queue and reconciler
+
+- A job row (`JobExecution`) is written **in the same transaction** as the work
+  that needs it, then sent to Redis after commit (outbox). If Redis is down the
+  event is still stored and the row stays `queued`.
+- BullMQ `jobId` = the row's `jobKey` (e.g. `correlate-<window ms>`), so a
+  burst of events for one window becomes one job. Finished jobs are removed
+  from Redis; history lives in Postgres.
+- A run that finishes after its key was re-armed (`generation` moved) leaves
+  the row `queued` and queues one more run, so no work is dropped.
+- The reconciler resends `queued`/`running` rows older than a 2-minute lease
+  that Redis no longer has; past `MAX_ATTEMPTS` it fails and audits them.
+- Inspect a job: `GET /api/jobs/:id` (from Postgres; payload never returned).
 
 ## 6. CI pipelines
 
@@ -181,6 +195,6 @@ demo endpoints disabled, and an app database role limited to its own schema.
 
 | Signal | Today | Planned |
 |---|---|---|
-| Logs | Pino JSON to stdout; Fastify shares the instance; key-name redaction as a safety net | Child loggers with `correlationId` / `traceId` / `incidentId` (Phase 4) |
-| Traces | None | OTel SDK in api and worker, trace context carried in job payloads (Phase 4) |
+| Logs | Pino JSON to stdout; Fastify shares the instance; key-name redaction as a safety net; job logs carry `jobId` and `traceId` | `traceId` on API request logs needs HTTP spans (later); `incidentId` (Phase 5) |
+| Traces | `event.ingest` (api) and `incident.correlate` (worker) in one trace via `traceparent` in the job row | Remaining lifecycle spans as each stage lands |
 | Metrics | None | OTel counters and histograms from real runs only (Phase 14) |
