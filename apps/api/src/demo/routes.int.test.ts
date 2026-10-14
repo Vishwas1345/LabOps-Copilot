@@ -38,7 +38,7 @@ describe('POST /api/demo/scenarios/:name', () => {
     expect(await prisma.lab.count({ where: { id: { startsWith: PREFIX } } })).toBe(0);
   });
 
-  it('creates the scenario labs, labelled simulated', async () => {
+  it('creates the labs and ingests their events through the shared path', async () => {
     const response = await run(enabled);
 
     expect(response.statusCode).toBe(201);
@@ -48,7 +48,8 @@ describe('POST /api/demo/scenarios/:name', () => {
       created: true,
       labs: 40,
       dependencies: 2,
-      plannedEvents: 41,
+      eventsIngested: 40,
+      duplicatesSkipped: 1,
     });
 
     const labs = await prisma.lab.findMany({
@@ -57,7 +58,13 @@ describe('POST /api/demo/scenarios/:name', () => {
     });
     expect(labs).toHaveLength(40);
     expect(labs.every((lab) => lab.source === 'simulated')).toBe(true);
-    expect(labs.every((lab) => lab.status === 'provisioning')).toBe(true);
+    // Events moved each lab: 21 provisioned, 19 failed. None left provisioning.
+    expect(labs.filter((lab) => lab.status === 'ready')).toHaveLength(21);
+    expect(labs.filter((lab) => lab.status === 'failed')).toHaveLength(19);
+    const events = await prisma.operationalEvent.count({
+      where: { labId: { startsWith: PREFIX } },
+    });
+    expect(events).toBe(40);
     expect(labs.every((lab) => lab.dependencies.length === 2)).toBe(true);
   });
 
@@ -69,7 +76,15 @@ describe('POST /api/demo/scenarios/:name', () => {
     const replay = await run(enabled);
 
     expect(replay.statusCode).toBe(200);
-    expect(replay.json().data.created).toBe(false);
+    expect(replay.json().data).toMatchObject({
+      created: false,
+      eventsIngested: 0,
+      duplicatesSkipped: 41,
+    });
+    const events = await prisma.operationalEvent.count({
+      where: { labId: { startsWith: PREFIX } },
+    });
+    expect(events).toBe(40);
     expect(await prisma.lab.count({ where: { id: { startsWith: PREFIX } } })).toBe(40);
     const audit = await prisma.auditEntry.findMany({
       where: { targetId: RUN_ID },

@@ -1,0 +1,137 @@
+// The single ingest path for simulated and provider events: validate,
+// redact, dedupe, store, then move the lab if its state machine allows.
+
+import { Prisma } from '@prisma/client';
+import type { Actor } from '../audit/audit.js';
+import { writeAudit } from '../audit/audit.js';
+import { prisma } from '../db.js';
+import type { LabTransition } from '../labs/service.js';
+import { tryTransitionLab } from '../labs/service.js';
+import { normalise } from './normalise.js';
+import type { EventsQuery, IncomingEvent } from './schema.js';
+import { incomingEvent } from './schema.js';
+
+export interface IngestResult {
+  eventId: string;
+  duplicate: boolean;
+  /** Null for a duplicate, or when the lab's state machine skips the move. */
+  transition: LabTransition | null;
+}
+
+/** The event names a lab or dependency that does not exist. */
+export class UnknownReferenceError extends Error {
+  constructor(readonly field: 'labId' | 'dependencyId') {
+    super(`unknown ${field}`);
+    this.name = 'UnknownReferenceError';
+  }
+}
+
+function isPrismaError(
+  error: unknown,
+  code: string,
+): error is Prisma.PrismaClientKnownRequestError {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === code;
+}
+
+async function findDuplicate(deduplicationKey: string): Promise<IngestResult | null> {
+  const existing = await prisma.operationalEvent.findUnique({
+    where: { deduplicationKey },
+    select: { id: true },
+  });
+  return existing ? { eventId: existing.id, duplicate: true, transition: null } : null;
+}
+
+// Takes `unknown` and validates itself, so no caller (API, demo, a future
+// adapter) can hand it an unchecked event.
+export async function ingestEvent(input: unknown, actor: Actor): Promise<IngestResult> {
+  const { event, deduplicationKey } = normalise(incomingEvent.parse(input));
+
+  const known = await findDuplicate(deduplicationKey);
+  if (known) return known;
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const stored = await tx.operationalEvent.create({
+        data: {
+          labId: event.labId,
+          type: event.type,
+          errorCategory: event.errorCategory,
+          dependencyId: event.dependencyId,
+          message: event.message,
+          metadata: event.metadata as Prisma.InputJsonObject | undefined,
+          source: event.source,
+          occurredAt: new Date(event.occurredAt),
+          deduplicationKey,
+        },
+        select: { id: true },
+      });
+
+      await writeAudit(tx, {
+        actor,
+        action: 'event.received',
+        targetType: 'event',
+        targetId: stored.id,
+        outcome: 'stored',
+        metadata: { labId: event.labId, type: event.type, errorCategory: event.errorCategory },
+      });
+
+      const target = event.type === 'provision_failed' ? 'failed' : 'ready';
+      const transition = await tryTransitionLab(tx, event.labId, target, actor, {
+        reason: `event ${stored.id}`,
+      });
+
+      return { eventId: stored.id, duplicate: false, transition };
+    });
+  } catch (error) {
+    // A concurrent copy of this event won the unique key: report the original.
+    if (isPrismaError(error, 'P2002')) {
+      const winner = await findDuplicate(deduplicationKey);
+      if (winner) return winner;
+    }
+    if (isPrismaError(error, 'P2003')) {
+      // Prisma names the violated foreign key in meta.constraint.
+      const field =
+        error.meta?.constraint === 'OperationalEvent_dependencyId_fkey' ? 'dependencyId' : 'labId';
+      throw new UnknownReferenceError(field);
+    }
+    throw error;
+  }
+}
+
+export interface EventView {
+  id: string;
+  type: IncomingEvent['type'];
+  errorCategory: string | null;
+  dependencyId: string | null;
+  message: string;
+  source: string;
+  occurredAt: string;
+}
+
+/** Newest first; `id` breaks ties, one extra row signals a next page. */
+export async function listLabEvents(
+  labId: string,
+  query: EventsQuery,
+): Promise<{ items: EventView[]; nextCursor: string | null }> {
+  const rows = await prisma.operationalEvent.findMany({
+    where: { labId },
+    orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+    take: query.limit + 1,
+    ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+  });
+  const hasMore = rows.length > query.limit;
+  const page = hasMore ? rows.slice(0, query.limit) : rows;
+
+  return {
+    items: page.map((row) => ({
+      id: row.id,
+      type: row.type,
+      errorCategory: row.errorCategory,
+      dependencyId: row.dependencyId,
+      message: row.message,
+      source: row.source,
+      occurredAt: row.occurredAt.toISOString(),
+    })),
+    nextCursor: hasMore ? page[page.length - 1].id : null,
+  };
+}
