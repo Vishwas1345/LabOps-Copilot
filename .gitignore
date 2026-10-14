@@ -10,3 +10,6 @@ coverage
 
 # Internal project documents, not part of the public repository
 LabOps_Copilot_Project_Specification-2.md
+
+# Per-machine compose overrides (see docs/infra/INFRA.md)
+compose.local.yml

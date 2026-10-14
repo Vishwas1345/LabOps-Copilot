@@ -17,7 +17,7 @@ operational reference.
 | `worker` (BullMQ) | none | Correlation, investigation, recovery, verification; never serves HTTP | Planned, Phase 4 |
 | `postgres` 16 | 5432 | All durable business state | Exists |
 | `redis` 7 | 6379 | Queue transport and SSE pub/sub; never the source of truth | Runs in compose; first used in Phase 4 |
-| `migrate` (one-shot) | none | Applies Prisma migrations before api/worker start | Planned, Phase 0 |
+| `migrate` (one-shot) | none | Applies Prisma migrations, then exits; api starts only after it succeeds | Exists |
 
 Runtime: Node.js 22 (`.nvmrc`), npm workspaces (`apps/api`, `apps/web`).
 
@@ -39,7 +39,7 @@ npm install
 npm run db:up                      # postgres only
 cp apps/api/.env.example apps/api/.env
 npm run db:generate                # Prisma client
-npm run db:push                    # becomes `db:migrate` in Phase 0
+npm run db:migrate                 # apply checked-in migrations
 npm run dev                        # api :4000 + web :3000
 ```
 
@@ -54,7 +54,7 @@ production dependencies only, running as the non-root `node` user.
 | Image | Dockerfile | Notes |
 |---|---|---|
 | api | `apps/api/Dockerfile` | Generates the Prisma client at build time and copies it into the runtime stage |
-| web | `apps/web/Dockerfile` | Copies `.next`, `public/` and `next.config.ts`; runs `next start` |
+| web | `apps/web/Dockerfile` | Copies `.next`, `public/` and `next.config.mjs`; runs `next start`. The config is plain JS because the runtime image has no TypeScript: a `.ts` config made `next start` try to install it at boot and crash |
 
 The worker will reuse the api image with a different command (same codebase,
 different entrypoint), so there is no third Dockerfile.
@@ -64,6 +64,13 @@ container itself. Server-side code therefore uses `API_INTERNAL_URL`
 (`http://api:4000`), while the browser uses `NEXT_PUBLIC_API_URL`
 (`http://localhost:4000`). `NEXT_PUBLIC_*` values are baked in at build time;
 unprefixed variables are read at runtime and never reach the browser.
+
+**Host port clashes.** Compose publishes 5432, 6379, 4000 and 3000 on the host.
+If another project already holds one (for example a Redis on 6379), that service
+fails to start. Nothing inside the stack needs the host ports, so a local,
+uncommitted override removes them:
+`printf 'services:\n  redis:\n    ports: !reset []\n' > compose.local.yml` and
+`docker compose -f docker-compose.yml -f compose.local.yml up`.
 
 ---
 
@@ -93,22 +100,25 @@ unprefixed variables are read at runtime and never reach the browser.
 | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TIMEOUT_MS` | 11 | Model provider; `fixture` by default |
 | `CREDENTIALS_KEY` | 13 | Encryption key for stored integration credentials |
 
-All variables are parsed and validated at startup from Phase 0 on, so the process
-fails fast on bad configuration. `.env` is git-ignored; `.env.example` holds
+The api parses and validates its variables at startup (`apps/api/src/config/env.ts`),
+so the process fails fast on bad configuration, and the error names the variable
+without echoing its value. `.env` is git-ignored; `.env.example` holds
 placeholders only.
 
 ---
 
 ## 5. Database and migrations
 
-- **Today:** `prisma db push` applies `apps/api/prisma/schema.prisma` directly.
-  There are no migration files.
-- **Phase 0:** switch to `prisma migrate` with migrations checked in. This is
-  required, not optional: partial unique indexes (one open incident per
-  correlation window), `CHECK` constraints and the append-only trigger on
-  `AuditEntry` need raw SQL that `db push` cannot express.
-- CI validates the schema in the api `build` job and applies it in the
-  `integration-test` job against a real Postgres service container.
+- Schema changes are checked-in migrations in `apps/api/prisma/migrations`,
+  applied with `prisma migrate deploy` everywhere: `npm run db:migrate` locally,
+  the `integration-test` CI job, and the compose `migrate` service.
+- New migration: edit `schema.prisma`, then
+  `npm run prisma:migrate:dev -w @labops/api -- --name <change>`. Raw SQL for
+  partial unique indexes, `CHECK` constraints and triggers goes in the
+  generated file. `db push` is gone because it cannot express those.
+- **Drift check:** CI runs `prisma:drift` after migrating, which exits 2 if
+  `schema.prisma` differs from what the migrations produced.
+- CI validates the schema in the api `build` job.
 
 ---
 
@@ -130,6 +140,10 @@ Three workflows in `.github/workflows/`. Triggered on pushes and pull requests t
    `.github/audit-baseline.json`.
 4. gitleaks secret scan.
 
+**Integration tests:** `npm run test:integration -w @labops/api` runs
+`*.int.test.ts` against a real, migrated Postgres. Locally it reads
+`apps/api/.env`; it needs `npm run db:up && npm run db:migrate` first.
+
 **Coverage:** 70% lines, functions, branches and statements in both workspaces.
 Entry points and wiring that only integration or E2E tests can reach are
 excluded, each with a comment saying why.
@@ -138,7 +152,6 @@ excluded, each with a comment saying why.
 
 | Gap | Fix | Phase |
 |---|---|---|
-| `test:integration` does not exist, so the integration job passes without running anything (`--if-present`) | Add the script and make it required in `check-required-scripts.mjs` | 0 |
 | Nothing sets the `deploy` input, so images are never built in CI | Add a release trigger once a deployment target exists | 15 |
 | No Playwright job | Compose up, then run the journey | 14 |
 | `main` has no branch protection | Require the quality gates before merge | Settings change; do it before Phase 1 |

@@ -556,9 +556,13 @@ SSE, so a request never blocks on investigation or recovery.
 
 Three signals, one correlation ID.
 
-**Logs** — Pino, JSON, request-scoped. Redaction at the serializer level so a
-forgotten `logger.info(payload)` still cannot leak a token. Child loggers carry
-`correlationId`, `traceId`, `incidentId`.
+**Logs** — Pino, JSON, request-scoped; Fastify shares the same instance.
+Secrets are removed where data enters the system (principle 7). The logger adds
+a safety net behind that: a key-name redaction step (any depth, any casing)
+catches a forgotten `logger.info(payload)` that carries a secret-named key. It
+cannot catch a secret under an innocuous key or inside a message string, which
+is why it is the net and not the control. Child loggers carry `correlationId`,
+`traceId`, `incidentId`.
 
 **Traces** — OpenTelemetry spans per the spec's vocabulary, propagated across
 the API→queue→worker boundary via span context embedded in job payloads, so one
@@ -719,26 +723,28 @@ role for the app restricted to its own schema.
 
 ## 17. Implementation status
 
+Phases refer to `docs/specs/labops-copilot/PLAN.md`.
+
 | Layer | State | Next |
 |---|---|---|
 | npm workspaces, root scripts | Done | — |
-| Next.js shell + layout | Done | Dashboard routes |
-| Fastify app, CORS, `/health`, `/api/labs` | Done | Zod validation layer, error envelope |
-| Prisma `Lab` model | Done | Full schema per §6 |
-| PostgreSQL via compose | Done | Redis service, api/worker/web services |
-| Labs simulator | Not started | F1 |
-| Event ingestion + dedup | Not started | F2 |
-| Integrations (adapter, settings, secrets) | Not started | F2a |
-| Correlation engine | Not started | F3 |
-| AI investigation | Not started | F4 |
-| Policies + approvals | Not started | F5, F6 |
-| BullMQ worker | Not started | F7 |
-| Verification | Not started | F8 |
-| Dashboard, SSE, React Flow | Not started | F9 |
-| Audit trail | Not started | F10 |
-| Pino + OTel | Not started | NFR |
-| Vitest + Playwright | Not started | §15 |
-| Docker for app + CI workflow | Not started | §16 |
+| Next.js shell + layout | Done | Dashboard routes (Phase 12) |
+| Fastify app, CORS, `/health`, `/api/labs` | Done | View types and pagination (Phase 1) |
+| Zod config validation, error envelope, body limit | Done (Phase 0) | — |
+| Prisma `Lab` model, checked-in migrations, drift check | Done (Phase 0) | Full schema per §6 (Phases 1–13) |
+| Compose: postgres, redis, migrate, api, web | Done, verified end to end | Worker service (Phase 4) |
+| Pino with shared Fastify instance and key-name redaction | Done | Child-logger context (Phase 4) |
+| Vitest unit + integration suites, CI gates | Done | Playwright (Phase 14) |
+| CI: change detection, build, lint, tests, coverage, quality gate | Done | Release and deploy (Phase 15) |
+| Audit trail | Not started | Phase 1 |
+| Labs simulator | Not started | Phase 2 |
+| Event ingestion + dedup | Not started | Phase 3 |
+| BullMQ worker, OTel tracing | Not started | Phase 4 |
+| Correlation engine | Not started | Phase 5 |
+| AI investigation | Not started | Phases 7, 11 |
+| Policies, approvals, execution, verification | Not started | Phases 8–9 |
+| SSE, dashboard, React Flow | Not started | Phases 10, 12, 15 |
+| Integrations (adapter, settings, secrets) | Not started | Phase 13 |
 
 Build order follows the spec's phases: vertical slice first — simulator →
 events → correlation → investigation → recovery → verification — so a working
@@ -761,7 +767,7 @@ end-to-end workflow exists before breadth is added.
 | Data access | Prisma | Raw SQL / Kysely | Type-safe schema-first, single migration story; raw SQL still allowed for reporting queries. |
 | AI orchestration | Explicit state machine | LangGraph.js | The workflow is linear with two conditional branches; a framework would add indirection without capability. Revisit only if multi-step branching with persistence becomes real. |
 | Secrets | Envelope encryption with env-held key | Plaintext in DB, external KMS | No external dependency for a local demo, while keeping a clean upgrade path to a KMS. |
-| Migrations | `prisma db push` for dev, checked-in migrations for CI | — | Fast local iteration with a reproducible pipeline. |
+| Migrations | Checked-in `prisma migrate` migrations everywhere, plus a CI drift check | `prisma db push` | Partial unique indexes, CHECK constraints and the append-only audit trigger need raw SQL that `db push` cannot express; one schema path for local, CI and compose. |
 
 ---
 
