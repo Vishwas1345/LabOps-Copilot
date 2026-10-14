@@ -70,11 +70,15 @@ async function incidentOf(
   return { incidentId: link.incidentId, labIds };
 }
 
-const stub = (analyse: LlmProvider['analyse']): LlmProvider => ({
-  name: 'stub',
-  model: 'stub',
-  analyse,
-});
+// Wraps a function returning raw output into a provider, so each test states
+// only the output it cares about.
+const stub =
+  (analyse: (prompt: Prompt, signal: AbortSignal) => Promise<unknown>): LlmProvider =>
+  ({
+    name: 'stub',
+    model: 'stub',
+    analyse: async (prompt, signal) => ({ raw: await analyse(prompt, signal) }),
+  });
 
 async function investigateWith(provider: LlmProvider, incidentId: string, timeoutMs = 2000) {
   const { investigationId } = await requestInvestigation(incidentId, ACTOR);

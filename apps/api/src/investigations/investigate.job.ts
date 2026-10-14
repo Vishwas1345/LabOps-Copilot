@@ -147,7 +147,16 @@ async function runInvestigation(
       : { kind: 'failed', failure: parsed.failure };
   }
 
-  const metadata = { provider: provider.name, model: provider.model, latencyMs: call.latencyMs };
+  // Token counts are recorded when the provider reports them; the key is never
+  // part of this object and never could be - the provider does not expose it.
+  const metadata: Prisma.InputJsonObject = {
+    provider: provider.name,
+    model: provider.model,
+    latencyMs: call.latencyMs,
+    ...(call.ok && call.usage
+      ? { inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens }
+      : {}),
+  };
   const written = await finish(
     investigationId,
     incidentId,

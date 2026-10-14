@@ -5,6 +5,7 @@ import { loadConfig } from './config/env.js';
 import type { Config } from './config/env.js';
 import { prisma } from './db.js';
 import { handleCorrelate } from './incidents/correlate.job.js';
+import { createGeminiProvider } from './investigations/gemini-provider.js';
 import { fixtureProvider } from './investigations/fixture-provider.js';
 import type { LlmProvider } from './investigations/provider.js';
 import { createInvestigateJob } from './investigations/investigate.job.js';
@@ -21,9 +22,21 @@ const RECONCILE_INTERVAL_MS = 60_000;
 // A closed registry rather than an index into an object literal: an
 // unregistered provider name fails loudly at startup instead of quietly
 // becoming undefined. The worker cannot investigate without a provider.
-function providerFor(name: Config['LLM_PROVIDER']): LlmProvider {
-  if (name === 'fixture') return fixtureProvider;
-  throw new Error(`LLM provider selected but not wired up: ${name}`);
+function providerFor(config: Config): LlmProvider {
+  if (config.LLM_PROVIDER === 'fixture') return fixtureProvider;
+
+  // Config guarantees the key is present for a real provider, so this is a
+  // narrowing, not a guess.
+  if (config.LLM_API_KEY === undefined) {
+    throw new Error('LLM_API_KEY is required for a real provider');
+  }
+
+  return createGeminiProvider({
+    apiKey: config.LLM_API_KEY,
+    model: config.LLM_MODEL,
+    baseUrl: config.LLM_BASE_URL,
+    maxAttempts: config.LLM_MAX_ATTEMPTS,
+  });
 }
 
 async function main() {
@@ -34,7 +47,7 @@ async function main() {
   });
   const log = logger.child({ process: 'worker' });
 
-  const investigate = createInvestigateJob(providerFor(config.LLM_PROVIDER), {
+  const investigate = createInvestigateJob(providerFor(config), {
     timeoutMs: config.LLM_TIMEOUT_MS,
     approvalTtlMs: config.APPROVAL_TTL_MINUTES * 60_000,
   });

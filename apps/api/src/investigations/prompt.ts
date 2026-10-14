@@ -24,6 +24,14 @@ Reply with one JSON object and nothing else, with exactly these fields:
 - recommendedAction: one of ${ACTION_TYPES.join(', ')}, or null
 - targetLabIds: labId values from the evidence the action would apply to
 
+Rules for the fields that must hold exact values:
+- evidenceFor and evidenceAgainst take bare eventId strings copied from the
+  evidence, such as "ev-1". Never a description, a lab id, a sentence, or any
+  combination of them.
+- recommendedAction must be exactly one of the names listed above, spelled
+  exactly, or null. Never a sentence and never a name outside that list.
+- targetLabIds take bare labId strings copied from the evidence, such as "lab-1".
+
 If the evidence does not support a conclusion, answer "insufficient_evidence".
 Do not add any other field.`;
 
