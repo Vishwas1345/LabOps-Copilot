@@ -1,6 +1,12 @@
 # LabOps Copilot — Implementation Plan
 
-**Status:** Approved. Phases 0–9 done (LOC-5 to LOC-14): the backend workflow runs end to end. Next is Phase 10.
+**Status:** Approved. Phases 0–9 and 12 done (LOC-5 to LOC-14, LOC-17): the
+workflow runs end to end in a browser. Next is Phase 10.
+
+**Order changed after Phase 9:** the dashboard (Phase 12) ran before live
+updates (10) and the real LLM (11), so the proven workflow became visible and
+demoable first; live updates then plug into pages that exist. Remaining order:
+10, 11, 13, 14, 15.
 
 Phase 2 deviations, both deliberate: the demo endpoint returns 201/200, not
 202, because nothing is queued until Phase 4; and the simulator's
@@ -65,6 +71,18 @@ table (D3); self-approval is allowed until roles exist (D4). The scenario's
 `recoveryOutcomes` field moved to one shared table the executor reads, and
 the simulator health check is the lab's stored status (a real adapter would
 probe).
+
+Phase 12 deviations, agreed in planning: the browser talks only to the web
+server, which holds the session in its own httpOnly cookie and forwards it to
+the API (D1, a BFF via server actions and server components, not `api/` route
+handlers), so CORS credentials stay off; pages refresh every 2 s while an
+investigation or recovery is in flight instead of using SSE (D2; the
+`EventSource` half of LOC-70 moves to Phase 10); three read endpoints were
+added for the overview (`/api/labs/summary`, `/api/jobs/summary`,
+`/api/audit`) (D3); the incident list shows no AI "likely cause" (it would
+need an upward import or a call per row), the detail page does. A
+consequence: dashboard logins all reach the API from the web server's IP, so
+the per-IP login limit is effectively global (fails safe; INFRA known gaps).
 
 **Source:** `SPEC.md` (this folder), `ARCHITECTURE.md`, `CLAUDE.md`; infrastructure details in `docs/infra/INFRA.md`
 **Starting point:** skeleton — Fastify `/health` + `/api/labs`, one-table Prisma schema
