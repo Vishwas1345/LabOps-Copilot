@@ -199,6 +199,7 @@ model Incident {
   updatedAt         DateTime         @updatedAt
   resolvedAt        DateTime?
   labs              IncidentLab[]
+  investigations    Investigation[]
 
   @@index([status, createdAt(sort: Desc)])
   // Correlation finds open incidents by the failures it loaded.
@@ -247,4 +248,67 @@ model OperatorSession {
   revokedAt  DateTime?
 
   @@index([operatorId])
+}
+
+// The only recovery actions that can ever exist (ARCHITECTURE §10). The model
+// may recommend one; nothing executes it until policy (Phase 8) and approval.
+enum ActionType {
+  RETRY_PROVISIONING
+  RECHECK_DEPENDENCY
+  RERUN_VALIDATION
+  ESCALATE_MANUAL
+}
+
+enum InvestigationStatus {
+  pending
+  running
+  completed
+  error
+}
+
+enum InvestigationOutcome {
+  diagnosis
+  insufficient_evidence
+}
+
+enum InvestigationFailure {
+  TIMEOUT
+  MALFORMED_OUTPUT
+  SCHEMA_REJECTED
+  REFUSED
+  PROVIDER_ERROR
+  JOB_EXHAUSTED
+}
+
+// One AI analysis of an incident. Everything the model said is stored only
+// after strict validation, with targets already cut to the incident's labs.
+// A partial unique index (migration) allows one active analysis per incident.
+model Investigation {
+  id                String                @id @default(cuid())
+  incidentId        String
+  incident          Incident              @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  status            InvestigationStatus   @default(pending)
+  requestedBy       String
+  outcome           InvestigationOutcome?
+  summary           String?
+  candidateCause    String?
+  evidenceFor       String[]
+  evidenceAgainst   String[]
+  missingEvidence   String[]
+  diagnosticChecks  String[]
+  confidence        Float?
+  recommendedAction ActionType?
+  targetLabIds      String[]
+  // What the model named that was not in the incident, kept for transparency.
+  droppedTargets    String[]
+  // Counts of what the evidence pack included, omitted, truncated and redacted.
+  evidenceSummary   Json?
+  failure           InvestigationFailure?
+  // Provider, model and latency only; never the prompt or a secret.
+  modelMetadata     Json?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  completedAt       DateTime?
+
+  @@index([incidentId, createdAt(sort: Desc)])
 }
