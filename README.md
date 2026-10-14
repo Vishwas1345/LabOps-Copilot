@@ -346,7 +346,8 @@ Illustrative surface. Implemented endpoints are marked ✅.
 | `GET` | `/api/incidents/:id` | Incident, each lab with its reason and score, and the events ✅ |
 | `POST` | `/api/incidents/:id/investigate` | Queue an AI investigation (fixture provider); 202, or 200 with the active one ✅ |
 | `GET` | `/api/incidents/:id/investigations` | Investigation results, newest first ✅ |
-| `POST` | `/api/incidents/:id/recovery-proposals` | Create a policy-validated proposal |
+| `POST` | `/api/incidents/:id/recovery-proposals` | Propose an action; policy records allowed or blocked, with the step and reason ✅ |
+| `GET` | `/api/incidents/:id/recovery-actions` | Proposals with their policy decisions ✅ |
 | `POST` | `/api/recovery-actions/:id/approve` | Approve a proposed action |
 | `POST` | `/api/recovery-actions/:id/reject` | Reject a proposed action |
 | `GET` | `/api/jobs/:id` | Background job state, from the Postgres mirror ✅ |
@@ -491,7 +492,8 @@ phase-by-phase plan, with what each phase delivers and how it is verified, is
 | 5 | Deterministic correlation in the worker, incident read APIs | Done |
 | 6 | Operator sign-in: server-side sessions, deny-by-default routes, login rate limit | Done |
 | 7 | AI investigation: bounded evidence, delimited prompt, strict output, fixture provider | Done |
-| 8–9 | Policies, approval, execution, verification | Not started |
+| 8 | Policy engine: allow-list, seven fixed steps, recorded proposals | Done |
+| 9 | Approval, execution, verification | Not started |
 | 10–12 | Live updates, real LLM provider, operator dashboard | Not started |
 | 13–15 | Integration settings, E2E tests and metrics, delivery | Not started |
 

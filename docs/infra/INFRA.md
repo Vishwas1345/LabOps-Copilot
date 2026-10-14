@@ -85,6 +85,7 @@ reach another project's instance.
 | `API_PORT` | api | `4000` | Port |
 | `CORS_ORIGIN` | api | `http://localhost:3000` | Allowed browser origin |
 | `LOG_LEVEL` | api | `info` | Pino level (test runs use `warn`) |
+| `APPROVAL_TTL_MINUTES` | api, worker | `30` | How long an allowed proposal waits for approval before it expires |
 | `LLM_PROVIDER` | worker | `fixture` | Only `fixture` is accepted until Phase 11; no default run can reach a network model |
 | `LLM_TIMEOUT_MS` | worker | `30000` | Enforced by our code, not the provider's |
 | `SESSION_COOKIE_SECURE` | api | `true` (`false` in compose and `.env.example`) | Session cookie only over https; off only for local http |
@@ -101,7 +102,6 @@ reach another project's instance.
 
 | Variable | Phase | Purpose |
 |---|---|---|
-| `APPROVAL_TTL_MINUTES` | 9 | Approval expiry (default 30) |
 | `LLM_API_KEY`, `LLM_MODEL` | 11 | Real model provider credentials and model |
 | `CREDENTIALS_KEY` | 13 | Encryption key for stored integration credentials |
 
@@ -177,7 +177,9 @@ web page shows "API: ok" through `API_INTERNAL_URL`, and the demo scenario
 runs and ingests events (at least 19 labs end up failed), `/api/labs` refuses
 an anonymous request, the seeded operator signs in, the worker runs a correlate
 job, the scenario's 12-lab incident exists, and the worker completes an
-investigation of it with the fixture provider. It needs
+investigation of it with the fixture provider whose recommended retry policy
+allows, leaving it awaiting approval (checked on a fresh stack; a re-run skips
+it). It needs
 `SEED_OPERATOR_PASSWORD` (the value compose seeded); CI generates a masked one
 per run. It catches Dockerfile and
 startup bugs that unit and integration tests cannot see. Run it locally against
