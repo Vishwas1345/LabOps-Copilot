@@ -201,6 +201,8 @@ model Incident {
   labs              IncidentLab[]
 
   @@index([status, createdAt(sort: Desc)])
+  // Correlation finds open incidents by the failures it loaded.
+  @@index([anchorEventId])
 }
 
 // Why each lab is in an incident: the reason and score the UI shows verbatim.
@@ -219,4 +221,6 @@ model IncidentLab {
 
   @@id([incidentId, labId])
   @@index([labId])
+  // Correlation skips failures already in an incident on every run.
+  @@index([eventId])
 }

@@ -227,14 +227,3 @@ export async function listFailuresBetween(
   });
   return toFailures(rows);
 }
-
-export async function getFailures(
-  tx: Prisma.TransactionClient,
-  eventIds: string[],
-): Promise<StoredFailure[]> {
-  const rows = await tx.operationalEvent.findMany({
-    where: { id: { in: eventIds }, type: 'provision_failed' },
-    select: failureFields,
-  });
-  return toFailures(rows);
-}
