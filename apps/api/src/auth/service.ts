@@ -25,11 +25,13 @@ export async function signIn(username: string, password: string): Promise<Signed
 
   return prisma.$transaction(async (tx) => {
     if (!operator || !valid) {
+      // Never the typed username: people paste passwords into that field, and
+      // the audit table is append-only. A known account is recorded by its id.
       await writeAudit(tx, {
         actor: { type: 'human', id: 'anonymous' },
         action: 'auth.login',
         targetType: 'operator',
-        targetId: username,
+        targetId: operator?.id ?? 'unknown',
         outcome: 'rejected',
       });
       return null;
