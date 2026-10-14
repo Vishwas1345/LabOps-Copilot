@@ -461,8 +461,9 @@ A change is complete when:
 - [ ] Tests cover the new behaviour, including the negative case.
 - [ ] Each safety test is **mutation-checked**: break the guard it protects and
       confirm the test fails. A test that cannot fail is not a test.
-- [ ] Integration tests pass twice in a row from a **reset** database
-      (`npx prisma migrate reset --force` in `apps/api`).
+- [ ] Integration tests pass twice in a row from a **fresh** database:
+      `scripts/clean-db-check.sh` creates a throwaway one, runs them, drops it.
+      Never `prisma migrate reset` the dev database to do this.
 - [ ] All checks pass from a **fresh clone** (`npm ci`, no local generated
       files), so nothing depends on this machine's state.
 - [ ] Code and comments meet §7 *Code quality* and *Comments*.
