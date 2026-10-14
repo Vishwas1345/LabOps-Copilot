@@ -12,6 +12,8 @@ const SECRET_KEY_SUFFIXES = [
   'credentials',
   'authorization',
   'cookie',
+  'passwordhash',
+  'tokenhash',
 ] as const;
 
 // Log objects are shallow; the cap only bounds a pathological payload.

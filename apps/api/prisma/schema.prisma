@@ -224,3 +224,27 @@ model IncidentLab {
   // Correlation skips failures already in an incident on every run.
   @@index([eventId])
 }
+
+// A person who can sign in. Usernames are unique; only a scrypt hash of the
+// password is stored, and no endpoint ever returns it.
+model Operator {
+  id           String            @id @default(cuid())
+  username     String            @unique
+  passwordHash String
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  sessions     OperatorSession[]
+}
+
+// A server-side session. The id is the SHA-256 of the cookie's random token,
+// so a database leak hands out no live sessions; revokedAt makes logout real.
+model OperatorSession {
+  id         String    @id
+  operatorId String
+  operator   Operator  @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  @@index([operatorId])
+}
