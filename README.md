@@ -122,6 +122,38 @@ included and with what signal score, and the UI renders that rationale. Raw
 error strings alone never merge two failures, and single-link chaining is
 blocked so unrelated failures cannot drift into one meaningless cluster.
 
+### What structured output is actually worth
+
+The live model runs behind a JSON-schema constraint that Gemini accepts. That
+constraint is **not** the safety boundary, and we measured why rather than
+assuming it.
+
+On a live run the model returned:
+
+```json
+"evidenceAgainst": ["ev-4 lab-9: unrelated category (PERMISSION_DENIED) and no dependency specified"]
+"recommendedAction": "Investigate the image-registry service stability and verify network connectivity..."
+```
+
+A full sentence where an event id belongs, and a full sentence where one of four
+enum values belongs — with the schema accepted throughout. The provider enforced
+**shape**. It did not enforce **values**, and it could not enforce length or
+range limits at all.
+
+Had this pipeline trusted the provider's schema as its boundary, a model would
+have handed it a free-text recovery action. Zod rejected both. That is the
+whole argument for keeping the boundary in our code, in one measured example
+rather than a principle.
+
+| Constraint | Provider enforces | Zod enforces |
+|---|---|---|
+| Field present, correct type | yes | yes |
+| No unknown fields | no | yes |
+| Action is one of four names | no | yes |
+| Evidence ids within length | no | yes |
+| Confidence within 0–1 | no | yes |
+| Array bounds | yes | yes |
+
 ---
 
 ## Tech stack
@@ -274,6 +306,23 @@ For the faster dev loop, run `npm run db:up` for infrastructure only and
 | `SESSION_COOKIE_SECURE` | `true` (`false` in `.env.example` and compose) | Send the session cookie over https only; off only for local http |
 | `SEED_OPERATOR_USERNAME` | `operator` | Operator `seed:operator` creates or resets |
 | `SEED_OPERATOR_PASSWORD` | unset (seeds nobody) | That operator's password, 12+ characters; never committed |
+| `LLM_PROVIDER` | `fixture` | `fixture` is deterministic and offline; `gemini` calls the real API |
+| `LLM_API_KEY` | unset | Required only when `LLM_PROVIDER=gemini`; startup fails without it |
+| `LLM_MODEL` | `gemini-3.1-flash-lite` | Override this; it is the most volatile value in the project |
+| `LLM_BASE_URL` | Gemini's REST endpoint | Must be https, or http on loopback: the key rides in a header |
+| `LLM_MAX_ATTEMPTS` | `3` | Total attempts against 429/5xx |
+
+To run against a real model, set `LLM_PROVIDER=gemini` and `LLM_API_KEY` in
+`apps/api/.env`, then:
+
+```bash
+npm run test:live -w @labops/api
+```
+
+That is the **only** command that calls a network model. It is excluded from
+`npm test`, and the opt-in CI workflow triggers on `workflow_dispatch` only, so
+no push or pull request can reach a provider. The key is sent as a request
+header only — never in a URL, a log, a prompt, or `modelMetadata`.
 
 `apps/web/.env`:
 
@@ -283,9 +332,9 @@ For the faster dev loop, run `npm run db:up` for infrastructure only and
 | `API_INTERNAL_URL` | falls back to `NEXT_PUBLIC_API_URL` | API base URL for server-side rendering; `http://api:4000` in Docker Compose |
 
 The full list, including `REDIS_URL`, `DEMO_ENABLED` and `LOG_LEVEL`, is in
-`docs/infra/INFRA.md` §4. Planned variables (the credentials encryption key, the
-LLM provider and model) are added to `.env.example` as their modules land. Real secrets are never
-committed; `.env` is git-ignored.
+`docs/infra/INFRA.md` §4. The planned credentials encryption key is added to
+`.env.example` in Phase 13. Real secrets are never committed; `.env` is
+git-ignored.
 
 ---
 
@@ -499,7 +548,7 @@ phase-by-phase plan, with what each phase delivers and how it is verified, is
 | 9 | Approval, execution with revalidation, verified resolution. **The full backend workflow runs end to end** | Done |
 | 12 | Operator dashboard: the whole workflow in a browser (built before 10 and 11) | Done |
 | 10 | Live updates over SSE: gap-free, resumable, relayed through the web server | Done |
-| 11 | Real LLM provider (opt-in) | Not started |
+| 11 | Real LLM provider (opt-in) | Done |
 | 13–15 | Integration settings, E2E tests and metrics, delivery | Not started |
 
 ---

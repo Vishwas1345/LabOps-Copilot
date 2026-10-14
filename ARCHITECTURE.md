@@ -610,9 +610,55 @@ flowchart LR
 - End states: a diagnosis with an action stays `investigating` for the policy
   step; `ESCALATE_MANUAL` or no action goes to `manual_review`; insufficient
   evidence and every model failure go back to `open`.
-- Only the deterministic fixture provider exists; it reads the evidence from
-  the prompt text, as a real model would. Prompt-injection tests therefore
-  prove the plumbing, not a model's behaviour; that needs the opt-in live test.
+
+
+**How Phase 11 adds a real model** (`gemini-provider.ts`, `gemini-schema.ts`)
+
+A second implementation of the same `LlmProvider` interface, selected by
+`LLM_PROVIDER` and defaulting to `fixture`. It changes nothing about the
+boundary above: the evidence still comes from the same server-side query, the
+model output is still `unknown` until `output-schema.ts` accepts it, and a
+rejection still leaves the incident in `open`.
+
+The request schema is derived from the **same Zod schema the output is
+validated against**, so the two cannot drift apart. `z.toJSONSchema()` emits a
+superset of what the endpoint accepts, so `gemini-schema.ts` converts between
+them and **refuses anything it cannot express** rather than sending a request
+that would fail on the first real incident.
+
+What the provider enforces, and what it does not:
+
+| Constraint | Request side (Gemini) | Response side (Zod) |
+|---|---|---|
+| Field present, correct type | enforced | enforced |
+| No unknown fields | **not enforced** (`additionalProperties` rejected by this endpoint) | enforced (`.strict()`) |
+| Action is one of four names | **not enforced in practice** | enforced (closed enum) |
+| Evidence ids within length | **not enforced** (`maxLength` unsupported) | enforced |
+| Confidence within 0–1 | **not enforced** (`minimum`/`maximum` unsupported) | enforced |
+| Array bounds | enforced (`maxItems`) | enforced |
+
+This table is the argument for the whole design, and it was measured rather
+than assumed. On a live run the model returned a full sentence where an event id
+belonged and another where one of four enum values belonged, with the schema
+accepted throughout. **Had this pipeline trusted `responseSchema` as its safety
+boundary, a model would have handed it a free-text action.** Provider-side
+structured output buys shape and token savings; Zod buys the guarantee.
+
+Other decisions worth recording:
+
+- **Plain `fetch`, no SDK.** One call site does not justify a dependency
+  `CLAUDE.md` would ask us to justify. `LLM_BASE_URL` makes the choice
+  reversible, and config refuses plaintext http to anything but loopback
+  because the key rides in a request header.
+- **The key is read once and used only as `x-goog-api-key`.** Never in a URL,
+  never logged, never in `modelMetadata`, never in a prompt.
+- **Retry covers 429 and 5xx only.** A 400 is a malformed request; resending it
+  burns quota and delays the incident, so it fails on the first attempt.
+- **`modelMetadata` records model, latency and token counts** — never the key.
+- **CI never calls a model.** `vitest.config.ts` excludes `*.live.test.ts`, and
+  `.github/workflows/llm-live.yml` is `workflow_dispatch` only, with no push or
+  pull-request trigger. Provider throttling cannot break a merge.
+
 ---
 
 ## 10. Safety model for recovery
@@ -927,7 +973,8 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Correlation engine: scoring, anchor clustering, correlate job, `Incident`/`IncidentLab` | Done (Phase 5) | Sequence and transition signals once labs have event history |
 | `GET /api/incidents`, `/:id`, `/:id/audit` | Done (Phase 5) | — |
 | Operator auth: sessions, guard, login rate limit, seeded operator | Done (Phase 6) | RBAC if time permits |
-| AI investigation: evidence pack, delimited prompt, strict output, fixture provider, investigate job and endpoints | Done (Phase 7) | Real provider and an opt-in live test (Phase 11) |
+| AI investigation: evidence pack, delimited prompt, strict output, fixture provider, investigate job and endpoints | Done (Phase 7) | — |
+| Real LLM provider (Gemini over `fetch`), schema transform, bounded retry, token usage in `modelMetadata` | Done (Phase 11) | Other providers via `LLM_BASE_URL` |
 | Policy engine, allow-list, recovery proposals (automatic and operator) | Done (Phase 8) | — |
 | Approval, execution with revalidation, verification, expiry sweep | Done (Phase 9) | Four-eyes approval with roles (stretch) |
 | Operator dashboard: login, overview, incidents, incident detail with approval, audit | Done (Phase 12) | Browser tests (Phase 14) |
@@ -955,6 +1002,7 @@ end-to-end workflow exists before breadth is added.
 | Long jobs | `202` + enqueue | Inline execution | Request timeouts, retries and duplicate submissions handled at the queue. |
 | Data access | Prisma | Raw SQL / Kysely | Type-safe schema-first, single migration story; raw SQL still allowed for reporting queries. |
 | AI orchestration | Explicit state machine | LangGraph.js | The workflow is linear with two conditional branches; a framework would add indirection without capability. Revisit only if multi-step branching with persistence becomes real. |
+| Model access | Plain `fetch` to one provider | Vendor SDKs | One call site does not justify a dependency, and the safety boundary is Zod rather than the vendor. `LLM_BASE_URL` keeps the choice reversible; adopting an SDK later is a contained change. |
 | Secrets | Envelope encryption with env-held key | Plaintext in DB, external KMS | No external dependency for a local demo, while keeping a clean upgrade path to a KMS. |
 | Migrations | Checked-in `prisma migrate` migrations everywhere, plus a CI drift check | `prisma db push` | Partial unique indexes, CHECK constraints and the append-only audit trigger need raw SQL that `db push` cannot express; one schema path for local, CI and compose. |
 

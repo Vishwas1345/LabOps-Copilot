@@ -86,8 +86,12 @@ reach another project's instance.
 | `CORS_ORIGIN` | api | `http://localhost:3000` | Allowed browser origin |
 | `LOG_LEVEL` | api | `info` | Pino level (test runs use `warn`) |
 | `APPROVAL_TTL_MINUTES` | api, worker | `30` | How long an allowed proposal waits for approval before it expires |
-| `LLM_PROVIDER` | worker | `fixture` | Only `fixture` is accepted until Phase 11; no default run can reach a network model |
+| `LLM_PROVIDER` | worker | `fixture` | `fixture` (deterministic, offline) or `gemini` (real API). Default `fixture`, so no default run can reach a network model |
 | `LLM_TIMEOUT_MS` | worker | `30000` | Enforced by our code, not the provider's |
+| `LLM_API_KEY` | worker | unset | Required when `LLM_PROVIDER=gemini`; startup fails without it. Sent only as the `x-goog-api-key` header: never in a URL, log, prompt or `modelMetadata` |
+| `LLM_MODEL` | worker | `gemini-3.1-flash-lite` | Chosen by measurement, not preference. The most volatile value here; override it |
+| `LLM_BASE_URL` | worker | `https://generativelanguage.googleapis.com/v1beta` | Must be https, or http on a loopback host, because the key rides in a header |
+| `LLM_MAX_ATTEMPTS` | worker | `3` | Total attempts against 429/5xx. The free tier throttles hard; a 400 is never retried |
 | `SESSION_COOKIE_SECURE` | api | `true` (`false` in compose and `.env.example`) | Session cookie only over https; off only for local http |
 | `SEED_OPERATOR_USERNAME` | migrate (seed) | `operator` | Operator the seed creates or resets |
 | `SEED_OPERATOR_PASSWORD` | migrate (seed) | unset: seeds nobody | 12+ characters; root `.env` for compose, a masked random value in CI; never committed |
@@ -103,13 +107,27 @@ reach another project's instance.
 
 | Variable | Phase | Purpose |
 |---|---|---|
-| `LLM_API_KEY`, `LLM_MODEL` | 11 | Real model provider credentials and model |
 | `CREDENTIALS_KEY` | 13 | Encryption key for stored integration credentials |
 
 The api parses and validates its variables at startup (`apps/api/src/config/env.ts`),
 so the process fails fast on bad configuration, and the error names the variable
 without echoing its value. `.env` is git-ignored; `.env.example` holds
 placeholders only.
+
+### Running the live model check
+
+```bash
+npm run test:live -w @labops/api        # needs LLM_API_KEY in apps/api/.env
+```
+
+This is the only command in the repository that calls a network model. It is
+excluded from `npm test`, and `.github/workflows/llm-live.yml` triggers on
+`workflow_dispatch` only, so no push or pull request can start it.
+
+If `LLM_API_KEY` is unset the suite reports as **skipped**, not passed, so it
+can never be mistaken for coverage. A red run is usually the provider rather
+than the code: the free tier returns 503 under load, and retired models answer
+404 to new accounts.
 
 ---
 

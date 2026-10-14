@@ -1,11 +1,12 @@
 # LabOps Copilot — Implementation Plan
 
-**Status:** Approved. Phases 0–10 and 12 done (LOC-5 to LOC-15, LOC-17): the
-workflow runs end to end in a browser, with live updates. Next is Phase 11.
+**Status:** Approved. Phases 0–11 and 12 done (LOC-5 to LOC-16, LOC-17): the
+workflow runs end to end in a browser, with live updates and an opt-in real
+model. Next is Phase 13.
 
-**Remaining (4):** 11 real LLM provider, opt-in (LOC-16); 13 integration
-settings and secrets, adapter-gated (LOC-18); 14 end-to-end tests and metrics
-(LOC-19); 15 dependency graph (optional) and delivery (LOC-20).
+**Remaining (3):** 13 integration settings and secrets, adapter-gated
+(LOC-18); 14 end-to-end tests and metrics (LOC-19); 15 dependency graph
+(optional) and delivery (LOC-20).
 
 **Order changed after Phase 9:** the dashboard (Phase 12) ran before live
 updates (10) and the real LLM (11), so the proven workflow became visible and
@@ -388,7 +389,43 @@ with lint, typecheck, unit, integration and coverage green.
 **Tests:** a `*.live.test.ts`, excluded from the default run (the exclusion already exists in `vitest.config.ts`) and run by an opt-in CI job; the malformed-output tests from Phase 7 still pass with the fixture provider.
 **Verify:** run the opt-in test locally with a key; confirm the default CI run makes no network call to the provider.
 **Rollback:** set `LLM_PROVIDER=fixture`.
-**Done when:** the spec's "LLM API with structured outputs" is real without CI depending on it.
+**Done when:** the "LLM API with structured outputs" item is real without CI depending on it.
+
+Phase 11 deviations, settled by measurement rather than by the docs:
+
+- **Provider is Gemini over plain `fetch`; no SDK dependency.** The SDKs
+  (`@anthropic-ai/sdk`, `openai`, `@google/genai`) all work, but each would be a
+  new dependency for a single call site, and `CLAUDE.md` asks why the standard
+  toolchain cannot do the job. Google documents the REST endpoint for exactly
+  this case. `LLM_BASE_URL` makes the choice reversible.
+- **The published schema rules are wrong in two places, found by calling the
+  API.** The docs show `type: [x, null]` for a nullable field and the endpoint
+  rejects it in favour of `nullable: true`; the docs list
+  `additionalProperties` as supported and this endpoint rejects it. Raw REST also
+  requires UPPERCASE type names, which the SDK maps and plain fetch does not.
+  `gemini-schema.ts` carries all four rules and says where each came from.
+- **Structured output is shape, not values — the finding that mattered.** On a
+  live run the model returned a full sentence where an event id belonged and
+  another where one of four enum values belonged, and the schema was accepted
+  throughout. Had this pipeline trusted `responseSchema` as its safety
+  boundary, a model would have handed it a free-text action. Zod rejected both,
+  which is the argument for Phase 7's boundary restated with evidence.
+  `maxLength`, `minLength`, `minimum` and `maximum` are dropped from the request
+  because Gemini does not enforce them here; Zod re-checks every one on the way
+  back in, so nothing is lost, only double-enforced.
+- **`analyse()` now returns `{ raw, usage? }`.** Token counts have nowhere to go
+  otherwise, and the alternative — a mutable field on the provider instance —
+  would race between concurrent jobs.
+- **Retry covers 429 and 5xx only.** A 400 means our request is malformed;
+  resending it burns quota and delays the incident. `LLM_MAX_ATTEMPTS` exists
+  because the free tier returns 503 under load.
+- **The default model is a measurement.** `gemini-2.5-pro` answers 404 to new
+  accounts and three flash models returned 503 on four consecutive attempts;
+  `gemini-3.1-flash-lite` answered. It is the most volatile value in the
+  codebase and is meant to be overridden.
+- **The live spec calls the provider once.** One call per test meant six calls,
+  each with its own retry backoff: 186 s and flaky for reasons unrelated to the
+  code. Now 36 s.
 
 ### Phase 12 — Operator dashboard
 
