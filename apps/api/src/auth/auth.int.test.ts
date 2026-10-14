@@ -116,16 +116,30 @@ describe('POST /api/auth/login', () => {
     expect(cookieFrom(wrong).session).toBeUndefined();
   });
 
-  it('audits failed and successful sign-ins', async () => {
+  it('audits failed and successful sign-ins against the operator id', async () => {
     await login({ username: operator.username, password: 'wrong password' });
     await login({ username: operator.username, password: PASSWORD });
 
     const entries = await prisma.auditEntry.findMany({
-      where: { action: 'auth.login', targetId: { in: [operator.id, operator.username] } },
+      where: { action: 'auth.login', targetId: operator.id },
     });
     expect(entries.map((entry) => entry.outcome)).toEqual(
       expect.arrayContaining(['rejected', 'succeeded']),
     );
+  });
+
+  // Negative: a password typed into the username field must not be stored in
+  // the append-only audit table.
+  it('never records a typed username that matches no operator', async () => {
+    const typed = `looks-like-a-password-${randomUUID()}`;
+
+    await login({ username: typed, password: 'anything' });
+
+    const stored = await prisma.auditEntry.count({ where: { targetId: typed } });
+    const anyField = await prisma.$queryRaw<[{ n: number }]>`
+      SELECT count(*)::int AS n FROM "AuditEntry" WHERE "AuditEntry"::text LIKE ${`%${typed}%`}`;
+    expect(stored).toBe(0);
+    expect(anyField[0].n).toBe(0);
   });
 
   // Negative: the sixth attempt in a minute from one address is refused.
