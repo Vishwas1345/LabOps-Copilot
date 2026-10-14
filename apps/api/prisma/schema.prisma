@@ -369,3 +369,38 @@ model RecoveryAction {
   // The expiry sweep finds awaiting_approval rows past their deadline.
   @@index([status, expiresAt])
 }
+
+// A configured connection to an external lab platform. One row per provider.
+//
+// The default state is not_configured, which is the only honest value until a
+// connector has actually verified itself against the provider. There is
+// deliberately no plaintext credential column: encryptedCredentials holds
+// AES-256-GCM bytes and keyVersion records which key sealed them, so rotating
+// the key stays a contained change.
+enum IntegrationState {
+  not_configured
+  connecting
+  connected
+  error
+  needs_attention
+}
+
+model IntegrationConnection {
+  id          String @id @default(cuid())
+  // One connection per provider; a second save updates rather than duplicates.
+  provider    String @unique
+  displayName String
+  state       IntegrationState @default(not_configured)
+  // Never selected into an API response. secrets/crypto.ts seals and opens it.
+  encryptedCredentials Bytes?
+  keyVersion           Int?
+  // Only what an adapter actually reported. The UI renders nothing else.
+  supportedEventTypes  Json?
+  lastSuccessfulTestAt DateTime?
+  lastSyncAt           DateTime?
+  updatedBy            String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([state])
+}
