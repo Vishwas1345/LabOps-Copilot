@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { signedInCookie } from '../auth/session.fixture.js';
 import { prisma } from '../db.js';
+import { ingestEvent } from '../events/service.js';
 import { createLogger } from '../observability/logger.js';
 import { approveAction } from './approve.js';
 import { applyAndVerify, createExecuteJob } from './execute.job.js';
@@ -181,6 +183,38 @@ describe('execute job', () => {
     expect(await applyAndVerify(recoveryActionId, incidentId, late)).toBe('skipped');
     expect(await labStatuses(labIds)).toEqual(['failed', 'failed']);
     expect(await actionOf(recoveryActionId)).toMatchObject({ status: 'failed' });
+  });
+
+  // Negative: the probe that found this. A real platform reports success as
+  // an event while the lab is recovering; that evidence must not crash the
+  // apply step and leave a genuinely recovered incident in manual review.
+  it('keeps evidence from events that land during recovery', async () => {
+    const { recoveryActionId, incidentId, labIds } = await approved();
+    await prisma.recoveryAction.update({
+      where: { id: recoveryActionId },
+      data: { status: 'running', executedAt: new Date() },
+    });
+    await prisma.lab.updateMany({ where: { id: { in: labIds } }, data: { status: 'recovering' } });
+    await prisma.incident.update({ where: { id: incidentId }, data: { status: 'recovering' } });
+    const event = await ingestEvent(
+      {
+        providerEventId: randomUUID(),
+        labId: labIds[0],
+        type: 'provision_succeeded',
+        message: 'provisioning completed',
+        occurredAt: new Date().toISOString(),
+        source: 'provider',
+      },
+      ACTOR,
+    );
+    expect(event.transition).toEqual({ from: 'recovering', to: 'ready' });
+
+    expect(await execute(recoveryActionId)).toEqual({ outcome: 'succeeded' });
+
+    expect((await incidentOf(incidentId)).status).toBe('resolved');
+    expect(await actionOf(recoveryActionId)).toMatchObject({
+      verificationResult: { passed: true, changedByEvents: [labIds[0]] },
+    });
   });
 
   // Negative: out of retries mid-recovery, nothing may hang in recovering.
