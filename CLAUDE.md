@@ -40,6 +40,23 @@ that change is wrong. See §5.
 
 Read `ARCHITECTURE.md` for the full design and `README.md` for setup and scope.
 
+### Docs folder
+
+`docs/` holds the working documents. Start at `docs/README.md`.
+
+| Doc | Use it for |
+|---|---|
+| `docs/specs/labops-copilot/SPEC.md` | What is being built and why: rules, scope, acceptance criteria |
+| `docs/specs/labops-copilot/PLAN.md` | The phase-by-phase build plan. **Work one phase at a time, in order.** |
+| `docs/infra/INFRA.md` | Processes, ports, containers, env vars, migrations, CI |
+
+- Before starting a phase, read its section in `PLAN.md`. When it lands, update
+  `PLAN.md` and `INFRA.md` in the same pull request.
+- A new feature gets `docs/specs/<feature-slug>/SPEC.md`, then `PLAN.md`.
+- The internal project specification at the repo root is git-ignored and must
+  never be copied into `docs/` or any tracked file. It contains interview
+  context, not product content. `SPEC.md` is the public version.
+
 ---
 
 ## 2. Stack — no substitutions
