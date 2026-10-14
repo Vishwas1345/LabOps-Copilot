@@ -4,7 +4,7 @@ import { buildApp } from '../app.js';
 import { createLogger } from '../observability/logger.js';
 import { AppError } from './errors.js';
 
-const TEST_CONFIG = { CORS_ORIGIN: 'http://localhost:3000' };
+const TEST_CONFIG = { CORS_ORIGIN: 'http://localhost:3000', DEMO_ENABLED: false };
 
 let current: Awaited<ReturnType<typeof buildApp>> | undefined;
 
@@ -15,7 +15,7 @@ afterEach(async () => {
 
 async function appWithRoutes() {
   const lines: string[] = [];
-  const logger = createLogger({ write: (line: string) => lines.push(line) });
+  const logger = createLogger({ write: (line: string) => lines.push(line) }, 'info');
   const app = await buildApp({ config: TEST_CONFIG, logger });
   current = app;
 
