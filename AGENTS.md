@@ -238,9 +238,8 @@ the verification event. It passes on a fresh stack and on a re-run.
 
 ## 7. What is built (phase by phase)
 
-All phases through 12 are merged to `main`. Phase 11 is on branch
-`feat/LOC-16-real-llm-provider`, awaiting review (see section 8). Jira: story
-for Phase N is `LOC-(5+N)`.
+All phases through 12 are merged to `main`, including Phase 11 (PR #19). Jira:
+story for Phase N is `LOC-(5+N)`. Phase 13 is next.
 
 | Phase | Jira | PR | What |
 |---|---|---|---|
@@ -253,7 +252,7 @@ for Phase N is `LOC-(5+N)`.
 | 9 | LOC-14 | #14 | Approve/reject (row lock, expiry), execute (revalidate, simulate outside tx, verify all labs), expiry sweep, end-to-end backend test |
 | 12 | LOC-17 | #15 | Dashboard (run **before** 10 and 11 by agreement): BFF login, overview, incidents, incident detail with approve/reject, audit; Zod-parsed responses |
 | 10 | LOC-15 | #16 | Live updates over SSE (see section 8) |
-| 11 | LOC-16 | PR open | Real LLM provider, opt-in: Gemini over plain `fetch`, Zod → Gemini schema transform, bounded retry, token usage in `modelMetadata`, opt-in live test |
+| 11 | LOC-16 | #19 | Real LLM provider, opt-in: Gemini over plain `fetch`, Zod → Gemini schema transform, bounded retry, token usage in `modelMetadata`, opt-in live test |
 
 Key behaviours worth knowing (details in `ARCHITECTURE.md`):
 
@@ -291,10 +290,9 @@ streams piled up; propagating `ReadableStream.cancel` upstream did not help
 (64 s). A closed tab still lingers about a minute, once per tab, which is
 acceptable.
 
-## 8b. Phase 11 (LOC-16): what is built, and what is still unverified
+## 8. Phase 11 (PR #19): merged, with four items still open
 
-Branch `feat/LOC-16-real-llm-provider`, PR open as a draft. Five commits:
-lockfile reconciliation, config, provider, live test, docs, plus one fix.
+Merged to `main`. Five commits plus a self-review fix.
 
 **Built.** `LLM_PROVIDER` gains `gemini` beside `fixture` (fixture still the
 default, so no deploy can start calling a paid API by accident). A second
@@ -318,12 +316,10 @@ the docs list `additionalProperties` as supported and this endpoint rejects it;
 raw REST needs UPPERCASE type names, which the SDK maps and `fetch` does not.
 `gemini-2.5-pro` now answers 404 to new accounts.
 
-**Verified on the branch.** lint 0; typecheck 0; unit 610 (21 files);
-integration 170 (21 files); integration twice on a throwaway database (exit 0
-both runs, database proven migrated then dropped); API coverage 98.47% (780
-tests); web coverage 99.31% (82 tests); typecheck on all four branch commits;
-audit gate 6 known / 6 baselined; live run `verdict=VALID`, 731 input and 272
-output tokens, 6/6. Both new safety guards were mutation-checked.
+**Verified.** lint 0; typecheck 0; unit 618 (21 files); integration 173 (21
+files); coverage 98.5% api / 99.3% web; migrate deploy clean; `prisma:drift`
+clean; typecheck on every branch commit; audit gate 6 known / 6 baselined; live
+run `verdict=VALID`, 731 input and 272 output tokens.
 
 **Still unverified — do these before calling Phase 11 closed:**
 
@@ -331,12 +327,19 @@ output tokens, 6/6. Both new safety guards were mutation-checked.
    here; `scripts/compose-smoke.ps1` was written as the equivalent and has
    **never been executed**, so treat it as untested until it passes once.
 2. **Fresh clone (section 5 step 5).** Never run on this branch.
-3. **Jira LOC-16 was never moved to In Progress** — no `jira` CLI and no
-   `JIRA_API_TOKEN` / `JIRA_EMAIL` in this environment. Do it by hand.
+3. **Jira LOC-16 was never moved at all** — no `jira` CLI and no
+   `JIRA_API_TOKEN` / `JIRA_EMAIL` in this environment. It should be In
+   Progress, then Done. Do it by hand.
 4. **The live CI job has never run.** `.github/workflows/llm-live.yml` needs the
    `GEMINI_API_KEY` repository secret; dispatch it once manually to confirm.
 5. **Rotate the Gemini key.** It was pasted into a chat transcript in plaintext.
    It is git-ignored and was never committed, but treat it as exposed.
+
+**One local-DB caveat.** The `TRUNCATED_OUTPUT` migration was applied by hand
+during the fix, and Prisma's own record of it in the dev database had to be
+corrected after an aborted `migrate dev`. The migration **file** is correct and
+applies cleanly to a fresh database, which is what CI and the compose `migrate`
+service use — but that path was never re-verified after the edit.
 
 **Model availability is a live risk, not a code defect.** The free tier is
 throttled: `gemini-flash-latest`, `gemini-3.5-flash` and `gemini-3.8-flash`
@@ -352,9 +355,9 @@ assumed.
 
 ## 9. What is left, in order
 
-The agreed order after Phase 9 is 12 (done), 10 (done), **11 (built, unverified
-- see section 8b), 13, 14, 15**. Each needs the plan-first loop above; read the
-phase in `PLAN.md` and the matching `.claude/skills/*` recipe first.
+Phases 12, 10 and 11 are done. The agreed order is **13, 14, 15**, each under
+the plan-first loop above; read the phase in `PLAN.md` and the matching
+`.claude/skills/*` recipe first.
 
 1. **Phase 13: integration settings and secrets, adapter-gated (LOC-18;
    LOC-71..74).** Read `ARCHITECTURE.md §13` (Integration gate) and the
