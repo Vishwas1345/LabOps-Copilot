@@ -1,12 +1,16 @@
-// Incident reads. Correlation (correlate.job.ts) is the only writer so far;
-// transitions arrive with investigation and recovery.
+// Incident reads and the one guarded path for status changes. Correlation
+// (correlate.job.ts) creates incidents; status moves go through
+// transitionIncident only.
 
 import type { Incident, Prisma, Severity } from '@prisma/client';
+import type { Actor } from '../audit/audit.js';
+import { writeAudit } from '../audit/audit.js';
 import { prisma } from '../db.js';
 import type { EventView } from '../events/service.js';
 import { getEventViews } from '../events/service.js';
 import type { ListIncidentsQuery } from './schemas.js';
 import type { IncidentStatus } from './transitions.js';
+import { assertIncidentTransition } from './transitions.js';
 
 // "Correlation strength", not "confidence": it measures how alike the
 // failures are, never how sure anyone is about the cause (ARCHITECTURE §8).
@@ -110,4 +114,52 @@ export async function assertIncidentExists(incidentId: string): Promise<void> {
   if (found === 0) {
     throw new IncidentNotFoundError(incidentId);
   }
+}
+
+/** Another transaction moved the incident between our read and our write. */
+export class ConcurrentIncidentTransitionError extends Error {
+  constructor(
+    readonly incidentId: string,
+    readonly expected: IncidentStatus,
+  ) {
+    super(`incident ${incidentId} is no longer ${expected}`);
+    this.name = 'ConcurrentIncidentTransitionError';
+  }
+}
+
+// The only way an incident's status changes; status and audit share the
+// caller's transaction. Compare-and-set: a concurrent move matches zero rows.
+export async function transitionIncident(
+  tx: Prisma.TransactionClient,
+  incidentId: string,
+  to: IncidentStatus,
+  actor: Actor,
+  context: { reason?: string } = {},
+): Promise<{ from: IncidentStatus; to: IncidentStatus }> {
+  const incident = await tx.incident.findUnique({
+    where: { id: incidentId },
+    select: { status: true },
+  });
+  if (!incident) {
+    throw new IncidentNotFoundError(incidentId);
+  }
+  const from = incident.status;
+  assertIncidentTransition(from, to);
+
+  const { count } = await tx.incident.updateMany({
+    where: { id: incidentId, status: from },
+    data: { status: to },
+  });
+  if (count === 0) {
+    throw new ConcurrentIncidentTransitionError(incidentId, from);
+  }
+  await writeAudit(tx, {
+    actor,
+    action: 'incident.transition',
+    targetType: 'incident',
+    targetId: incidentId,
+    outcome: 'applied',
+    metadata: { from, to, reason: context.reason },
+  });
+  return { from, to };
 }

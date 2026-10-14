@@ -1,6 +1,7 @@
 // Runs one job: marks the row, continues the enqueuer's trace, and records
 // the outcome. The final failed attempt is audited, never just logged.
 
+import type { Prisma } from '@prisma/client';
 import type { Job } from 'bullmq';
 import type pino from 'pino';
 import { writeAudit } from '../audit/audit.js';
@@ -13,8 +14,20 @@ import { dispatchJob } from './record.js';
 
 export type JobHandler = (payload: unknown, log: pino.Logger) => Promise<unknown>;
 
-/** One handler and one lifecycle span name per queue. */
-export type JobHandlers = Record<QueueName, { span: string; handle: JobHandler }>;
+/**
+ * Runs in the transaction that marks a job failed for good, so domain state
+ * left mid-flight (an investigation still `running`) is settled atomically.
+ */
+export type ExhaustedHook = (payload: unknown, tx: Prisma.TransactionClient) => Promise<void>;
+
+export interface JobDefinition {
+  span: string;
+  handle: JobHandler;
+  onExhausted?: ExhaustedHook;
+}
+
+/** A worker serves one queue, so it carries only that queue's definition. */
+export type JobHandlers = Partial<Record<QueueName, JobDefinition>>;
 
 const WORKER = { type: 'worker', id: 'labops-worker' } as const;
 
@@ -29,6 +42,9 @@ export async function runJob(
     data: { status: 'running', attempts: { increment: 1 }, startedAt: new Date() },
   });
   const handler = handlers[row.queue as QueueName];
+  if (!handler) {
+    throw new Error(`no handler for queue ${row.queue}`);
+  }
   const jobLog = log.child({ jobId: row.id, jobKey: row.jobKey, queue: row.queue });
 
   try {
@@ -64,6 +80,7 @@ export async function runJob(
           outcome: 'failed',
           metadata: { queue: row.queue, attempts: row.attempts, error: summary },
         });
+        await handler.onExhausted?.(row.payload, tx);
       });
     } else {
       await prisma.jobExecution.update({

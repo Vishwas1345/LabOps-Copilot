@@ -2,6 +2,7 @@
 // Redis after commit. If Redis is down, the row survives and is reconciled.
 
 import type { Prisma } from '@prisma/client';
+import { prisma } from '../db.js';
 import type { QueueName } from './queues.js';
 import { getQueue, MAX_ATTEMPTS } from './queues.js';
 
@@ -57,4 +58,10 @@ export async function dispatchJob(record: JobRecord): Promise<void> {
       removeOnFail: true,
     },
   );
+}
+
+/** The job row id behind a key, so callers can report a job without reading the table. */
+export async function jobIdForKey(jobKey: string): Promise<string | null> {
+  const row = await prisma.jobExecution.findUnique({ where: { jobKey }, select: { id: true } });
+  return row?.id ?? null;
 }

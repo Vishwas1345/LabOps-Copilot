@@ -5,7 +5,7 @@ import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { loadConfig } from '../config/env.js';
 
-export const QUEUE_NAMES = ['correlate'] as const;
+export const QUEUE_NAMES = ['correlate', 'investigate'] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
 /** What BullMQ carries; the real payload lives in Postgres (JobExecution). */
