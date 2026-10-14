@@ -8,7 +8,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { StatusBadge } from './status-badge';
 
 const refresh = vi.fn();
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }));
+let pathname = '/';
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh }),
+  usePathname: () => pathname,
+}));
 
 describe('ui primitives', () => {
   it('render with merged classes', () => {
@@ -59,12 +63,12 @@ describe('StatusBadge', () => {
 describe('LiveRefresh', () => {
   // A stand-in EventSource the test can push messages through.
   class FakeEventSource {
-    static last: FakeEventSource | undefined;
+    static opened: FakeEventSource[] = [];
     onmessage: ((message: { data: string }) => void) | null = null;
     listeners: Record<string, () => void> = {};
     closed = false;
     constructor(readonly url: string) {
-      FakeEventSource.last = this;
+      FakeEventSource.opened.push(this);
     }
     addEventListener(name: string, listener: () => void) {
       this.listeners[name] = listener;
@@ -74,13 +78,20 @@ describe('LiveRefresh', () => {
     }
   }
 
+  const send = (source: FakeEventSource, incidentId: string | null) =>
+    source.onmessage?.({ data: JSON.stringify({ action: 'recovery.verified', incidentId }) });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     refresh.mockClear();
+    FakeEventSource.opened = [];
+    pathname = '/';
   });
 
-  it('refreshes once per burst of relevant events, ignores others, closes on unmount', async () => {
+  // The fix: navigation must not open a new stream (each orphaned one held
+  // an API stream for about a minute). The filter follows the URL instead.
+  it('keeps one stream across navigation while the filter follows the page', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('EventSource', FakeEventSource);
     const { createRoot } = await import('react-dom/client');
@@ -88,25 +99,46 @@ describe('LiveRefresh', () => {
     const { LiveRefresh } = await import('./live-refresh');
     const root = createRoot(document.createElement('div'));
 
-    await act(async () => root.render(<LiveRefresh incidentId="inc1" />));
-    const source = FakeEventSource.last!;
+    pathname = '/incidents/inc1';
+    await act(async () => root.render(<LiveRefresh />));
+    const [source] = FakeEventSource.opened;
     expect(source.url).toBe('/api/events/stream');
-
-    const send = (incidentId: string | null) =>
-      source.onmessage?.({ data: JSON.stringify({ action: 'recovery.verified', incidentId }) });
     await act(async () => {
-      send('inc1');
-      send('inc1');
-      send('other');
+      send(source, 'inc1');
+      send(source, 'inc1');
+      send(source, 'other');
       vi.advanceTimersByTime(400);
     });
     expect(refresh).toHaveBeenCalledTimes(1);
+
+    // Navigate to another incident, then to the overview.
+    pathname = '/incidents/inc2';
+    await act(async () => root.render(<LiveRefresh />));
+    await act(async () => {
+      send(source, 'inc1');
+      vi.advanceTimersByTime(400);
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      send(source, 'inc2');
+      vi.advanceTimersByTime(400);
+    });
+    expect(refresh).toHaveBeenCalledTimes(2);
+
+    pathname = '/';
+    await act(async () => root.render(<LiveRefresh />));
+    await act(async () => {
+      send(source, 'anything');
+      vi.advanceTimersByTime(400);
+    });
+    expect(refresh).toHaveBeenCalledTimes(3);
+    expect(FakeEventSource.opened).toHaveLength(1);
 
     await act(async () => {
       source.listeners.reset();
       vi.advanceTimersByTime(400);
     });
-    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(refresh).toHaveBeenCalledTimes(4);
 
     await act(async () => root.unmount());
     expect(source.closed).toBe(true);

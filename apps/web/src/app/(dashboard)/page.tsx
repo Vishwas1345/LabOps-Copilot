@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { LiveRefresh } from '@/components/live-refresh';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -49,7 +48,6 @@ export default async function OverviewPage({
 
   return (
     <div className="grid gap-6 md:grid-cols-2">
-      <LiveRefresh />
       <Card>
         <CardHeader>
           <CardTitle>Labs</CardTitle>

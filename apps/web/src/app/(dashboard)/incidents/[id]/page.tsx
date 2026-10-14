@@ -1,5 +1,4 @@
 import { notFound } from 'next/navigation';
-import { LiveRefresh } from '@/components/live-refresh';
 import { StatusBadge } from '@/components/status-badge';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -185,7 +184,6 @@ export default async function IncidentPage({
         )}
       </div>
       {message && <Alert variant="destructive">{message}</Alert>}
-      <LiveRefresh incidentId={incident.id} />
 
       <Card>
         <CardHeader>
