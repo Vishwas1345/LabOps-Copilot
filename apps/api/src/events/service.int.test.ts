@@ -59,7 +59,12 @@ describe('ingestEvent', () => {
     const first = await ingestEvent(event, ACTOR);
     const second = await ingestEvent(event, ACTOR);
 
-    expect(second).toEqual({ eventId: first.eventId, duplicate: true, transition: null });
+    expect(second).toEqual({
+      eventId: first.eventId,
+      duplicate: true,
+      transition: null,
+      jobId: null,
+    });
     expect(await prisma.operationalEvent.count({ where: { labId } })).toBe(1);
     expect(await transitionsOf(labId)).toBe(1);
   });
@@ -128,9 +133,33 @@ describe('ingestEvent', () => {
 
     await expect(
       prisma.$executeRawUnsafe(
-        `INSERT INTO "OperationalEvent" (id, "labId", type, message, source, "occurredAt", "deduplicationKey")
-         VALUES ('${randomUUID()}', '${labId}', 'provision_failed', 'x', 'provider', now(), '${randomUUID()}')`,
+        `INSERT INTO "OperationalEvent"
+           (id, "labId", type, message, source, "occurredAt", "deduplicationKey")
+         VALUES ('${randomUUID()}', '${labId}', 'provision_failed', 'x', 'provider', now(),
+           '${randomUUID()}')`,
       ),
     ).rejects.toThrow(/OperationalEvent_category_matches_type/);
+  });
+
+  // Outbox: the job row commits with the event, so it cannot be lost.
+  it('records a correlate job for a stored failure, in the same transaction', async () => {
+    const labId = await provisioningLab();
+
+    const result = await ingestEvent(failure(labId), ACTOR);
+
+    const job = await prisma.jobExecution.findUniqueOrThrow({ where: { id: result.jobId! } });
+    expect(job.queue).toBe('correlate');
+    expect(job.payload).toEqual({ windowStart: '2026-01-15T09:00:00.000Z' });
+  });
+
+  it('records no job for a success', async () => {
+    const labId = await provisioningLab();
+
+    const result = await ingestEvent(
+      failure(labId, { type: 'provision_succeeded', errorCategory: undefined }),
+      ACTOR,
+    );
+
+    expect(result.jobId).toBeNull();
   });
 });

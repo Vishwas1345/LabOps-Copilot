@@ -5,8 +5,13 @@ import { Prisma } from '@prisma/client';
 import type { Actor } from '../audit/audit.js';
 import { writeAudit } from '../audit/audit.js';
 import { prisma } from '../db.js';
+import type { JobRecord } from '../jobs/record.js';
+import { dispatchJob, recordJob } from '../jobs/record.js';
 import type { LabTransition } from '../labs/service.js';
 import { tryTransitionLab } from '../labs/service.js';
+import { logger } from '../observability/logger.js';
+import { currentTraceparent, withSpan } from '../observability/tracing.js';
+import { correlationWindow } from './correlate.job.js';
 import { normalise } from './normalise.js';
 import type { EventsQuery, IncomingEvent } from './schema.js';
 import { incomingEvent } from './schema.js';
@@ -16,6 +21,8 @@ export interface IngestResult {
   duplicate: boolean;
   /** Null for a duplicate, or when the lab's state machine skips the move. */
   transition: LabTransition | null;
+  /** The correlate job a stored failure armed; null otherwise. */
+  jobId: string | null;
 }
 
 /** The event names a lab or dependency that does not exist. */
@@ -38,19 +45,23 @@ async function findDuplicate(deduplicationKey: string): Promise<IngestResult | n
     where: { deduplicationKey },
     select: { id: true },
   });
-  return existing ? { eventId: existing.id, duplicate: true, transition: null } : null;
+  return existing ? { eventId: existing.id, duplicate: true, transition: null, jobId: null } : null;
 }
 
 // Takes `unknown` and validates itself, so no caller (API, demo, a future
 // adapter) can hand it an unchecked event.
-export async function ingestEvent(input: unknown, actor: Actor): Promise<IngestResult> {
+export function ingestEvent(input: unknown, actor: Actor): Promise<IngestResult> {
+  return withSpan('event.ingest', () => ingest(input, actor));
+}
+
+async function ingest(input: unknown, actor: Actor): Promise<IngestResult> {
   const { event, deduplicationKey } = normalise(incomingEvent.parse(input));
 
   const known = await findDuplicate(deduplicationKey);
   if (known) return known;
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    const { result, job } = await prisma.$transaction(async (tx) => {
       const stored = await tx.operationalEvent.create({
         data: {
           labId: event.labId,
@@ -80,8 +91,35 @@ export async function ingestEvent(input: unknown, actor: Actor): Promise<IngestR
         reason: `event ${stored.id}`,
       });
 
-      return { eventId: stored.id, duplicate: false, transition };
+      // Outbox: the job row commits with the event; Redis gets it after.
+      let job: JobRecord | null = null;
+      if (event.type === 'provision_failed') {
+        const window = correlationWindow(new Date(event.occurredAt));
+        job = await recordJob(
+          tx,
+          'correlate',
+          window.jobKey,
+          { windowStart: window.start.toISOString() },
+          currentTraceparent(),
+        );
+      }
+
+      const result: IngestResult = {
+        eventId: stored.id,
+        duplicate: false,
+        transition,
+        jobId: job?.id ?? null,
+      };
+      return { result, job };
     });
+
+    if (job) {
+      // The event is safe either way; a failed send is resent by the reconciler.
+      await dispatchJob(job).catch((error: unknown) =>
+        logger.warn({ err: error, jobId: result.jobId }, 'dispatch failed; reconciler will retry'),
+      );
+    }
+    return result;
   } catch (error) {
     // A concurrent copy of this event won the unique key: report the original.
     if (isPrismaError(error, 'P2002')) {
