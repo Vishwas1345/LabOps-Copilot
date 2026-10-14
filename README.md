@@ -324,14 +324,14 @@ Illustrative surface. Implemented endpoints are marked ✅.
 | `GET` | `/api/labs/:id` | Lab with its dependency ids ✅ |
 | `GET` | `/api/labs/:id/events` | The lab's events, newest first, paginated ✅ |
 | `POST` | `/api/events` | Ingest an event: validated, redacted, deduplicated; 201 new, 200 duplicate ✅ |
-| `GET` | `/api/incidents` | List and filter incidents |
-| `GET` | `/api/incidents/:id` | Incident, affected labs and evidence |
+| `GET` | `/api/incidents` | List incidents; `status`/`severity` filters, cursor pagination ✅ |
+| `GET` | `/api/incidents/:id` | Incident, each lab with its reason and score, and the events ✅ |
 | `POST` | `/api/incidents/:id/investigate` | Queue an AI investigation |
 | `POST` | `/api/incidents/:id/recovery-proposals` | Create a policy-validated proposal |
 | `POST` | `/api/recovery-actions/:id/approve` | Approve a proposed action |
 | `POST` | `/api/recovery-actions/:id/reject` | Reject a proposed action |
 | `GET` | `/api/jobs/:id` | Background job state, from the Postgres mirror ✅ |
-| `GET` | `/api/incidents/:id/audit` | Incident audit history |
+| `GET` | `/api/incidents/:id/audit` | Incident audit history, in commit order ✅ |
 | `GET` | `/api/events/stream` | SSE stream for live dashboard updates |
 | `GET` | `/api/integrations` | Configured integrations and status |
 | `POST` | `/api/integrations/cloudlabs/test` | Test connection settings, never returns secrets |
@@ -469,7 +469,7 @@ phase-by-phase plan, with what each phase delivers and how it is verified, is
 | 1–2 | Audit trail, lab model, deterministic simulator, demo scenario | Done |
 | 3 | Event ingestion: validation, redaction, dedup, lab transitions | Done |
 | 4 | Queue, worker process, reconciler, tracing across API and worker | Done |
-| 5 | Correlation | Not started |
+| 5 | Deterministic correlation in the worker, incident read APIs | Done |
 | 6–9 | Operator auth, AI investigation, policies, approval, execution, verification | Not started |
 | 10–12 | Live updates, real LLM provider, operator dashboard | Not started |
 | 13–15 | Integration settings, E2E tests and metrics, delivery | Not started |

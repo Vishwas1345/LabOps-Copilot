@@ -57,3 +57,7 @@ job_id="$(grep -o '"jobId":"[^"]*"' "$event_body" | cut -d'"' -f4)"
 [ -n "$job_id" ] || { echo "FAILED: no job armed" >&2; cat "$event_body" >&2; exit 1; }
 wait_for "worker ran job $job_id" \
   sh -c "curl -fs '$API_URL/api/jobs/$job_id' | grep -q '\"status\":\"succeeded\"'"
+
+# Correlation ran in the worker: the scenario's 12-timeout burst is one incident.
+wait_for "scenario burst correlated into one incident" \
+  sh -c "curl -fs '$API_URL/api/incidents?severity=high&limit=100' | grep -q '\"labCount\":12'"
