@@ -439,6 +439,7 @@ stateDiagram-v2
   recovering --> manual_review: verification failed
   awaiting_approval --> manual_review: approval expired
   manual_review --> investigating: operator requests re-analysis
+  manual_review --> awaiting_approval: operator proposal allowed by policy
   resolved --> [*]
 ```
 

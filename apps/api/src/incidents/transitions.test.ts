@@ -17,6 +17,7 @@ const FORBIDDEN: ReadonlyArray<readonly [IncidentStatus, IncidentStatus]> = [
   // Recovery without approval.
   ['open', 'recovering'],
   ['investigating', 'recovering'],
+  ['manual_review', 'recovering'],
   // A resolved incident is final.
   ['resolved', 'open'],
   ['resolved', 'investigating'],
@@ -41,6 +42,12 @@ describe('incident transitions', () => {
   it('reaches resolved only from recovering', () => {
     const into = INCIDENT_STATUSES.filter((s) => INCIDENT_TRANSITIONS[s].includes('resolved'));
     expect(into).toEqual(['recovering']);
+  });
+
+  // Every path into recovery passes through a human approval.
+  it('reaches recovering only from awaiting_approval', () => {
+    const into = INCIDENT_STATUSES.filter((s) => INCIDENT_TRANSITIONS[s].includes('recovering'));
+    expect(into).toEqual(['awaiting_approval']);
   });
 
   it('names both states in the error', () => {
