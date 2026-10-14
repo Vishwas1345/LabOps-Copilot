@@ -138,8 +138,14 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate -w @labops/api
 
-      - name: Apply schema
-        run: npm run prisma:push -w @labops/api
+      # The same checked-in migrations that every other environment applies.
+      - name: Apply migrations
+        run: npm run prisma:migrate -w @labops/api
+
+      # Fails (exit 2) when schema.prisma was edited without a migration, so
+      # the schema file and the migration history cannot drift apart.
+      - name: Check schema matches migrations
+        run: npm run prisma:drift -w @labops/api
 
       # Skipped, not passed, while the integration suite is being written, so
       # CI can never report a green integration run that did not happen. The

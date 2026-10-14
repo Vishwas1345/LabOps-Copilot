@@ -11,7 +11,7 @@
     "dev:web": "npm run dev -w @labops/web",
     "db:up": "docker compose up -d postgres",
     "db:generate": "npm run prisma:generate -w @labops/api",
-    "db:push": "npm run prisma:push -w @labops/api",
+    "db:migrate": "npm run prisma:migrate -w @labops/api",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "npm run typecheck --workspaces --if-present",
