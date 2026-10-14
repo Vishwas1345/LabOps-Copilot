@@ -86,9 +86,10 @@ sufficient — see `ARCHITECTURE.md §18`), or a second agent framework.
 
 ```bash
 npm install                  # install all workspaces
-npm run dev                  # API :4000 + web :3000
+npm run dev                  # API :4000 + worker + web :3000
 npm run dev:api              # API only
 npm run dev:web              # web only
+npm run dev:worker           # background worker only
 npm run db:up                # start PostgreSQL via Docker Compose
 npm run db:generate          # regenerate Prisma client
 npm run db:migrate           # apply checked-in migrations
@@ -103,7 +104,7 @@ npm run coverage             # Vitest with v8 coverage + thresholds
 Full container stack:
 
 ```bash
-docker compose up --build    # postgres, redis, migrate, api, web
+docker compose up --build    # postgres, redis, migrate, api, worker, web
 ```
 
 **Checks must pass before a commit.** In order: `npm run lint`,
@@ -114,8 +115,9 @@ Vitest coverage thresholds are set at 70% for lines, functions, branches and
 statements. In the api, `npm run coverage` counts unit **and** integration specs
 together (`vitest.coverage.config.ts`, needs a migrated database), so code that
 talks to PostgreSQL is measured rather than excluded. Only process bootstrap
-(`src/index.ts`) is excluded. The web config excludes server components, which
-only the E2E suite can reach. Every exclusion carries a comment saying why.
+(`src/index.ts`, `src/worker.ts`) is excluded. The web config excludes server
+components, which only the E2E suite can reach. Every exclusion carries a
+comment saying why.
 Adding exclusions to make a number look better is the same as disabling a test.
 
 Environment: `apps/api/.env` (copy from `apps/api/.env.example`) and

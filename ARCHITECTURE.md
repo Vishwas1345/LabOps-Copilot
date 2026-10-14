@@ -153,6 +153,8 @@ apps/api/src/
   events-stream/      SSE hub, per-subscriber filtering
   demo/               flag-gated scenario trigger (DEMO_ENABLED); calls the
                       labs service, never touches real provider data
+  worker.ts           worker entrypoint: wires domain job handlers to jobs/;
+                      jobs/ itself stays generic and imports no domain
 ```
 
 **Dependency rule:** modules may depend *downward* only —
@@ -747,7 +749,9 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Demo scenario endpoint, flag-gated and idempotent | Done (Phase 2) | — |
 | Event ingestion: validation, redaction at entry, DB dedup, lab transitions | Done (Phase 3) | Trace ids (Phase 4) |
 | `POST /api/events`, `GET /api/labs/:id/events` | Done (Phase 3) | Auth (Phase 6) |
-| BullMQ worker, OTel tracing | Not started | Phase 4 |
+| Worker process, BullMQ queue, outbox job rows, reconciler | Done (Phase 4) | Real correlate handler (Phase 5) |
+| OTel tracing: `event.ingest` → `incident.correlate` in one trace | Done (Phase 4) | Remaining spans per stage |
+| `GET /api/jobs/:id` | Done (Phase 4) | — |
 | Correlation engine | Not started | Phase 5 |
 | AI investigation | Not started | Phases 7, 11 |
 | Policies, approvals, execution, verification | Not started | Phases 8–9 |

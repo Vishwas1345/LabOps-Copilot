@@ -292,6 +292,7 @@ labops-copilot/
 | `npm run dev` | Run API and web together |
 | `npm run dev:api` | Run the API only |
 | `npm run dev:web` | Run the web app only |
+| `npm run dev:worker` | Run the background worker only |
 | `npm run db:up` | Start PostgreSQL via Docker Compose |
 | `npm run db:generate` | Generate the Prisma client |
 | `npm run db:migrate` | Apply checked-in migrations to the database |
@@ -329,7 +330,7 @@ Illustrative surface. Implemented endpoints are marked ✅.
 | `POST` | `/api/incidents/:id/recovery-proposals` | Create a policy-validated proposal |
 | `POST` | `/api/recovery-actions/:id/approve` | Approve a proposed action |
 | `POST` | `/api/recovery-actions/:id/reject` | Reject a proposed action |
-| `GET` | `/api/jobs/:id` | Background job state |
+| `GET` | `/api/jobs/:id` | Background job state, from the Postgres mirror ✅ |
 | `GET` | `/api/incidents/:id/audit` | Incident audit history |
 | `GET` | `/api/events/stream` | SSE stream for live dashboard updates |
 | `GET` | `/api/integrations` | Configured integrations and status |
@@ -467,7 +468,8 @@ phase-by-phase plan, with what each phase delivers and how it is verified, is
 | 0 | Config validation, error envelope, migrations, integration-test gate | Done |
 | 1–2 | Audit trail, lab model, deterministic simulator, demo scenario | Done |
 | 3 | Event ingestion: validation, redaction, dedup, lab transitions | Done |
-| 4–5 | Queue and worker, correlation | Not started |
+| 4 | Queue, worker process, reconciler, tracing across API and worker | Done |
+| 5 | Correlation | Not started |
 | 6–9 | Operator auth, AI investigation, policies, approval, execution, verification | Not started |
 | 10–12 | Live updates, real LLM provider, operator dashboard | Not started |
 | 13–15 | Integration settings, E2E tests and metrics, delivery | Not started |
