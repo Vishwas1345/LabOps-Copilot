@@ -99,6 +99,13 @@ jobs:
       - name: Build images
         run: docker compose build
 
+      # A throwaway operator password per run; nothing is committed.
+      - name: Generate the operator password
+        run: |
+          password="$(openssl rand -hex 16)"
+          echo "::add-mask::$password"
+          echo "SEED_OPERATOR_PASSWORD=$password" >> "$GITHUB_ENV"
+
       - name: Start the stack
         run: docker compose up -d
 

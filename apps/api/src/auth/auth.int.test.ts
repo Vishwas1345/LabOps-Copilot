@@ -5,6 +5,7 @@ import { loadConfig } from '../config/env.js';
 import { prisma } from '../db.js';
 import { createLogger } from '../observability/logger.js';
 import { hashPassword } from './password.js';
+import { seedOperator } from './service.js';
 import { SESSION_COOKIE } from './session.js';
 import { signedInCookie } from './session.fixture.js';
 
@@ -234,6 +235,27 @@ describe('audit actor', () => {
       expect(entry).toMatchObject({ actorType: 'human', actorId: operatorId });
     } finally {
       await prisma.lab.delete({ where: { id: lab.id } });
+    }
+  });
+});
+
+describe('seedOperator', () => {
+  it('creates the operator, then resets its password and ends old sessions', async () => {
+    const username = `seed-test-${randomUUID()}`;
+    try {
+      expect(await seedOperator(username, 'first password')).toBe('created');
+      const first = await login({ username, password: 'first password' });
+      const { header } = cookieFrom(first);
+      expect((await me(header)).statusCode).toBe(200);
+
+      expect(await seedOperator(username, 'second password')).toBe('updated');
+
+      // Negative: a rotated password must end access gained with the old one.
+      expect((await me(header)).statusCode).toBe(401);
+      expect((await login({ username, password: 'first password' })).statusCode).toBe(401);
+      expect((await login({ username, password: 'second password' })).statusCode).toBe(200);
+    } finally {
+      await prisma.operator.delete({ where: { username } });
     }
   });
 });

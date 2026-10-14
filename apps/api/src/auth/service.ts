@@ -58,3 +58,35 @@ export async function signOut(operator: SessionOperator, token: string): Promise
     });
   });
 }
+
+/**
+ * Creates the operator or resets its password. A reset revokes the operator's
+ * live sessions: a rotated password must end access gained with the old one.
+ */
+export async function seedOperator(
+  username: string,
+  password: string,
+): Promise<'created' | 'updated'> {
+  const passwordHash = await hashPassword(password);
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.operator.findUnique({ where: { username }, select: { id: true } });
+    const operator = existing
+      ? await tx.operator.update({ where: { id: existing.id }, data: { passwordHash } })
+      : await tx.operator.create({ data: { username, passwordHash } });
+    if (existing) {
+      await tx.operatorSession.updateMany({
+        where: { operatorId: operator.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    }
+    const outcome = existing ? 'updated' : 'created';
+    await writeAudit(tx, {
+      actor: { type: 'system', id: 'seed-operator' },
+      action: 'operator.seeded',
+      targetType: 'operator',
+      targetId: operator.id,
+      outcome,
+    });
+    return outcome;
+  });
+}
