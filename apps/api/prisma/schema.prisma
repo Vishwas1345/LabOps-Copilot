@@ -200,6 +200,7 @@ model Incident {
   resolvedAt        DateTime?
   labs              IncidentLab[]
   investigations    Investigation[]
+  recoveryActions   RecoveryAction[]
 
   @@index([status, createdAt(sort: Desc)])
   // Correlation finds open incidents by the failures it loaded.
@@ -311,4 +312,49 @@ model Investigation {
   completedAt       DateTime?
 
   @@index([incidentId, createdAt(sort: Desc)])
+}
+
+enum RecoveryActionStatus {
+  rejected_by_policy
+  awaiting_approval
+  approved
+  rejected
+  expired
+  running
+  succeeded
+  failed
+  blocked
+}
+
+// A proposed recovery action and every decision made about it. Only the
+// allow-listed ActionType can exist; policyDecisions records each policy step
+// and its reason, so the operator sees exactly which rule allowed or blocked it.
+model RecoveryAction {
+  id                 String               @id @default(cuid())
+  incidentId         String
+  incident           Incident             @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  // The investigation that recommended it; null when an operator proposed it.
+  investigationId    String?
+  actionType         ActionType
+  targetIds          String[]
+  parameters         Json
+  status             RecoveryActionStatus
+  // incident:action:targets-hash:attempt. Unique, so one logical action is
+  // proposed and executed once however many times it is requested.
+  idempotencyKey     String               @unique
+  proposedBy         String
+  policyDecisions    Json
+  blockedAt          String?
+  approvedBy         String?
+  approvedAt         DateTime?
+  expiresAt          DateTime?
+  executedAt         DateTime?
+  result             Json?
+  verificationResult Json?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@index([incidentId, createdAt(sort: Desc)])
+  // Rate limits and concurrency look up recent actions by target.
+  @@index([targetIds], type: Gin)
 }

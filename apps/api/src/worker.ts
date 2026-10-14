@@ -23,10 +23,10 @@ async function main() {
 
   // Only the fixture exists until Phase 11; config rejects any other name.
   const providers = { fixture: fixtureProvider };
-  const investigate = createInvestigateJob(
-    providers[config.LLM_PROVIDER],
-    config.LLM_TIMEOUT_MS,
-  );
+  const investigate = createInvestigateJob(providers[config.LLM_PROVIDER], {
+    timeoutMs: config.LLM_TIMEOUT_MS,
+    approvalTtlMs: config.APPROVAL_TTL_MINUTES * 60_000,
+  });
   const workers = [
     createWorker('correlate', { correlate: { span: 'incident.correlate', handle: handleCorrelate } }, log),
     createWorker('investigate', { investigate }, log),

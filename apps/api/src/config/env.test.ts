@@ -20,6 +20,7 @@ describe('loadConfig', () => {
       SESSION_COOKIE_SECURE: true,
       LLM_PROVIDER: 'fixture',
       LLM_TIMEOUT_MS: 30_000,
+      APPROVAL_TTL_MINUTES: 30,
     });
   });
 

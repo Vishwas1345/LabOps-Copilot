@@ -20,6 +20,8 @@ const envSchema = z.object({
   LLM_PROVIDER: z.enum(['fixture']).default('fixture'),
   // Enforced by our code, not the provider's: a hung model cannot hold a job.
   LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(30_000),
+  // How long an allowed proposal waits for approval before it expires.
+  APPROVAL_TTL_MINUTES: z.coerce.number().int().min(1).max(1440).default(30),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),

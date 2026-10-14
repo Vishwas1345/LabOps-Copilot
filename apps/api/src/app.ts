@@ -13,6 +13,7 @@ import { registerIncidentRoutes } from './incidents/routes.js';
 import { registerInvestigationRoutes } from './investigations/routes.js';
 import { registerJobRoutes } from './jobs/routes.js';
 import { registerLabRoutes } from './labs/routes.js';
+import { registerRecoveryRoutes } from './recovery/routes.js';
 import { logger as defaultLogger } from './observability/logger.js';
 
 // No endpoint needs more; oversized bodies get a 413 before parsing.
@@ -21,7 +22,7 @@ const BODY_LIMIT_BYTES = 64 * 1024;
 // Share our logger: `logger: true` would create a second one without redaction.
 export async function buildApp(options: {
   config: Pick<Config, 'CORS_ORIGIN' | 'DEMO_ENABLED' | 'REDIS_URL' | 'QUEUE_PREFIX'> &
-    Partial<Pick<Config, 'SESSION_COOKIE_SECURE'>>;
+    Partial<Pick<Config, 'SESSION_COOKIE_SECURE' | 'APPROVAL_TTL_MINUTES'>>;
   logger?: pino.Logger;
 }) {
   const app = Fastify({
@@ -61,6 +62,9 @@ export async function buildApp(options: {
   registerJobRoutes(app);
   registerIncidentRoutes(app);
   registerInvestigationRoutes(app);
+  registerRecoveryRoutes(app, {
+    approvalTtlMs: (options.config.APPROVAL_TTL_MINUTES ?? 30) * 60_000,
+  });
   app.addHook('onClose', closeQueues);
   if (options.config.DEMO_ENABLED) {
     registerDemoRoutes(app);

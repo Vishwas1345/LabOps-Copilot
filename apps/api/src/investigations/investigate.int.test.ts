@@ -20,6 +20,7 @@ import { ProviderRefusalError } from './provider.js';
 import { requestInvestigation } from './service.js';
 
 const log = createLogger(undefined, 'silent');
+const LIMITS = { timeoutMs: 1000, approvalTtlMs: 30 * 60_000 };
 const app = await buildApp({ config: { ...loadConfig(), DEMO_ENABLED: false } });
 const { cookie, operatorId } = await signedInCookie();
 const ACTOR = { type: 'human', id: operatorId } as const;
@@ -77,7 +78,7 @@ const stub = (analyse: LlmProvider['analyse']): LlmProvider => ({
 
 async function investigateWith(provider: LlmProvider, incidentId: string, timeoutMs = 2000) {
   const { investigationId } = await requestInvestigation(incidentId, ACTOR);
-  await createInvestigateJob(provider, timeoutMs).handle({ investigationId }, log);
+  await createInvestigateJob(provider, { ...LIMITS, timeoutMs }).handle({ investigationId }, log);
   return prisma.investigation.findUniqueOrThrow({ where: { id: investigationId } });
 }
 
@@ -151,7 +152,7 @@ describe('POST /api/incidents/:id/investigate', () => {
 
 describe('investigate job outcomes', () => {
   // Structure only: never the prose a model generated (CLAUDE.md 8).
-  it('stores a fixture diagnosis and leaves the incident for the policy step', async () => {
+  it('stores a fixture diagnosis and hands its action to policy', async () => {
     const { incidentId, labIds } = await incidentOf(3);
 
     const investigation = await investigateWith(fixtureProvider, incidentId);
@@ -165,7 +166,14 @@ describe('investigate job outcomes', () => {
       evidenceSummary: { included: 3, omitted: 0 },
     });
     expect([...investigation.targetLabIds].sort()).toEqual([...labIds].sort());
-    expect(await statusOf(incidentId)).toBe('investigating');
+    // Same transaction: the recommendation was judged and now awaits approval.
+    expect(await statusOf(incidentId)).toBe('awaiting_approval');
+    const proposal = await prisma.recoveryAction.findFirstOrThrow({ where: { incidentId } });
+    expect(proposal).toMatchObject({
+      investigationId: investigation.id,
+      actionType: 'RETRY_PROVISIONING',
+      status: 'awaiting_approval',
+    });
     expect(await auditOf('investigation.completed', investigation.id)).toHaveLength(1);
   });
 
@@ -256,7 +264,7 @@ describe('investigate job outcomes', () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
       return validDiagnosis();
     });
-    const job = createInvestigateJob(slow, 2000);
+    const job = createInvestigateJob(slow, { ...LIMITS, timeoutMs: 2000 });
 
     await Promise.all([
       job.handle({ investigationId }, log),
@@ -277,7 +285,7 @@ describe('investigate job outcomes', () => {
         calls += 1;
         return validDiagnosis();
       }),
-      1000,
+      LIMITS,
     ).handle({ investigationId: investigation.id }, log);
 
     expect(calls).toBe(0);
@@ -360,7 +368,7 @@ describe('exhausted investigate jobs', () => {
     });
     await prisma.$executeRaw`UPDATE "JobExecution" SET "updatedAt" = now() - interval '1 hour' WHERE id = ${jobId}`;
 
-    const job = createInvestigateJob(fixtureProvider, 1000);
+    const job = createInvestigateJob(fixtureProvider, LIMITS);
     await reconcileJobs(new Date(), { investigate: job.onExhausted });
 
     const investigation = await prisma.investigation.findUniqueOrThrow({
