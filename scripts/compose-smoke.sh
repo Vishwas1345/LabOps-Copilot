@@ -28,3 +28,19 @@ wait_for "api /health reports ok" \
 # React splits the text with a comment marker, hence the optional <!-- -->.
 wait_for "web page shows API ok" \
   sh -c "curl -fs '$WEB_URL' | grep -Eq 'API: (<!-- -->)?ok'"
+
+# The demo is enabled in compose: run the scenario (201, or 200 on a replay)
+# and confirm ingestion moved labs, i.e. the whole event path works in the stack.
+body="$(mktemp)"
+status="$(curl -s -o "$body" -w '%{http_code}' -X POST \
+  -H 'content-type: application/json' -d '{"seed":42}' \
+  "$API_URL/api/demo/scenarios/training-event")"
+case "$status" in
+  200|201) echo "ok: demo scenario ran ($status)" ;;
+  *) echo "FAILED: demo scenario returned $status" >&2; cat "$body" >&2; exit 1 ;;
+esac
+
+failed="$(curl -fs "$API_URL/api/labs?status=failed&limit=100" \
+  | grep -o '"status":"failed"' | wc -l | tr -d ' ')"
+[ "$failed" -ge 19 ] || { echo "FAILED: expected >= 19 failed labs, got $failed" >&2; exit 1; }
+echo "ok: events ingested, $failed labs failed"
