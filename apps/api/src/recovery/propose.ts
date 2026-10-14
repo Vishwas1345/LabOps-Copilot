@@ -49,17 +49,26 @@ const EXECUTED: RecoveryAction['status'][] = ['running', 'succeeded', 'failed'];
 const targetsHash = (targetIds: readonly string[]) =>
   createHash('sha256').update([...targetIds].sort().join(',')).digest('hex').slice(0, 16);
 
-async function gatherFacts(
+/**
+ * Server-side facts for the policy evaluator. `excludeActionId` is the action
+ * being executed: its own unfinished row must not count as a busy target.
+ */
+export async function gatherPolicyFacts(
   tx: Prisma.TransactionClient,
-  request: ActionRequest,
+  request: Pick<ActionRequest, 'actionType' | 'targetIds'>,
   scope: Awaited<ReturnType<typeof lockIncidentScope>>,
   now: Date,
+  excludeActionId?: string,
 ): Promise<PolicyFacts> {
   const statuses = await labStatusesOf(tx, scope.labIds);
   const targets = request.targetIds;
   const [busy, executed] = await Promise.all([
     tx.recoveryAction.findMany({
-      where: { status: { in: UNFINISHED }, targetIds: { hasSome: targets } },
+      where: {
+        status: { in: UNFINISHED },
+        targetIds: { hasSome: targets },
+        ...(excludeActionId ? { id: { not: excludeActionId } } : {}),
+      },
       select: { targetIds: true },
     }),
     tx.recoveryAction.findMany({
@@ -133,7 +142,7 @@ export function proposeAction(
     }
 
     const now = new Date();
-    const result = evaluatePolicy(request, await gatherFacts(tx, request, scope, now), PROPOSAL_STEPS);
+    const result = evaluatePolicy(request, await gatherPolicyFacts(tx, request, scope, now), PROPOSAL_STEPS);
     span.setAttribute('labops.policy.allowed', result.allowed);
     const action = await tx.recoveryAction.create({
       data: {

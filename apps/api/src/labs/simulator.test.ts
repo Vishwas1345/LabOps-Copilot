@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ERROR_CATEGORIES } from './failures.js';
+import { RECOVERY_OUTCOMES, simulateRetry } from './recovery-simulator.js';
 import type { SimulatedEvent } from './simulator.js';
 import { createTrainingEvent, SCENARIOS, TRAINING_EVENT_EPOCH } from './simulator.js';
 
@@ -117,12 +119,17 @@ describe.each(Array.from({ length: 50 }, (_, i) => i + 1))('seed %i', (seed) => 
 });
 
 describe('recovery outcomes', () => {
+  // The scenario's story: the burst recovers on retry, the scattered
+  // configuration and permission failures do not.
   it('lets a retry fix a timeout but not a configuration problem', () => {
-    expect(SCENARIOS['training-event'](42).recoveryOutcomes).toEqual({
-      PROVISION_TIMEOUT: 'recovers',
-      NETWORK_CONFIG: 'still_failing',
-      PERMISSION_DENIED: 'still_failing',
-    });
+    expect(simulateRetry('PROVISION_TIMEOUT')).toBe('ready');
+    expect(simulateRetry('NETWORK_CONFIG')).toBe('failed');
+    expect(simulateRetry('PERMISSION_DENIED')).toBe('failed');
+    expect(simulateRetry(null)).toBe('failed');
+  });
+
+  it('decides an outcome for every failure category', () => {
+    expect(Object.keys(RECOVERY_OUTCOMES).sort()).toEqual([...ERROR_CATEGORIES].sort());
   });
 
   it('uses a fixed epoch', () => {

@@ -8,6 +8,7 @@ import { prisma } from '../db.js';
 import { correlationWindow } from '../events/correlation-window.js';
 import { ingestEvent } from '../events/service.js';
 import { correlateWindow } from '../incidents/correlate.job.js';
+import type { ActionType } from '../labs/actions.js';
 import type { ErrorCategory } from '../labs/failures.js';
 import { createLogger } from '../observability/logger.js';
 import { proposeAction } from './propose.js';
@@ -25,7 +26,14 @@ const created = { labs: [] as string[], dependencies: [] as string[] };
 export async function failedIncident(
   day: Date,
   actor: Actor,
-  options: { count?: number; category?: ErrorCategory; propose?: boolean } = {},
+  options: {
+    count?: number;
+    category?: ErrorCategory;
+    propose?: boolean;
+    /** What to propose; a retry on every lab by default. */
+    action?: ActionType;
+    targets?: 'all' | 'first' | 'dependency' | 'none';
+  } = {},
 ): Promise<FixtureIncident> {
   const dep = await prisma.dependency.create({ data: { kind: 'image-registry' } });
   created.dependencies.push(dep.id);
@@ -59,7 +67,13 @@ export async function failedIncident(
     proposeAction(
       tx,
       incidentId,
-      { actionType: 'RETRY_PROVISIONING', targetIds: labIds, parameters: {} },
+      {
+        actionType: options.action ?? 'RETRY_PROVISIONING',
+        targetIds: { all: labIds, first: [labIds[0]], dependency: [dep.id], none: [] }[
+          options.targets ?? 'all'
+        ],
+        parameters: {},
+      },
       actor,
       { approvalTtlMs: 30 * 60_000 },
     ),
