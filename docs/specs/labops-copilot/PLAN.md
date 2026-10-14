@@ -3,10 +3,14 @@
 **Status:** Approved. Phases 0–10 and 12 done (LOC-5 to LOC-15, LOC-17): the
 workflow runs end to end in a browser, with live updates. Next is Phase 11.
 
+**Remaining (4):** 11 real LLM provider, opt-in (LOC-16); 13 integration
+settings and secrets, adapter-gated (LOC-18); 14 end-to-end tests and metrics
+(LOC-19); 15 dependency graph (optional) and delivery (LOC-20).
+
 **Order changed after Phase 9:** the dashboard (Phase 12) ran before live
 updates (10) and the real LLM (11), so the proven workflow became visible and
 demoable first; live updates then plug into pages that exist. Remaining order:
-10, 11, 13, 14, 15.
+11, 13, 14, 15.
 
 Phase 2 deviations, both deliberate: the demo endpoint returns 201/200, not
 202, because nothing is queued until Phase 4; and the simulator's

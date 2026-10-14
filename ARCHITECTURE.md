@@ -905,7 +905,7 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Layer | State | Next |
 |---|---|---|
 | npm workspaces, root scripts | Done | — |
-| Next.js shell + layout | Done | Dashboard routes (Phase 12) |
+| Next.js shell + layout | Done | — |
 | Fastify app, CORS, `/health` | Done | — |
 | Zod config validation, error envelope, body limit | Done (Phase 0) | — |
 | Prisma migrations, drift check | Done (Phase 0) | — |
@@ -926,11 +926,11 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | `GET /api/jobs/:id` | Done (Phase 4) | — |
 | Correlation engine: scoring, anchor clustering, correlate job, `Incident`/`IncidentLab` | Done (Phase 5) | Sequence and transition signals once labs have event history |
 | `GET /api/incidents`, `/:id`, `/:id/audit` | Done (Phase 5) | — |
-| Operator auth: sessions, guard, login rate limit, seeded operator | Done (Phase 6) | Login UI (Phase 12); RBAC if time permits |
+| Operator auth: sessions, guard, login rate limit, seeded operator | Done (Phase 6) | RBAC if time permits |
 | AI investigation: evidence pack, delimited prompt, strict output, fixture provider, investigate job and endpoints | Done (Phase 7) | Real provider and an opt-in live test (Phase 11) |
 | Policy engine, allow-list, recovery proposals (automatic and operator) | Done (Phase 8) | — |
 | Approval, execution with revalidation, verification, expiry sweep | Done (Phase 9) | Four-eyes approval with roles (stretch) |
-| Operator dashboard: login, overview, incidents, incident detail with approval, audit | Done (Phase 12) | Live updates (Phase 10) |
+| Operator dashboard: login, overview, incidents, incident detail with approval, audit | Done (Phase 12) | Browser tests (Phase 14) |
 | Live updates: committed-audit SSE stream, gap-free replay, web relay, live refresh | Done (Phase 10) | — |
 | React Flow dependency graph | Not started | Phase 15 |
 | Integrations (adapter, settings, secrets) | Not started | Phase 13 |
