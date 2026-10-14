@@ -14,7 +14,7 @@ operational reference.
 |---|---|---|---|
 | `web` (Next.js) | 3000 | Operator UI; server components call the API | Exists |
 | `api` (Fastify) | 4000 | HTTP API: validate, persist, enqueue; SSE | Exists (labs, events, jobs, incidents) |
-| `worker` (BullMQ) | none | Runs queued jobs and the reconciler (startup, then every 60 s); never serves HTTP | Exists; runs correlation (Phase 5) and investigations (Phase 7) |
+| `worker` (BullMQ) | none | Runs queued jobs and the reconciler (startup, then every 60 s); never serves HTTP | Exists; runs correlation, investigations and recovery execution; also sweeps expired approvals |
 | `postgres` 16 | 5432 | All durable business state | Exists |
 | `redis` 7 | 6379 (host port overridable) | Queue transport; never the source of truth | Exists |
 | `migrate` (one-shot) | none | Applies Prisma migrations, seeds the demo operator, then exits; api starts only after it succeeds | Exists |
@@ -178,8 +178,8 @@ runs and ingests events (at least 19 labs end up failed), `/api/labs` refuses
 an anonymous request, the seeded operator signs in, the worker runs a correlate
 job, the scenario's 12-lab incident exists, and the worker completes an
 investigation of it with the fixture provider whose recommended retry policy
-allows, leaving it awaiting approval (checked on a fresh stack; a re-run skips
-it). It needs
+allows, then approves it and waits for the worker to verify every lab and
+resolve the incident (checked on a fresh stack; a re-run skips it). It needs
 `SEED_OPERATOR_PASSWORD` (the value compose seeded); CI generates a masked one
 per run. It catches Dockerfile and
 startup bugs that unit and integration tests cannot see. Run it locally against

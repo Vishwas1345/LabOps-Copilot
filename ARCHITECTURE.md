@@ -636,6 +636,34 @@ transaction. If anything changed since approval, the action is blocked and the
 operator is notified. An approval older than a configured TTL expires
 automatically.
 
+### How Phase 9 implements it
+
+- **Approve / reject** (`recovery/approve.ts`): `SELECT … FOR UPDATE` on the
+  action; approve requires `awaiting_approval`, enforces `expiresAt` itself (a
+  late click expires the action and gets 409), records the approver from the
+  session and queues one execute job keyed by the action. Reject returns the
+  incident to `open`. They live in `recovery/` because `RecoveryAction` is
+  recovery's table.
+- **Execute** (`recovery/execute.job.ts`), three steps:
+  1. One transaction: re-run policy steps 3-7 against fresh state (the
+     action's own row excluded from concurrency; approver and expiry
+     re-checked). Changed means `blocked` with the step and reason, incident
+     to `manual_review`. Otherwise `running`, retried labs to `recovering`,
+     incident to `recovering`, lab states before stored.
+  2. Outside any transaction: the simulated action
+     (`labs/recovery-simulator.ts`, one outcome per failure category).
+  3. One transaction behind a compare-and-set on `running`: apply, then
+     **verify** by re-reading every lab in the incident. All `ready` means
+     `resolved`; anything else is `manual_review`.
+- Only a retry changes lab state, so a recheck or an escalation can never
+  resolve an incident. A replay changes nothing, a crash after step 1 resumes,
+  and an exhausted job fails the action and returns labs to `failed`.
+- **Expiry sweep** (`recovery/expire.ts`) runs on the worker's 60 s tick with
+  `FOR UPDATE SKIP LOCKED`; approve and execute check expiry too, so
+  correctness never waits for it.
+- Self-approval is allowed (one demo operator, no roles); proposer and
+  approver are both audited.
+
 ---
 
 ## 11. Reliability, idempotency and failure handling
@@ -862,7 +890,7 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Operator auth: sessions, guard, login rate limit, seeded operator | Done (Phase 6) | Login UI (Phase 12); RBAC if time permits |
 | AI investigation: evidence pack, delimited prompt, strict output, fixture provider, investigate job and endpoints | Done (Phase 7) | Real provider and an opt-in live test (Phase 11) |
 | Policy engine, allow-list, recovery proposals (automatic and operator) | Done (Phase 8) | — |
-| Approval, execution, verification | Not started | Phase 9 |
+| Approval, execution with revalidation, verification, expiry sweep | Done (Phase 9) | Four-eyes approval with roles (stretch) |
 | SSE, dashboard, React Flow | Not started | Phases 10, 12, 15 |
 | Integrations (adapter, settings, secrets) | Not started | Phase 13 |
 

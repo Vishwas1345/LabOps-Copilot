@@ -348,8 +348,8 @@ Illustrative surface. Implemented endpoints are marked ✅.
 | `GET` | `/api/incidents/:id/investigations` | Investigation results, newest first ✅ |
 | `POST` | `/api/incidents/:id/recovery-proposals` | Propose an action; policy records allowed or blocked, with the step and reason ✅ |
 | `GET` | `/api/incidents/:id/recovery-actions` | Proposals with their policy decisions ✅ |
-| `POST` | `/api/recovery-actions/:id/approve` | Approve a proposed action |
-| `POST` | `/api/recovery-actions/:id/reject` | Reject a proposed action |
+| `POST` | `/api/recovery-actions/:id/approve` | Approve; 202 with the execute job, which revalidates, acts and verifies ✅ |
+| `POST` | `/api/recovery-actions/:id/reject` | Reject; the incident returns to open ✅ |
 | `GET` | `/api/jobs/:id` | Background job state, from the Postgres mirror ✅ |
 | `GET` | `/api/incidents/:id/audit` | Incident audit history, in commit order ✅ |
 | `GET` | `/api/events/stream` | SSE stream for live dashboard updates |
@@ -493,7 +493,7 @@ phase-by-phase plan, with what each phase delivers and how it is verified, is
 | 6 | Operator sign-in: server-side sessions, deny-by-default routes, login rate limit | Done |
 | 7 | AI investigation: bounded evidence, delimited prompt, strict output, fixture provider | Done |
 | 8 | Policy engine: allow-list, seven fixed steps, recorded proposals | Done |
-| 9 | Approval, execution, verification | Not started |
+| 9 | Approval, execution with revalidation, verified resolution. **The full backend workflow runs end to end** | Done |
 | 10–12 | Live updates, real LLM provider, operator dashboard | Not started |
 | 13–15 | Integration settings, E2E tests and metrics, delivery | Not started |
 

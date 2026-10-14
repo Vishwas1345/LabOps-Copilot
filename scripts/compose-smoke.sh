@@ -102,6 +102,17 @@ if [ "$status" = "202" ]; then
   wait_for "policy allowed the recommended retry, awaiting approval" \
     sh -c "curl -fs -b '$jar' '$API_URL/api/incidents/$incident_id/recovery-actions' \
       | grep -q '\"status\":\"awaiting_approval\"'"
+
+  # A human approves; the worker revalidates, retries and verifies. Only
+  # verification (every lab ready) may resolve the incident.
+  action_id="$(curl -fs -b "$jar" "$API_URL/api/incidents/$incident_id/recovery-actions" \
+    | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)"
+  approve="$(curl -s -b "$jar" -o /dev/null -w '%{http_code}' -X POST \
+    "$API_URL/api/recovery-actions/$action_id/approve")"
+  [ "$approve" = "202" ] || { echo "FAILED: approve returned $approve" >&2; exit 1; }
+  echo "ok: operator approved the retry"
+  wait_for "worker verified recovery and resolved the incident" \
+    sh -c "curl -fs -b '$jar' '$API_URL/api/incidents/$incident_id' | grep -q '\"status\":\"resolved\"'"
 else
   echo "skip: proposal check (incident handled by an earlier run)"
 fi
