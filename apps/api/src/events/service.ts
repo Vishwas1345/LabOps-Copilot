@@ -1,6 +1,7 @@
 // The single ingest path for simulated and provider events: validate,
 // redact, dedupe, store, then move the lab if its state machine allows.
 
+import type { OperationalEvent } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import type { Actor } from '../audit/audit.js';
 import { writeAudit } from '../audit/audit.js';
@@ -162,16 +163,29 @@ export async function listLabEvents(
   const page = hasMore ? rows.slice(0, query.limit) : rows;
 
   return {
-    items: page.map((row) => ({
-      id: row.id,
-      type: row.type,
-      errorCategory: row.errorCategory,
-      dependencyId: row.dependencyId,
-      message: row.message,
-      source: row.source,
-      occurredAt: row.occurredAt.toISOString(),
-    })),
+    items: page.map(toEventView),
     nextCursor: hasMore ? page[page.length - 1].id : null,
+  };
+}
+
+/** Events by id, oldest first: the evidence an incident points at. */
+export async function getEventViews(eventIds: string[]): Promise<EventView[]> {
+  const rows = await prisma.operationalEvent.findMany({
+    where: { id: { in: eventIds } },
+    orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+  });
+  return rows.map(toEventView);
+}
+
+function toEventView(row: OperationalEvent): EventView {
+  return {
+    id: row.id,
+    type: row.type,
+    errorCategory: row.errorCategory,
+    dependencyId: row.dependencyId,
+    message: row.message,
+    source: row.source,
+    occurredAt: row.occurredAt.toISOString(),
   };
 }
 

@@ -1,7 +1,8 @@
 import type { ActorType, Prisma } from '@prisma/client';
+import { prisma } from '../db.js';
 import { redactSecrets } from '../observability/redact.js';
 
-// The only write path into AuditEntry. Takes the caller's transaction so a
+// The only path into AuditEntry. Writes take the caller's transaction so a
 // change and its entry commit together; a DB trigger makes the table append-only.
 
 export interface Actor {
@@ -39,4 +40,40 @@ export async function writeAudit(
         : undefined,
     },
   });
+}
+
+export interface AuditEntryView {
+  /** Commit order; a string because it is a bigint. */
+  seq: string;
+  actorType: ActorType;
+  actorId: string;
+  action: string;
+  outcome: string;
+  metadata: unknown;
+  createdAt: string;
+}
+
+// Bounded: one target's history is small, and an unbounded read is a
+// footgun on an append-only table that only grows.
+const MAX_TARGET_ENTRIES = 500;
+
+/** One target's history, in commit order. */
+export async function listAuditFor(
+  targetType: string,
+  targetId: string,
+): Promise<AuditEntryView[]> {
+  const rows = await prisma.auditEntry.findMany({
+    where: { targetType, targetId },
+    orderBy: { seq: 'asc' },
+    take: MAX_TARGET_ENTRIES,
+  });
+  return rows.map((row) => ({
+    seq: row.seq.toString(),
+    actorType: row.actorType,
+    actorId: row.actorId,
+    action: row.action,
+    outcome: row.outcome,
+    metadata: row.metadata,
+    createdAt: row.createdAt.toISOString(),
+  }));
 }
