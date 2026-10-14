@@ -19,7 +19,7 @@ export interface SimulatedEvent {
   /** Stable per logical event; a redelivery reuses it (the dedup key). */
   providerEventId: string;
   labId: string;
-  type: 'provision.succeeded' | 'provision.failed';
+  type: 'provision_succeeded' | 'provision_failed';
   errorCategory?: ErrorCategory;
   /** Only set when the failure is attributable to a shared dependency. */
   dependencyId?: string;
@@ -99,7 +99,7 @@ export function createTrainingEvent(seed: number, epoch: Date): Scenario {
   ): SimulatedEvent => ({
     providerEventId: `${lab.id}-provision`,
     labId: lab.id,
-    type: failure ? 'provision.failed' : 'provision.succeeded',
+    type: failure ? 'provision_failed' : 'provision_succeeded',
     ...(failure ?? { message: 'Provisioning completed' }),
     occurredAt,
     source: 'simulated',
