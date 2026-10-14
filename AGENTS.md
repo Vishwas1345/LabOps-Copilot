@@ -5,7 +5,8 @@ Read this first, then `CLAUDE.md`, which is the full rulebook and wins on any
 conflict. This file adds what the rulebook cannot: **how we have been working,
 what is built, what is in flight, and what to do next.**
 
-Last updated: 2026-10-14, end of the day's session (Phases 5-11 and 12 built).
+Last updated: 2026-10-14, late evening (Phase 11 merged; Phase 13 built and
+awaiting review on PR #21).
 
 ---
 
@@ -222,6 +223,23 @@ the verification event. It passes on a fresh stack and on a re-run.
   trail (`auth.login` entries) tells "unknown username" from "wrong password".
 - **Prisma queries are lazy:** `void prisma.x.update(...)` never runs. Always
   await (one test silently did nothing because of this).
+- **Never spawn `npx` from Node code on Windows.** A bare `npx` is ENOENT and
+  `npx.cmd` is EINVAL, because Node refuses to spawn a command script without a
+  shell. `vitest.integration.setup.ts` resolves the Prisma CLI and runs it with
+  `process.execPath` instead.
+- **`AuditEntry` is append-only and the database enforces it,** so a test that
+  tries to delete audit rows fails. Count a delta instead of clearing.
+- **After a mutation check, verify the restore with `grep`, not `git diff`.**
+  `git diff` reports nothing for an untracked file, and that blind spot let a
+  mutation survive a whole round of Phase 13.
+- **`git rm --cached` removes a file from the remote but not from history.** If
+  a file was already pushed and should not have been, the history needs
+  rewriting (`git filter-repo`) rather than a plain delete.
+- **Hand-applying a migration corrupts Prisma's bookkeeping.** It worked in
+  principle and cost an hour in practice: `ALTER TYPE` applied by hand plus an
+  aborted `migrate dev` left a duplicate failed row and `migrate deploy`
+  refused to continue. Write the SQL, verify it from zero on a throwaway
+  database, and let `migrate deploy` own the record.
 - **Never edit an applied migration** (Prisma checksums it); add a new one.
   `npm run prisma:drift -w @labops/api` must stay clean.
 - zsh: `grep --include=*.ts` fails on glob expansion; use plain `grep -rn`.
@@ -232,14 +250,22 @@ the verification event. It passes on a fresh stack and on a re-run.
 - gitleaks runs in CI on each push's commits; fake secrets in tests must be
   allowlisted **by exact string** in `.gitleaks.toml` (never by pattern).
 - `scripts/audit-gate.mjs` fails on new high/critical npm advisories not in
-  `.github/audit-baseline.json`.
+  `.github/audit-baseline.json` (6 baselined).
+- **`apps/api/.env` currently has `LLM_PROVIDER=gemini`** and a real key, so
+  the host dev worker calls the live API. Set it back to `fixture` to work
+  offline. That `.env` also gained `TEST_DATABASE_URL` and `REDIS_URL`, without
+  which the integration suite refuses to start.
+- A root `.env` exists with `SEED_OPERATOR_USERNAME`/`SEED_OPERATOR_PASSWORD`
+  (git-ignored), created for a compose smoke attempt. Compose needs it to seed
+  the operator.
 - Main is **not** branch-protected yet (owner's settings task: require the
   api/web quality gates and the compose smoke test).
 
 ## 7. What is built (phase by phase)
 
-All phases through 12 are merged to `main`, including Phase 11 (PR #19). Jira:
-story for Phase N is `LOC-(5+N)`. Phase 13 is next.
+All phases through 12 are merged to `main`, including Phase 11 (PR #19). Phase 13
+is built on branch `feat/LOC-18-integration-settings`, open as draft PR #21 and
+**not merged**. Jira: story for Phase N is `LOC-(5+N)`.
 
 | Phase | Jira | PR | What |
 |---|---|---|---|
@@ -253,6 +279,7 @@ story for Phase N is `LOC-(5+N)`. Phase 13 is next.
 | 12 | LOC-17 | #15 | Dashboard (run **before** 10 and 11 by agreement): BFF login, overview, incidents, incident detail with approve/reject, audit; Zod-parsed responses |
 | 10 | LOC-15 | #16 | Live updates over SSE (see section 8) |
 | 11 | LOC-16 | #19 | Real LLM provider, opt-in: Gemini over plain `fetch`, Zod → Gemini schema transform, bounded retry, token usage in `modelMetadata`, opt-in live test |
+| 13 | LOC-18 | **#21 draft** | Integration settings and secrets, adapter-gated: AES-256-GCM credential sealing, `ProviderAdapter`, a CloudLabs adapter claiming no capabilities, four settings routes, settings page (see section 8b) |
 
 Key behaviours worth knowing (details in `ARCHITECTURE.md`):
 
@@ -353,6 +380,63 @@ variable, so the worker defaults to `fixture`; the smoke test and CI therefore
 cannot call a network provider. Verified by reading `docker-compose.yml`, not
 assumed.
 
+## 8b. Phase 13 (PR #21): built, not merged, awaiting review
+
+Branch `feat/LOC-18-integration-settings`, **draft PR #21**. Six commits:
+secrets, adapter boundary, API, settings page, docs, and a self-review fix.
+
+**Built.** `secrets/crypto.ts` seals credentials with AES-256-GCM
+(`iv | tag | ciphertext`, random IV per seal) under `CREDENTIALS_KEY`.
+`integrations/adapter.ts` defines the boundary; `cloudlabs-adapter.ts` reports
+`NO_CAPABILITIES` and makes no network call; `simulator-adapter.ts` reports what
+the simulator genuinely has. Four routes: `GET /api/integrations`, and
+`PUT`/`POST .../test`/`DELETE` for a provider. A settings page renders only what
+`capabilities` reports. `IntegrationConnection` table and `IntegrationState`
+enum, migration `20261015000000_add_integration_connection`.
+
+**The gate is structural, not a convention.** Five decisions, each with a test:
+
+1. `stateFor(capabilities)` *derives* the state, so `connected` cannot be
+   assigned. A body carrying `{"state":"connected"}` is rejected as an unknown
+   field. Probe: four forgery routes all return 400 and write no row.
+2. `canExecuteRecovery` is typed as the **literal `false`**, so a future adapter
+   cannot enable live recovery without a visible type change.
+3. `fetchLabs`, `registerWebhook` and `normalizeIncomingEvent` were drafted as
+   optional methods and are now **absent**. An optional method invites an
+   implementation by someone who has not read the gate.
+4. `connectionView` (API) and the mirrored web schema have **no credential
+   field**, so the credential cannot be echoed or rendered even by accident.
+   `encryptedCredentials` is read only as a boolean; it is opened in exactly one
+   place, inside an adapter's `testConnection`.
+5. The settings page renders **no connection fields**, because the auth scheme
+   is unconfirmed. Drawing an input for it would invent the contract.
+
+**The self-review findings, already fixed in `6de1f82`.** Worth keeping because
+the first one only shows up on a path the original test never walked:
+
+- An adapter with nothing reachable read `error` after a failed test. `error`
+  means "retrying might work", and it never can while the gate is closed. Now
+  `not_configured`. The test missed it because it tested cloudlabs with *no
+  stored row*, taking a different branch.
+- A failed test left stale `supportedEventTypes` on the row, so the UI would
+  keep offering subscriptions the provider no longer confirms. Now cleared.
+
+**Verified on the branch.** lint 0; typecheck 0; api 655 unit (23 files) and 201
+integration (22 files); web 89 (11 files), 99.33% coverage; audit gate 6 known
+/ 6 baselined. Probe test confirmed no surface leaks the credential — response
+list, test response, database ciphertext and audit metadata all clean.
+
+**Not verified, and not attempted:**
+
+1. **Compose smoke (section 5 step 7) and the fresh clone (step 5).** Deferred
+   to issue #20. `scripts/compose-smoke.ps1` still has **never been executed**.
+2. **Jira LOC-18 was never moved to In Progress** — no CLI, no credentials in
+   this environment. Do it by hand.
+3. The branch has **not** been typechecked on every commit or through a compose
+   smoke run; PR #21's CI has only run the api and web pipelines.
+
+**After it merges:** Jira LOC-18 to Done, pull `main`, and start Phase 14.
+
 ## 9. What is left, in order
 
 Phases 12, 10 and 11 are done. The agreed order is **13, 14, 15**, each under
@@ -360,13 +444,9 @@ the plan-first loop above; read the phase in `PLAN.md` and the matching
 `.claude/skills/*` recipe first.
 
 1. **Phase 13: integration settings and secrets, adapter-gated (LOC-18;
-   LOC-71..74).** Read `ARCHITECTURE.md §13` (Integration gate) and the
-   `cloudlabs-adapter` skill. `secrets/crypto.ts` (AES-256-GCM, versioned key
-   from `CREDENTIALS_KEY`), `ProviderAdapter` with simulator and a CloudLabs
-   adapter that reports **no capabilities** (so `not_configured`, never
-   `connected`), settings endpoints that never echo credentials, a settings
-   page in simulator mode. **Do not invent CloudLabs endpoints, auth or
-   webhook signing.** Sync/webhooks stay unbuilt.
+   LOC-71..74).** Built on `feat/LOC-18-integration-settings`, draft PR #21,
+   **awaiting owner review — see section 8b.** After it merges: Jira LOC-18 to
+   Done, pull `main`, and start Phase 14.
 2. **Phase 14: E2E tests and metrics (LOC-19; LOC-75, LOC-76).** Playwright
    journey in CI against compose (seeded scenario, fixture LLM), including the
    negative cases visible in the UI (permission incident stays separate, a
