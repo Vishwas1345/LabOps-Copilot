@@ -29,7 +29,8 @@ export const SIGNAL_WEIGHTS = {
 export const JOIN_THRESHOLD = 0.7;
 
 const BURST_MS = 5 * 60_000;
-const NEARBY_MS = 15 * 60_000;
+// Past this gap time scores 0, so no pair can reach the threshold.
+export const NEARBY_MS = 15 * 60_000;
 
 export type SignalName = keyof typeof SIGNAL_WEIGHTS;
 

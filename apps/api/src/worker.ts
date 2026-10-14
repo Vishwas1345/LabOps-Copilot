@@ -2,7 +2,7 @@
 
 import { loadConfig } from './config/env.js';
 import { prisma } from './db.js';
-import { handleCorrelate } from './events/correlate.job.js';
+import { handleCorrelate } from './incidents/correlate.job.js';
 import { closeQueues } from './jobs/queues.js';
 import { reconcileJobs } from './jobs/reconcile.js';
 import { createWorker } from './jobs/worker.js';
