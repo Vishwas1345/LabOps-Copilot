@@ -129,7 +129,7 @@ Three workflows in `.github/workflows/`. Triggered on pushes and pull requests t
 
 | Workflow | Role |
 |---|---|
-| `changes.yml` | The only entry point. Uses `dorny/paths-filter` to decide which service changed, then calls only the matching pipeline. Root manifests and the ESLint config fan out to both. |
+| `changes.yml` | The only entry point. Uses `dorny/paths-filter` to decide which service changed, then calls only the matching pipeline. Root manifests and the ESLint config fan out to both. Also runs the **compose smoke test** whenever api or web changed. |
 | `api.yml` | build (`tsc` + `prisma validate`), lint and unit tests in parallel; then integration tests (real Postgres + Redis) and coverage; then the quality gate; then the image (only when `deploy` is set) |
 | `web.yml` | build, lint and unit tests in parallel; then coverage; then the quality gate; then the image (only when `deploy` is set) |
 
@@ -143,6 +143,12 @@ Three workflows in `.github/workflows/`. Triggered on pushes and pull requests t
 **Integration tests:** `npm run test:integration -w @labops/api` runs
 `*.int.test.ts` against a real, migrated Postgres. Locally it reads
 `apps/api/.env`; it needs `npm run db:up && npm run db:migrate` first.
+
+**Compose smoke test:** builds both images, boots the full stack, then runs
+`scripts/compose-smoke.sh`: migrations exited 0, `/health` reports ok, and the
+web page shows "API: ok" through `API_INTERNAL_URL`. It catches Dockerfile and
+startup bugs that unit and integration tests cannot see. Run it locally against
+a running stack with `scripts/compose-smoke.sh`.
 
 **Coverage:** 70% lines, functions, branches and statements in both workspaces.
 The api coverage job runs unit and integration specs together against a

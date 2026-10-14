@@ -84,3 +84,31 @@ jobs:
     needs: detect
     if: needs.detect.outputs.api == 'true'
     uses: ./.github/workflows/api.yml
+
+  # Builds both images and boots the real stack, so a Dockerfile or startup
+  # bug fails here instead of on the first `docker compose up`.
+  compose-smoke:
+    name: compose smoke test
+    needs: detect
+    if: needs.detect.outputs.api == 'true' || needs.detect.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build images
+        run: docker compose build
+
+      - name: Start the stack
+        run: docker compose up -d
+
+      - name: Check migrations, api and web
+        run: scripts/compose-smoke.sh
+
+      - name: Show container logs
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v
