@@ -97,7 +97,7 @@ npm run lint                 # ESLint across both workspaces
 npm run lint:fix             # ESLint with autofix
 npm run typecheck            # tsc --noEmit across both workspaces
 npm run test                 # Vitest unit tests, both workspaces
-npm run test:integration -w @labops/api   # real Postgres; needs db:up + db:migrate
+npm run test:integration -w @labops/api   # own DB (TEST_DATABASE_URL), auto-migrated; needs db:up
 npm run coverage             # Vitest with v8 coverage + thresholds
 ```
 
