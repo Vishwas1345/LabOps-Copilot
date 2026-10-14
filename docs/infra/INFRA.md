@@ -84,7 +84,8 @@ uncommitted override removes them:
 | `API_HOST` | api | `127.0.0.1` (`0.0.0.0` in compose) | Bind address |
 | `API_PORT` | api | `4000` | Port |
 | `CORS_ORIGIN` | api | `http://localhost:3000` | Allowed browser origin |
-| `LOG_LEVEL` | api | `info` | Pino level |
+| `LOG_LEVEL` | api | `info` | Pino level (test runs use `warn`) |
+| `DEMO_ENABLED` | api | `false` (`true` in compose and `.env.example`) | Registers `/api/demo/*`; when off the routes do not exist (404) |
 | `REDIS_URL` | api | `redis://redis:6379` in compose | Set, not yet read |
 | `NEXT_PUBLIC_API_URL` | web | `http://localhost:4000` | API URL for the browser (URLs only, never tokens) |
 | `API_INTERNAL_URL` | web | falls back to `NEXT_PUBLIC_API_URL` | API URL for server-side rendering |
@@ -93,7 +94,6 @@ uncommitted override removes them:
 
 | Variable | Phase | Purpose |
 |---|---|---|
-| `DEMO_ENABLED` | 2 | Registers `/api/demo/*`; off outside local and demo |
 | `SESSION_SECRET` | 6 | Signs operator session cookies |
 | `APPROVAL_TTL_MINUTES` | 9 | Approval expiry (default 30) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | 4 | Trace export target |

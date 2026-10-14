@@ -3,6 +3,7 @@ import type { Actor } from '../audit/audit.js';
 import { writeAudit } from '../audit/audit.js';
 import { prisma } from '../db.js';
 import type { ListLabsQuery } from './schemas.js';
+import type { Scenario } from './simulator.js';
 import type { LabStatus } from './transitions.js';
 import { assertTransition } from './transitions.js';
 
@@ -136,4 +137,32 @@ export async function transitionLab(
   });
 
   return { from, to };
+}
+
+// Idempotent: ids come from the seed, so a re-run inserts nothing new.
+// Returns how many labs this call created (0 on a replay).
+export async function createSimulatedLabs(
+  tx: Prisma.TransactionClient,
+  scenario: Scenario,
+): Promise<number> {
+  await tx.dependency.createMany({
+    data: scenario.dependencies.map((d) => ({ id: d.id, kind: d.kind })),
+    skipDuplicates: true,
+  });
+  const { count } = await tx.lab.createMany({
+    data: scenario.labs.map((lab) => ({
+      id: lab.id,
+      name: lab.name,
+      labType: lab.labType,
+      source: 'simulated',
+    })),
+    skipDuplicates: true,
+  });
+  await tx.labDependency.createMany({
+    data: scenario.labs.flatMap((lab) =>
+      lab.dependencyIds.map((dependencyId) => ({ labId: lab.id, dependencyId })),
+    ),
+    skipDuplicates: true,
+  });
+  return count;
 }

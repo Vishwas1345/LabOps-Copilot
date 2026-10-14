@@ -49,6 +49,8 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: "4000"
       CORS_ORIGIN: http://localhost:3000
+      # Compose is the local/demo stack; the demo routes stay off elsewhere.
+      DEMO_ENABLED: "true"
     ports:
       - "4000:4000"
     depends_on:
