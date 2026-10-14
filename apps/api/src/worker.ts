@@ -7,6 +7,7 @@ import { fixtureProvider } from './investigations/fixture-provider.js';
 import { createInvestigateJob } from './investigations/investigate.job.js';
 import { closeQueues } from './jobs/queues.js';
 import { reconcileJobs } from './jobs/reconcile.js';
+import { createExecuteJob } from './recovery/execute.job.js';
 import { createWorker } from './jobs/worker.js';
 import { logger } from './observability/logger.js';
 import { initTracing } from './observability/tracing.js';
@@ -27,13 +28,18 @@ async function main() {
     timeoutMs: config.LLM_TIMEOUT_MS,
     approvalTtlMs: config.APPROVAL_TTL_MINUTES * 60_000,
   });
+  const execute = createExecuteJob();
   const workers = [
     createWorker('correlate', { correlate: { span: 'incident.correlate', handle: handleCorrelate } }, log),
     createWorker('investigate', { investigate }, log),
+    createWorker('execute', { execute }, log),
   ];
 
   const reconcile = () =>
-    reconcileJobs(new Date(), { investigate: investigate.onExhausted })
+    reconcileJobs(new Date(), {
+      investigate: investigate.onExhausted,
+      execute: execute.onExhausted,
+    })
       .then((outcome) => log.info(outcome, 'reconciled jobs'))
       .catch((error: unknown) => log.error({ err: error }, 'reconcile failed'));
   await reconcile();

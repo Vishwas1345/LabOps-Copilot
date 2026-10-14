@@ -28,16 +28,12 @@ export interface SimulatedEvent {
   source: 'simulated';
 }
 
-/** What a retry would achieve per category; used by the executor (Phase 9). */
-export type RecoveryOutcome = 'recovers' | 'still_failing';
-
 export interface Scenario {
   name: string;
   seed: number;
   labs: SimulatedLab[];
   dependencies: SimulatedDependency[];
   events: SimulatedEvent[];
-  recoveryOutcomes: Partial<Record<ErrorCategory, RecoveryOutcome>>;
 }
 
 /** mulberry32: tiny, fast, good enough for test data; never for security. */
@@ -147,13 +143,6 @@ export function createTrainingEvent(seed: number, epoch: Date): Scenario {
     labs,
     dependencies: [registry, network],
     events,
-    // Decided by scenario data, never the clock: a retry fixes a timeout once
-    // the registry recovers, but cannot fix a network or permission problem.
-    recoveryOutcomes: {
-      PROVISION_TIMEOUT: 'recovers',
-      NETWORK_CONFIG: 'still_failing',
-      PERMISSION_DENIED: 'still_failing',
-    },
   };
 }
 

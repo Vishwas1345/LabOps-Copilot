@@ -148,7 +148,8 @@ export async function transitionIncident(
 
   const { count } = await tx.incident.updateMany({
     where: { id: incidentId, status: from },
-    data: { status: to },
+    // resolved is reachable only from recovering, after verification passes.
+    data: { status: to, ...(to === 'resolved' ? { resolvedAt: new Date() } : {}) },
   });
   if (count === 0) {
     throw new ConcurrentIncidentTransitionError(incidentId, from);
