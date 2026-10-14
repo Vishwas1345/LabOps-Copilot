@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { AutoRefresh } from '@/components/auto-refresh';
+import { LiveRefresh } from '@/components/live-refresh';
 import { StatusBadge } from '@/components/status-badge';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,6 @@ import {
   formatDateTime,
   formatScore,
   humanise,
-  isInFlight,
   noticeFor,
 } from '@/lib/format';
 import { isId } from '@/lib/queries';
@@ -186,7 +185,7 @@ export default async function IncidentPage({
         )}
       </div>
       {message && <Alert variant="destructive">{message}</Alert>}
-      <AutoRefresh active={isInFlight(incident.status, [...investigations, ...actions])} />
+      <LiveRefresh incidentId={incident.id} />
 
       <Card>
         <CardHeader>

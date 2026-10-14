@@ -47,17 +47,6 @@ export function statusVariant(status: string): BadgeVariant {
   return STATUS_VARIANT[status] ?? 'outline';
 }
 
-const MOVING_INCIDENT = new Set(['investigating', 'recovering']);
-const MOVING_WORK = new Set(['pending', 'running', 'approved']);
-
-/** True while a job is still working on the incident, so the page should refresh. */
-export function isInFlight(
-  incidentStatus: string,
-  work: ReadonlyArray<{ status: string }>,
-): boolean {
-  return MOVING_INCIDENT.has(incidentStatus) || work.some((item) => MOVING_WORK.has(item.status));
-}
-
 const NOTICES: Record<string, string> = {
   INCIDENT_NOT_INVESTIGABLE: 'This incident cannot be investigated in its current state.',
   RECOVERY_ACTION_NOT_PENDING: 'That action is no longer waiting for a decision.',

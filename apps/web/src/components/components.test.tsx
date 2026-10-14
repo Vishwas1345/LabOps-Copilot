@@ -56,26 +56,59 @@ describe('StatusBadge', () => {
   });
 });
 
-describe('AutoRefresh', () => {
+describe('LiveRefresh', () => {
+  // A stand-in EventSource the test can push messages through.
+  class FakeEventSource {
+    static last: FakeEventSource | undefined;
+    onmessage: ((message: { data: string }) => void) | null = null;
+    listeners: Record<string, () => void> = {};
+    closed = false;
+    constructor(readonly url: string) {
+      FakeEventSource.last = this;
+    }
+    addEventListener(name: string, listener: () => void) {
+      this.listeners[name] = listener;
+    }
+    close() {
+      this.closed = true;
+    }
+  }
+
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
     refresh.mockClear();
   });
 
-  it('refreshes while active and stops when inactive', async () => {
+  it('refreshes once per burst of relevant events, ignores others, closes on unmount', async () => {
     vi.useFakeTimers();
+    vi.stubGlobal('EventSource', FakeEventSource);
     const { createRoot } = await import('react-dom/client');
     const { act } = await import('react');
-    const { AutoRefresh } = await import('./auto-refresh');
+    const { LiveRefresh } = await import('./live-refresh');
     const root = createRoot(document.createElement('div'));
 
-    await act(async () => root.render(<AutoRefresh active />));
-    await act(async () => vi.advanceTimersByTime(4_100));
+    await act(async () => root.render(<LiveRefresh incidentId="inc1" />));
+    const source = FakeEventSource.last!;
+    expect(source.url).toBe('/api/events/stream');
+
+    const send = (incidentId: string | null) =>
+      source.onmessage?.({ data: JSON.stringify({ action: 'recovery.verified', incidentId }) });
+    await act(async () => {
+      send('inc1');
+      send('inc1');
+      send('other');
+      vi.advanceTimersByTime(400);
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      source.listeners.reset();
+      vi.advanceTimersByTime(400);
+    });
     expect(refresh).toHaveBeenCalledTimes(2);
 
-    await act(async () => root.render(<AutoRefresh active={false} />));
-    await act(async () => vi.advanceTimersByTime(10_000));
-    expect(refresh).toHaveBeenCalledTimes(2);
-    root.unmount();
+    await act(async () => root.unmount());
+    expect(source.closed).toBe(true);
   });
 });

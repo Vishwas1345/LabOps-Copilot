@@ -4,7 +4,6 @@ import {
   formatDateTime,
   formatScore,
   humanise,
-  isInFlight,
   noticeFor,
   statusVariant,
 } from './format';
@@ -37,20 +36,6 @@ describe('formatters', () => {
     expect(statusVariant('resolved')).toBe('success');
     expect(statusVariant('manual_review')).toBe('destructive');
     expect(statusVariant('something_new')).toBe('outline');
-  });
-});
-
-describe('isInFlight', () => {
-  it.each([
-    ['investigating', [], true],
-    ['recovering', [], true],
-    ['awaiting_approval', [{ status: 'approved' }], true],
-    ['open', [{ status: 'running' }], true],
-    ['awaiting_approval', [{ status: 'awaiting_approval' }], false],
-    ['resolved', [{ status: 'succeeded' }, { status: 'completed' }], false],
-    ['manual_review', [{ status: 'rejected_by_policy' }], false],
-  ])('%s with %j -> %s', (status, work, expected) => {
-    expect(isInFlight(status, work)).toBe(expected);
   });
 });
 
