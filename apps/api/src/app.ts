@@ -14,6 +14,9 @@ import { registerErrorHandling } from './http/errors.js';
 import { closeQueues } from './jobs/queues.js';
 import { registerIncidentRoutes } from './incidents/routes.js';
 import { registerInvestigationRoutes } from './investigations/routes.js';
+import { cloudlabsAdapter } from './integrations/cloudlabs-adapter.js';
+import { registerIntegrationRoutes } from './integrations/routes.js';
+import { simulatorAdapter } from './integrations/simulator-adapter.js';
 import { registerJobRoutes } from './jobs/routes.js';
 import { registerLabRoutes } from './labs/routes.js';
 import { registerRecoveryRoutes } from './recovery/routes.js';
@@ -25,7 +28,7 @@ const BODY_LIMIT_BYTES = 64 * 1024;
 // Share our logger: `logger: true` would create a second one without redaction.
 export async function buildApp(options: {
   config: Pick<Config, 'CORS_ORIGIN' | 'DEMO_ENABLED' | 'REDIS_URL' | 'QUEUE_PREFIX'> &
-    Partial<Pick<Config, 'SESSION_COOKIE_SECURE' | 'APPROVAL_TTL_MINUTES'>>;
+    Partial<Pick<Config, 'SESSION_COOKIE_SECURE' | 'APPROVAL_TTL_MINUTES' | 'CREDENTIALS_KEY'>>;
   logger?: pino.Logger;
   /** Tests shorten the stream's poll and heartbeat intervals. */
   streamOptions?: Partial<StreamOptions>;
@@ -71,6 +74,10 @@ export async function buildApp(options: {
   registerInvestigationRoutes(app);
   registerRecoveryRoutes(app, {
     approvalTtlMs: (options.config.APPROVAL_TTL_MINUTES ?? 30) * 60_000,
+  });
+  registerIntegrationRoutes(app, {
+    adapters: [simulatorAdapter, cloudlabsAdapter],
+    credentialsKey: options.config.CREDENTIALS_KEY,
   });
   app.addHook('onClose', closeQueues);
   if (options.config.DEMO_ENABLED) {

@@ -45,6 +45,19 @@ const envSchema = z
     LLM_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5).default(3),
     // How long an allowed proposal waits for approval before it expires.
     APPROVAL_TTL_MINUTES: z.coerce.number().int().min(1).max(1440).default(30),
+    // base64 of exactly 32 bytes, holding the AES-256 key for integration
+    // credentials. Optional: without it the settings page works and saving a
+    // credential fails by name rather than storing anything in the clear.
+    CREDENTIALS_KEY: z
+      .string()
+      .refine((value) => {
+        try {
+          return Buffer.from(value, 'base64').length === 32;
+        } catch {
+          return false;
+        }
+      }, 'must be base64 of exactly 32 bytes')
+      .optional(),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
