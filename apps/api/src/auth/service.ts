@@ -64,11 +64,19 @@ export async function signOut(operator: SessionOperator, token: string): Promise
 /**
  * Creates the operator or resets its password. A reset revokes the operator's
  * live sessions: a rotated password must end access gained with the old one.
+ * Idempotent: compose seeds on every start, and an unchanged password must not
+ * sign everyone out.
  */
 export async function seedOperator(
   username: string,
   password: string,
-): Promise<'created' | 'updated'> {
+): Promise<'created' | 'updated' | 'unchanged'> {
+  const current = await prisma.operator.findUnique({
+    where: { username },
+    select: { passwordHash: true },
+  });
+  if (current && (await verifyPassword(password, current.passwordHash))) return 'unchanged';
+
   const passwordHash = await hashPassword(password);
   return prisma.$transaction(async (tx) => {
     const existing = await tx.operator.findUnique({ where: { username }, select: { id: true } });

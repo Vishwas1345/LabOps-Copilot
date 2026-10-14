@@ -273,4 +273,26 @@ describe('seedOperator', () => {
       await prisma.operator.delete({ where: { username } });
     }
   });
+
+  // Negative: compose re-seeds on every start; the same password must not
+  // revoke sessions, rehash or add audit noise.
+  it('is a no-op when the password is unchanged', async () => {
+    const username = `seed-test-${randomUUID()}`;
+    try {
+      await seedOperator(username, 'stable password');
+      const { header } = cookieFrom(await login({ username, password: 'stable password' }));
+      const before = await prisma.operator.findUniqueOrThrow({ where: { username } });
+
+      expect(await seedOperator(username, 'stable password')).toBe('unchanged');
+
+      const after = await prisma.operator.findUniqueOrThrow({ where: { username } });
+      expect(after.passwordHash).toBe(before.passwordHash);
+      expect((await me(header)).statusCode).toBe(200);
+      expect(
+        await prisma.auditEntry.count({ where: { action: 'operator.seeded', targetId: after.id } }),
+      ).toBe(1);
+    } finally {
+      await prisma.operator.delete({ where: { username } });
+    }
+  });
 });
