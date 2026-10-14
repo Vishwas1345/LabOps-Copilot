@@ -355,7 +355,7 @@ Illustrative surface. Implemented endpoints are marked ✅.
 | `POST` | `/api/recovery-actions/:id/reject` | Reject; the incident returns to open ✅ |
 | `GET` | `/api/jobs/:id` | Background job state, from the Postgres mirror ✅ |
 | `GET` | `/api/incidents/:id/audit` | Incident audit history, in commit order ✅ |
-| `GET` | `/api/events/stream` | SSE stream for live dashboard updates |
+| `GET` | `/api/events/stream` | Live updates (SSE): committed audit entries, resumable with `Last-Event-ID` ✅ |
 | `GET` | `/api/integrations` | Configured integrations and status |
 | `POST` | `/api/integrations/cloudlabs/test` | Test connection settings, never returns secrets |
 | `PUT` | `/api/integrations/cloudlabs` | Create/update connection configuration |
@@ -498,7 +498,8 @@ phase-by-phase plan, with what each phase delivers and how it is verified, is
 | 8 | Policy engine: allow-list, seven fixed steps, recorded proposals | Done |
 | 9 | Approval, execution with revalidation, verified resolution. **The full backend workflow runs end to end** | Done |
 | 12 | Operator dashboard: the whole workflow in a browser (built before 10 and 11) | Done |
-| 10–11 | Live updates, real LLM provider | Not started |
+| 10 | Live updates over SSE: gap-free, resumable, relayed through the web server | Done |
+| 11 | Real LLM provider (opt-in) | Not started |
 | 13–15 | Integration settings, E2E tests and metrics, delivery | Not started |
 
 ---

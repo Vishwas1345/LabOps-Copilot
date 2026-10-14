@@ -181,7 +181,8 @@ an anonymous request, the seeded operator signs in, the worker runs a correlate
 job, the scenario's 12-lab incident exists, and the worker completes an
 investigation of it with the fixture provider whose recommended retry policy
 allows, then approves it and waits for the worker to verify every lab and
-resolve the incident (checked on a fresh stack; a re-run skips it). It needs
+resolve the incident while the live stream, read through the web relay,
+delivers the verification (checked on a fresh stack; a re-run skips it). It needs
 `SEED_OPERATOR_PASSWORD` (the value compose seeded); CI generates a masked one
 per run. It catches Dockerfile and
 startup bugs that unit and integration tests cannot see. Run it locally against
@@ -199,6 +200,7 @@ excludes server components, which only E2E can reach.
 |---|---|---|
 | Nothing sets the `deploy` input, so images are never built in CI | Add a release trigger once a deployment target exists | 15 |
 | No Playwright job | Compose up, then run the journey | 14 |
+| A transaction left open on the database holds back every live update until it finishes (the stream reads below the oldest running transaction) | Keep transactions short (they are); alert on long-running transactions once metrics exist | 14 |
 | Dashboard logins all reach the API from the web server's IP, so the per-IP login limit is effectively global (5/min) | Forward the client IP from the web server and trust it only from that host, once the API is no longer reachable directly | 15 |
 | Login rate limit keys on the socket IP (`trustProxy` off) | Behind a load balancer every client would share one IP, so set `trustProxy` to the real proxy hops only (a blanket `true` lets clients spoof `X-Forwarded-For`) | 15 |
 | `main` has no branch protection | Require the quality gates before merge | Settings change; do it before Phase 1 |
