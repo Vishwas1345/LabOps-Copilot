@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildApiUrl, fetchHealth, InvalidApiUrlError } from './api-client';
+import { z } from 'zod';
+import {
+  buildApiUrl,
+  fetchHealth,
+  InvalidApiUrlError,
+  MalformedResponseError,
+  parseApiResponse,
+  sessionTokenFrom,
+} from './api-client';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -96,5 +104,66 @@ describe('fetchHealth', () => {
     );
 
     await expect(fetchHealth('http://localhost:4000')).resolves.toBeNull();
+  });
+});
+describe('fetchHealth parsing', () => {
+  // Negative: a 200 with the wrong shape is "unknown", not a crash or a lie.
+  it('returns null for a 200 whose body does not match', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: 42 }))));
+
+    expect(await fetchHealth('http://api.test')).toBeNull();
+  });
+});
+
+describe('parseApiResponse', () => {
+  const schema = z.object({ data: z.object({ id: z.string() }) });
+
+  it('returns the parsed data for a matching 2xx body', () => {
+    expect(parseApiResponse('/x', schema, 200, { data: { id: 'a', extra: 1 } })).toEqual({
+      ok: true,
+      data: { data: { id: 'a' } },
+    });
+  });
+
+  it('returns the status and error code for a non-2xx', () => {
+    expect(parseApiResponse('/x', schema, 409, { error: { code: 'APPROVAL_EXPIRED' } })).toEqual({
+      ok: false,
+      status: 409,
+      code: 'APPROVAL_EXPIRED',
+    });
+    expect(parseApiResponse('/x', schema, 502, 'Bad Gateway')).toEqual({
+      ok: false,
+      status: 502,
+      code: 'UNKNOWN',
+    });
+  });
+
+  // Negative: a malformed 2xx must become an error state, never render.
+  it.each([
+    ['a missing field', { data: {} }],
+    ['a wrong type', { data: { id: 7 } }],
+    ['no body', null],
+  ])('throws MalformedResponseError for %s', (_label, body) => {
+    expect(() => parseApiResponse('/x', schema, 200, body)).toThrow(MalformedResponseError);
+  });
+});
+
+describe('sessionTokenFrom', () => {
+  it('reads the named cookie among several', () => {
+    const headers = [
+      'other=1; Path=/',
+      'labops_session=abc_DEF-123; Path=/; HttpOnly; SameSite=Lax; Expires=Thu, 01 Jan 2099 00:00:00 GMT',
+    ];
+
+    expect(sessionTokenFrom(headers, 'labops_session')).toBe('abc_DEF-123');
+  });
+
+  // Negative: a similarly named or cleared cookie is not a session.
+  it.each([
+    [['labops_session_old=abc; Path=/']],
+    [['labops_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT']],
+    [[]],
+  ])('returns null for %j', (headers) => {
+    expect(sessionTokenFrom(headers, 'labops_session')).toBeNull();
   });
 });
