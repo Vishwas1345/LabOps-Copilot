@@ -152,11 +152,30 @@ jobs:
       - name: Run integration tests
         run: npm run test:integration -w @labops/api
 
+  # Coverage counts unit and integration specs together (see
+  # apps/api/vitest.coverage.config.ts), so it needs a migrated database.
   coverage:
     name: coverage
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [build, lint, test]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: labops
+          POSTGRES_PASSWORD: labops
+          POSTGRES_DB: labops_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U labops"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://labops:labops@localhost:5432/labops_test
+      NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
 
@@ -169,6 +188,9 @@ jobs:
 
       - name: Generate Prisma client
         run: npm run prisma:generate -w @labops/api
+
+      - name: Apply migrations
+        run: npm run prisma:migrate -w @labops/api
 
       # Thresholds live in vitest.config.ts, so a drop below 70% fails here.
       - name: Collect coverage
