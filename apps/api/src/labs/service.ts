@@ -185,3 +185,27 @@ export async function tryTransitionLab(
   }
   return transitionLab(tx, labId, to, actor, context);
 }
+
+/** Lab type by lab id, for correlation scoring. */
+export async function labTypesOf(
+  tx: Prisma.TransactionClient,
+  labIds: string[],
+): Promise<Map<string, string>> {
+  const rows = await tx.lab.findMany({
+    where: { id: { in: labIds } },
+    select: { id: true, labType: true },
+  });
+  return new Map(rows.map((row) => [row.id, row.labType]));
+}
+
+/** Dependency kind by dependency id, so reasons read "image-registry", not an id. */
+export async function dependencyKindsOf(
+  tx: Prisma.TransactionClient,
+  dependencyIds: string[],
+): Promise<Map<string, string>> {
+  const rows = await tx.dependency.findMany({
+    where: { id: { in: dependencyIds } },
+    select: { id: true, kind: true },
+  });
+  return new Map(rows.map((row) => [row.id, row.kind]));
+}

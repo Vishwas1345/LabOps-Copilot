@@ -2,7 +2,6 @@ import type { Worker } from 'bullmq';
 import { InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { afterAll, describe, expect, it } from 'vitest';
 import { prisma } from '../db.js';
-import { handleCorrelate } from '../events/correlate.job.js';
 import { ingestEvent } from '../events/service.js';
 import { createLogger } from '../observability/logger.js';
 import { initTracing } from '../observability/tracing.js';
@@ -31,7 +30,9 @@ describe('trace propagation', () => {
   it('continues the ingest trace in the worker', async () => {
     worker = createWorker(
       'correlate',
-      { correlate: { span: 'incident.correlate', handle: handleCorrelate } },
+      // A stub handler: this worker also drains other files' queued jobs, and
+      // real correlation of their labs would outlive their cleanup.
+      { correlate: { span: 'incident.correlate', handle: async () => undefined } },
       createLogger(undefined, 'silent'),
     );
 

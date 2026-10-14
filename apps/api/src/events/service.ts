@@ -9,9 +9,10 @@ import type { JobRecord } from '../jobs/record.js';
 import { dispatchJob, recordJob } from '../jobs/record.js';
 import type { LabTransition } from '../labs/service.js';
 import { tryTransitionLab } from '../labs/service.js';
+import type { ErrorCategory } from '../labs/failures.js';
 import { logger } from '../observability/logger.js';
 import { currentTraceparent, withSpan } from '../observability/tracing.js';
-import { correlationWindow } from './correlate.job.js';
+import { correlationWindow } from './correlation-window.js';
 import { normalise } from './normalise.js';
 import type { EventsQuery, IncomingEvent } from './schema.js';
 import { incomingEvent } from './schema.js';
@@ -172,4 +173,54 @@ export async function listLabEvents(
     })),
     nextCursor: hasMore ? page[page.length - 1].id : null,
   };
+}
+
+/** A stored failure, as correlation reads it. */
+export interface StoredFailure {
+  id: string;
+  labId: string;
+  errorCategory: ErrorCategory;
+  dependencyId: string | null;
+  occurredAt: Date;
+}
+
+const failureFields = {
+  id: true,
+  labId: true,
+  errorCategory: true,
+  dependencyId: true,
+  occurredAt: true,
+} as const;
+
+// A failure without a category cannot be grouped, so it is never returned.
+function toFailures(
+  rows: Array<Omit<StoredFailure, 'errorCategory'> & { errorCategory: ErrorCategory | null }>,
+): StoredFailure[] {
+  return rows.flatMap((row) =>
+    row.errorCategory ? [{ ...row, errorCategory: row.errorCategory }] : [],
+  );
+}
+
+export async function listFailuresBetween(
+  tx: Prisma.TransactionClient,
+  from: Date,
+  to: Date,
+): Promise<StoredFailure[]> {
+  const rows = await tx.operationalEvent.findMany({
+    where: { type: 'provision_failed', occurredAt: { gte: from, lt: to } },
+    select: failureFields,
+    orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+  });
+  return toFailures(rows);
+}
+
+export async function getFailures(
+  tx: Prisma.TransactionClient,
+  eventIds: string[],
+): Promise<StoredFailure[]> {
+  const rows = await tx.operationalEvent.findMany({
+    where: { id: { in: eventIds }, type: 'provision_failed' },
+    select: failureFields,
+  });
+  return toFailures(rows);
 }
