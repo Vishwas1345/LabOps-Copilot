@@ -1,6 +1,11 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  // The tsconfig `@/*` alias, which Next resolves itself but Vitest does not.
+  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
+  // tsconfig keeps JSX as-is for Next; tests need the automatic runtime.
+  esbuild: { jsx: 'automatic' },
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
