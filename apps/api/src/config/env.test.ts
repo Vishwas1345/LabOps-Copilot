@@ -18,7 +18,14 @@ describe('loadConfig', () => {
       LOG_LEVEL: 'info',
       DEMO_ENABLED: false,
       SESSION_COOKIE_SECURE: true,
+      LLM_PROVIDER: 'fixture',
+      LLM_TIMEOUT_MS: 30_000,
     });
+  });
+
+  // Negative: no provider other than the fixture can be selected yet.
+  it('rejects an unknown LLM provider', () => {
+    expect(() => loadConfig({ ...VALID, LLM_PROVIDER: 'openai' })).toThrow();
   });
 
   // Fail-safe: only an explicit 'false' sends the session cookie over http.
