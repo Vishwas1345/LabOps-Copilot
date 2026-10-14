@@ -311,6 +311,57 @@ describe('POST /api/integrations/:provider/test', () => {
 
     expect(response.statusCode).toBe(401);
   });
+
+  // The original test tested cloudlabs with no stored row, so it never
+  // exercised the path that matters: a credential saved, then a failed test.
+  it('stays not_configured after a failed test on a saved credential', async () => {
+    await PUT('cloudlabs', { displayName: 'CloudLabs', credential: SECRET });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/integrations/cloudlabs/test',
+      ...authed,
+    });
+
+    const { data } = connectionTestResponse.parse(response.json());
+
+    // "error" would claim a transient fault worth retrying. Nothing is
+    // reachable, so it can never succeed and must not look retryable.
+    expect(data.state).toBe('not_configured');
+    expect(data.state).not.toBe('error');
+
+    const row = await prisma.integrationConnection.findFirstOrThrow({
+      where: { provider: 'cloudlabs' },
+    });
+    expect(row.state).toBe('not_configured');
+  });
+
+  // Negative: a failed test must not leave event types the provider no longer
+  // confirms on display. Set on the same row the failing test touches, so the
+  // assertion is about clearing and not about a row that was always empty.
+  it('clears previously confirmed event types when a test fails', async () => {
+    await PUT('cloudlabs', { displayName: 'CloudLabs', credential: SECRET });
+    await app.inject({ method: 'POST', url: '/api/integrations/cloudlabs/test', ...authed });
+
+    const row = await prisma.integrationConnection.findFirstOrThrow({
+      where: { provider: 'cloudlabs' },
+    });
+    expect(row.supportedEventTypes).toEqual([]);
+
+    // Now pretend an earlier successful test had confirmed some.
+    await prisma.integrationConnection.update({
+      where: { id: row.id },
+      data: { supportedEventTypes: ['stale_event_type'] },
+    });
+
+    await app.inject({ method: 'POST', url: '/api/integrations/cloudlabs/test', ...authed });
+
+    const after = await prisma.integrationConnection.findFirstOrThrow({
+      where: { provider: 'cloudlabs' },
+    });
+    expect(after.supportedEventTypes).toEqual([]);
+    expect(after.supportedEventTypes).not.toContain('stale_event_type');
+  });
 });
 
 describe('DELETE /api/integrations/:provider', () => {

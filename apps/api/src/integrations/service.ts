@@ -185,6 +185,21 @@ export async function deleteConnection(
   return unconfiguredView(adapter);
 }
 
+/**
+ * The state a failed test should leave behind.
+ *
+ * `error` means "retrying might work". An adapter with nothing reachable cannot
+ * succeed later, because the integration gate is closed until Spektra supplies
+ * documentation - so it stays `not_configured` rather than claiming a transient
+ * fault that will never clear.
+ */
+function stateAfterFailedTest(adapter: ProviderAdapter, row: Row | null): IntegrationState {
+  if (!adapter.capabilities.reachable) return stateFor(adapter.capabilities);
+  // A capable provider with nothing stored was never configured to fail.
+  if (!row) return 'not_configured';
+  return 'error';
+}
+
 export interface TestOutcome {
   provider: string;
   ok: boolean;
@@ -223,9 +238,7 @@ export async function testConnection(
   const result = await adapter.testConnection({ credentials: credential });
   const state = result.ok
     ? stateFor(adapter.capabilities)
-    : row
-      ? 'error'
-      : stateFor(adapter.capabilities);
+    : stateAfterFailedTest(adapter, row);
 
   await prisma.$transaction(async (tx) => {
     if (row) {
@@ -233,7 +246,11 @@ export async function testConnection(
         where: { id: row.id },
         data: {
           state,
-          ...(result.eventTypes ? { supportedEventTypes: result.eventTypes } : {}),
+          // Cleared on failure as well as set on success. Leaving previously
+          // confirmed event types in place would have the UI offering
+          // subscriptions the provider no longer confirms, which is the exact
+          // failure this module exists to prevent.
+          supportedEventTypes: result.ok ? (result.eventTypes ?? []) : [],
           ...(result.ok ? { lastSuccessfulTestAt: new Date() } : {}),
         },
       });
