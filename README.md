@@ -253,6 +253,7 @@ For the faster dev loop, run `npm run db:up` for infrastructure only and
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | `postgresql://labops:labops@localhost:5432/labops` | PostgreSQL connection string |
+| `TEST_DATABASE_URL` | `postgresql://labops:labops@localhost:5432/labops_test` | Integration tests only; must differ from `DATABASE_URL` |
 | `API_HOST` | `127.0.0.1` | API bind address |
 | `API_PORT` | `4000` | API port |
 | `CORS_ORIGIN` | `http://localhost:3000` | Allowed browser origin |
@@ -300,7 +301,7 @@ labops-copilot/
 | `npm run lint:fix` | ESLint with autofix |
 | `npm run typecheck` | Type check both workspaces |
 | `npm run test` | Vitest unit tests, both workspaces |
-| `npm run test:integration -w @labops/api` | API integration tests against a real, migrated PostgreSQL |
+| `npm run test:integration -w @labops/api` | API integration tests against their own PostgreSQL database (`TEST_DATABASE_URL`), migrated automatically |
 | `npm run coverage` | Vitest with v8 coverage and 70% thresholds |
 
 ### Checks before you commit

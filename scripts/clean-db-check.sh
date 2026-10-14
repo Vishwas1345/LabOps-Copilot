@@ -11,9 +11,9 @@ db="labops_clean_check_$(date +%s)"
 "${compose[@]}" psql -U labops -d labops -v ON_ERROR_STOP=1 -qc "CREATE DATABASE $db"
 trap '"${compose[@]}" psql -U labops -d labops -qc "DROP DATABASE IF EXISTS $db"' EXIT
 
-# An exported DATABASE_URL wins: the config's .env loader never overrides it.
-export DATABASE_URL="postgresql://labops:labops@localhost:5432/$db"
-npx prisma migrate deploy >/dev/null
+# An exported TEST_DATABASE_URL wins: the config's .env loader never overrides
+# it. The run's globalSetup applies the migrations.
+export TEST_DATABASE_URL="postgresql://labops:labops@localhost:5432/$db"
 
 for run in 1 2; do
   echo "run $run on $db:"

@@ -127,7 +127,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgresql://labops:labops@localhost:5432/labops_test
+      TEST_DATABASE_URL: postgresql://labops:labops@localhost:5432/labops_test
       REDIS_URL: redis://localhost:6379
       NODE_ENV: test
     steps:
@@ -143,14 +143,19 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate -w @labops/api
 
-      # The same checked-in migrations that every other environment applies.
+      # The same checked-in migrations that every other environment applies
+      # (the test run also applies them; drift needs them first).
       - name: Apply migrations
         run: npm run prisma:migrate -w @labops/api
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
 
       # Fails (exit 2) when schema.prisma was edited without a migration, so
       # the schema file and the migration history cannot drift apart.
       - name: Check schema matches migrations
         run: npm run prisma:drift -w @labops/api
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
 
       # No --if-present: a missing script must fail this job, not pass it
       # green with zero tests run.
@@ -188,7 +193,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgresql://labops:labops@localhost:5432/labops_test
+      TEST_DATABASE_URL: postgresql://labops:labops@localhost:5432/labops_test
       REDIS_URL: redis://localhost:6379
       NODE_ENV: test
     steps:
@@ -204,9 +209,7 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate -w @labops/api
 
-      - name: Apply migrations
-        run: npm run prisma:migrate -w @labops/api
-
+      # The test run's globalSetup applies migrations (vitest.integration.setup.ts).
       # Thresholds live in vitest.config.ts, so a drop below 70% fails here.
       - name: Collect coverage
         run: npm run coverage -w @labops/api

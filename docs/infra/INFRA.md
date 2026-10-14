@@ -80,6 +80,7 @@ reach another project's instance.
 | Variable | Service | Default | Purpose |
 |---|---|---|---|
 | `DATABASE_URL` | api | `postgresql://labops:labops@localhost:5432/labops` | PostgreSQL connection |
+| `TEST_DATABASE_URL` | integration tests | `.../labops_test` | Database the integration and coverage runs use; must differ from `DATABASE_URL`. Created and migrated on each run |
 | `API_HOST` | api | `127.0.0.1` (`0.0.0.0` in compose) | Bind address |
 | `API_PORT` | api | `4000` | Port |
 | `CORS_ORIGIN` | api | `http://localhost:3000` | Allowed browser origin |
@@ -157,8 +158,11 @@ Three workflows in `.github/workflows/`. Triggered on pushes and pull requests t
 4. gitleaks secret scan.
 
 **Integration tests:** `npm run test:integration -w @labops/api` runs
-`*.int.test.ts` against a real, migrated Postgres. Locally it reads
-`apps/api/.env`; it needs `npm run db:up && npm run db:migrate` first.
+`*.int.test.ts` against `TEST_DATABASE_URL`, never the dev database: a dev or
+compose worker's reconciler would otherwise pick up test job rows. The run
+creates and migrates that database itself and refuses to start if it names the
+same database as `DATABASE_URL`. Locally it reads `apps/api/.env` and needs
+`npm run db:up`.
 
 **Compose smoke test:** builds both images, boots the full stack, then runs
 `scripts/compose-smoke.sh`: migrations exited 0, `/health` reports ok, the
