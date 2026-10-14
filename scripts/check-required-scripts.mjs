@@ -21,7 +21,17 @@ const REQUIRED = [
   { workspace: 'package.json', scripts: ['lint', 'typecheck', 'test', 'coverage'] },
   {
     workspace: 'apps/api/package.json',
-    scripts: ['build', 'lint', 'typecheck', 'test', 'coverage', 'prisma:validate'],
+    scripts: [
+      'build',
+      'lint',
+      'typecheck',
+      'test',
+      'test:integration',
+      'coverage',
+      'prisma:validate',
+      'prisma:migrate',
+      'prisma:drift',
+    ],
   },
   { workspace: 'apps/web/package.json', scripts: ['build', 'lint', 'typecheck', 'test', 'coverage'] },
 ];
