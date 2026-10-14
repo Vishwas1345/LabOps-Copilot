@@ -16,6 +16,8 @@ describe('isSecretKey', () => {
     ['encryptedCredentials'],
     ['authorization'],
     ['cookie'],
+    ['passwordHash'],
+    ['tokenHash'],
   ])('treats %p as secret', (key) => {
     expect(isSecretKey(key)).toBe(true);
   });
