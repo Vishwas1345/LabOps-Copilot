@@ -84,6 +84,11 @@ jobs:
 
       - run: npm ci
 
+      # Unit tests import app.ts, which constructs a PrismaClient. Generating
+      # the client needs no database; without it the import throws.
+      - name: Generate Prisma client
+        run: npm run prisma:generate -w @labops/api
+
       # No live LLM call may occur in the default run (CLAUDE.md 8).
       - name: Unit tests
         run: npm run test -w @labops/api
@@ -156,6 +161,9 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate -w @labops/api
 
       # Thresholds live in vitest.config.ts, so a drop below 70% fails here.
       - name: Collect coverage
