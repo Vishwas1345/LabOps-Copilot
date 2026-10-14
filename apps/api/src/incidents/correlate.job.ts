@@ -9,7 +9,7 @@ import { writeAudit } from '../audit/audit.js';
 import { prisma } from '../db.js';
 import { CORRELATION_WINDOW_MS, correlatePayload } from '../events/correlation-window.js';
 import type { StoredFailure } from '../events/service.js';
-import { getFailures, listFailuresBetween } from '../events/service.js';
+import { listFailuresBetween } from '../events/service.js';
 import { dependencyKindsOf, labTypesOf } from '../labs/service.js';
 import type { NewCluster, ScoredMember } from './clustering.js';
 import { clusterFailures } from './clustering.js';
@@ -115,29 +115,27 @@ async function unassigned(
 
 // Only incidents still `open` take new labs: once investigation starts, the
 // scope an operator reviews and approves must not change underneath them.
-// Anchors further than NEARBY_MS from the range cannot reach the threshold.
+// Anchors further than NEARBY_MS from the range cannot reach the threshold, so
+// the read is bounded by the window, not by how many incidents exist.
 async function openAnchors(
   tx: Prisma.TransactionClient,
   from: Date,
   to: Date,
 ): Promise<Array<{ incidentId: string; anchor: StoredFailure }>> {
+  const nearby = await listFailuresBetween(
+    tx,
+    new Date(from.getTime() - NEARBY_MS),
+    new Date(to.getTime() + NEARBY_MS),
+  );
   const incidents = await tx.incident.findMany({
-    where: { status: 'open' },
+    where: { status: 'open', anchorEventId: { in: nearby.map((failure) => failure.id) } },
     select: { id: true, anchorEventId: true },
   });
-  const anchors = await getFailures(
-    tx,
-    incidents.map((incident) => incident.anchorEventId),
-  );
-  const byId = new Map(anchors.map((anchor) => [anchor.id, anchor]));
-  const lower = from.getTime() - NEARBY_MS;
-  const upper = to.getTime() + NEARBY_MS;
+  const byId = new Map(nearby.map((failure) => [failure.id, failure]));
 
   return incidents.flatMap((incident) => {
     const anchor = byId.get(incident.anchorEventId);
-    if (!anchor) return [];
-    const at = anchor.occurredAt.getTime();
-    return at >= lower && at < upper ? [{ incidentId: incident.id, anchor }] : [];
+    return anchor ? [{ incidentId: incident.id, anchor }] : [];
   });
 }
 
