@@ -189,6 +189,7 @@ excludes server components, which only E2E can reach.
 |---|---|---|
 | Nothing sets the `deploy` input, so images are never built in CI | Add a release trigger once a deployment target exists | 15 |
 | No Playwright job | Compose up, then run the journey | 14 |
+| Login rate limit keys on the socket IP (`trustProxy` off) | Behind a load balancer every client would share one IP, so set `trustProxy` to the real proxy hops only (a blanket `true` lets clients spoof `X-Forwarded-For`) | 15 |
 | `main` has no branch protection | Require the quality gates before merge | Settings change; do it before Phase 1 |
 | Docs-only changes trigger no pipeline | Intended: `docs/**` is not in any filter | — |
 
