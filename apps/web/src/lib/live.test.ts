@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isRelevant } from './live';
+import { incidentFromPath, isRelevant } from './live';
 
 const event = (incidentId: string | null) =>
   JSON.stringify({ action: 'incident.transition', incidentId });
@@ -23,4 +23,18 @@ describe('isRelevant', () => {
       expect(isRelevant(data)).toBe(false);
     },
   );
+});
+
+describe('incidentFromPath', () => {
+  it.each([
+    ['/incidents/cmv7abc123', 'cmv7abc123'],
+    ['/incidents/cmv7abc123/', 'cmv7abc123'],
+    ['/incidents', undefined],
+    ['/', undefined],
+    ['/audit', undefined],
+    ['/incidents/abc/extra', undefined],
+    [null, undefined],
+  ])('%p -> %p', (path, expected) => {
+    expect(incidentFromPath(path)).toBe(expected);
+  });
 });

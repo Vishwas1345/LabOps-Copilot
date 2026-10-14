@@ -20,3 +20,9 @@ export function isRelevant(data: string, incidentId?: string): boolean {
   if (!event.success) return false;
   return incidentId === undefined || event.data.incidentId === incidentId;
 }
+
+/** The incident a dashboard path shows: `/incidents/<id>`, else none. */
+export function incidentFromPath(pathname: string | null): string | undefined {
+  const match = /^\/incidents\/([a-z0-9]{1,64})\/?$/i.exec(pathname ?? '');
+  return match?.[1];
+}

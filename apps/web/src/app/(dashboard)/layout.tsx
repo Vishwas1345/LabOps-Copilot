@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { LiveRefresh } from '@/components/live-refresh';
 import { Button } from '@/components/ui/button';
 import { apiGet } from '@/lib/api';
 import { operatorSchema } from '@/lib/schemas';
@@ -34,6 +35,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           </Button>
         </form>
       </header>
+      {/* Once here, not per page: one live stream per tab across navigation. */}
+      <LiveRefresh />
       <main className="pt-6">{children}</main>
     </div>
   );

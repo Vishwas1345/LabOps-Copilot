@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { LiveRefresh } from '@/components/live-refresh';
 import { StatusBadge } from '@/components/status-badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { apiGet } from '@/lib/api';
@@ -27,7 +26,6 @@ export default async function IncidentsPage({
 
   return (
     <div className="space-y-4">
-      <LiveRefresh />
       <div className="flex flex-wrap gap-3 text-sm">
         <Link href={link({ status: undefined, cursor: undefined })} className={filter(!params.status)}>
           all
