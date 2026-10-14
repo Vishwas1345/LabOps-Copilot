@@ -116,7 +116,8 @@ model LabDependency {
 // and TRUNCATE, so history cannot be rewritten by any code path.
 model AuditEntry {
   id            String    @id @default(cuid())
-  // Total order across processes; live updates resume from it (Phase 10).
+  // Insertion order across processes, for display and paging. Not commit
+  // order: two transactions can commit in the opposite order to their seqs.
   seq           BigInt    @unique @default(autoincrement())
   actorType     ActorType
   actorId       String
@@ -127,8 +128,13 @@ model AuditEntry {
   correlationId String?
   metadata      Json?
   createdAt     DateTime  @default(now())
+  // The writing transaction's id, set by the database. Live updates read
+  // only rows older than the oldest running transaction, so nothing is
+  // delivered before it commits and nothing is skipped (Phase 10).
+  txid          Unsupported("xid8") @default(dbgenerated("pg_current_xact_id()"))
 
   @@index([targetType, targetId, seq])
+  @@index([txid])
 }
 
 // Stored redacted. A CHECK in the migration requires an errorCategory on

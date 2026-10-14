@@ -8,6 +8,8 @@ import type { Config } from './config/env.js';
 import { prisma } from './db.js';
 import { registerDemoRoutes } from './demo/routes.js';
 import { registerEventRoutes } from './events/routes.js';
+import type { StreamOptions } from './events-stream/routes.js';
+import { registerEventStreamRoutes } from './events-stream/routes.js';
 import { registerErrorHandling } from './http/errors.js';
 import { closeQueues } from './jobs/queues.js';
 import { registerIncidentRoutes } from './incidents/routes.js';
@@ -25,6 +27,8 @@ export async function buildApp(options: {
   config: Pick<Config, 'CORS_ORIGIN' | 'DEMO_ENABLED' | 'REDIS_URL' | 'QUEUE_PREFIX'> &
     Partial<Pick<Config, 'SESSION_COOKIE_SECURE' | 'APPROVAL_TTL_MINUTES'>>;
   logger?: pino.Logger;
+  /** Tests shorten the stream's poll and heartbeat intervals. */
+  streamOptions?: Partial<StreamOptions>;
 }) {
   const app = Fastify({
     loggerInstance: options.logger ?? defaultLogger,
@@ -62,6 +66,7 @@ export async function buildApp(options: {
   registerEventRoutes(app);
   registerJobRoutes(app);
   registerAuditRoutes(app);
+  registerEventStreamRoutes(app, options.streamOptions);
   registerIncidentRoutes(app);
   registerInvestigationRoutes(app);
   registerRecoveryRoutes(app, {
