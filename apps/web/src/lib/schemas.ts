@@ -144,5 +144,31 @@ export const auditFeedSchema = z.object({
 
 export const acceptedSchema = z.object({ data: z.unknown() });
 
+/**
+ * What the API is willing to say about an integration. There is no credential
+ * field here, so the page cannot render one even if the API ever sent one.
+ */
+export const integrationConnectionSchema = z.object({
+  provider: z.string(),
+  displayName: z.string(),
+  state: z.string(),
+  hasCredential: z.boolean(),
+  supportedEventTypes: z.array(z.string()).nullable(),
+  capabilities: z.object({
+    reachable: z.boolean(),
+    canReadLabs: z.boolean(),
+    canReceiveEvents: z.boolean(),
+    canRegisterWebhook: z.boolean(),
+    canTriggerSync: z.boolean(),
+    canExecuteRecovery: z.boolean(),
+  }),
+  lastSuccessfulTestAt: iso.nullable(),
+  lastSyncAt: iso.nullable(),
+  updatedAt: iso.nullable(),
+});
+export type IntegrationConnection = z.infer<typeof integrationConnectionSchema>;
+
+export const integrationsSchema = z.object({ data: z.array(integrationConnectionSchema) });
+
 /** A 204 with no body. */
 export const emptySchema = z.null();
