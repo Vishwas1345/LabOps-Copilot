@@ -386,8 +386,12 @@ approvals must be revalidated, and no test output may contain a secret.
 
 ## Observability
 
-Structured JSON logs via Pino with redaction at the serializer boundary, so a
-forgotten log call cannot leak a token. OpenTelemetry spans follow the incident
+Structured JSON logs via Pino. Fastify shares the same logger instance, and
+every log object passes through a key-name redaction step (any depth, any
+casing) as a safety net behind redaction at the point where data enters. It
+matches secret-shaped key names such as `token`, `apiKey` or `password`; a
+secret logged under an innocuous key or inside a free-text message is not
+caught. OpenTelemetry spans follow the incident
 across process boundaries:
 
 ```

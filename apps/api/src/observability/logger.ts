@@ -1,44 +1,41 @@
 import pino from 'pino';
+import { redactSecrets } from './redact.js';
 
 /**
- * Redaction lives on the serializer rather than at each call site: a forgotten
- * `logger.info(payload)` must still be unable to emit a credential
- * (CLAUDE.md 7).
+ * Two layers, deliberately overlapping. `formatters.log` censors secret-named
+ * keys at any depth and casing (see redact.ts). The `redact` paths still cover
+ * request headers, which arrive inside objects the walk does not descend into.
  *
- * Paths are matched case-insensitively against the key names commonly used for
- * secrets across request logs, provider payloads and job payloads.
+ * Neither layer replaces redacting where data enters the system (CLAUDE.md 5);
+ * they exist so a forgotten log call is caught rather than trusted.
  */
-export const logger = pino({
-  level: process.env.LOG_LEVEL ?? 'info',
-  base: { service: 'labops-api' },
-  redact: {
-    paths: [
-      'req.headers.authorization',
-      'req.headers.cookie',
-      'req.headers["x-api-key"]',
-      'req.headers["x-webhook-secret"]',
-      'res.headers["set-cookie"]',
-      '*.password',
-      '*.secret',
-      '*.token',
-      '*.apiKey',
-      '*.api_key',
-      '*.credential',
-      '*.credentials',
-      '*.encryptedCredentials',
-      '*.authorization',
-      'headers.authorization',
-      'headers["x-api-key"]',
-      '*.metadata.token',
-      '*.metadata.credentials',
-      '*.parameters.token',
-    ],
-    censor: '[redacted]',
-  },
-  serializers: {
-    err: pino.stdSerializers.err,
-  },
-});
+export function createLogger(destination?: pino.DestinationStream): pino.Logger {
+  return pino(
+    {
+      level: process.env.LOG_LEVEL ?? 'info',
+      base: { service: 'labops-api' },
+      formatters: {
+        log: redactSecrets,
+      },
+      redact: {
+        paths: [
+          'req.headers.authorization',
+          'req.headers.cookie',
+          'req.headers["x-api-key"]',
+          'req.headers["x-webhook-secret"]',
+          'res.headers["set-cookie"]',
+        ],
+        censor: '[redacted]',
+      },
+      serializers: {
+        err: pino.stdSerializers.err,
+      },
+    },
+    destination,
+  );
+}
+
+export const logger = createLogger();
 
 /** Child logger carrying the correlation context every line must have. */
 export function withContext(context: {

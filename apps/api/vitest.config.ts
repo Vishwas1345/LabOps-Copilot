@@ -17,14 +17,12 @@ export default defineConfig({
       //   index.ts             process bootstrap, needs a real signal
       //   db.ts                Prisma singleton, needs a real database
       //   app.ts               route wiring, needs a real database
-      //   observability/*      configuration, not behavioural logic
       // Remove an entry as soon as the module gains unit-testable behaviour.
       exclude: [
         'src/**/*.test.ts',
         'src/index.ts',
         'src/db.ts',
         'src/app.ts',
-        'src/observability/**',
       ],
       thresholds: {
         lines: 70,
