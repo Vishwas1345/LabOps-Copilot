@@ -105,16 +105,18 @@ describe('backend workflow, end to end', () => {
       name: 'stub',
       model: 'overconfident',
       analyse: async () => ({
-        outcome: 'diagnosis',
-        summary: 'Retry will fix it.',
-        candidateCause: 'transient',
-        evidenceFor: [],
-        evidenceAgainst: [],
-        missingEvidence: [],
-        diagnosticChecks: [],
-        confidence: 0.9,
-        recommendedAction: 'RETRY_PROVISIONING',
-        targetLabIds: permission!.labs.map((lab) => lab.labId),
+        raw: {
+          outcome: 'diagnosis',
+          summary: 'Retry will fix it.',
+          candidateCause: 'transient',
+          evidenceFor: [],
+          evidenceAgainst: [],
+          missingEvidence: [],
+          diagnosticChecks: [],
+          confidence: 0.9,
+          recommendedAction: 'RETRY_PROVISIONING',
+          targetLabIds: permission!.labs.map((lab) => lab.labId),
+        },
       }),
     };
     const second = await requestInvestigation(permission!.id, OPERATOR);

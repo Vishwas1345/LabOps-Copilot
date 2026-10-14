@@ -3,11 +3,29 @@
 
 import type { Prompt } from './prompt.js';
 
+/**
+ * Token counts, so modelMetadata can record what a real provider cost. Never
+ * includes the key or any part of the request.
+ */
+export interface ProviderUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
+/**
+ * What a provider hands back. `raw` is deliberately `unknown`: it is validated
+ * by output-schema.ts, never trusted, and never inspected before that.
+ */
+export interface ProviderAnswer {
+  raw: unknown;
+  /** Absent for providers that do not report usage, such as the fixture. */
+  usage?: ProviderUsage;
+}
+
 export interface LlmProvider {
   readonly name: string;
   readonly model: string;
-  /** Raw output, deliberately `unknown`: it is validated by output-schema.ts. */
-  analyse(prompt: Prompt, signal: AbortSignal): Promise<unknown>;
+  analyse(prompt: Prompt, signal: AbortSignal): Promise<ProviderAnswer>;
 }
 
 /** A provider declined to answer. Recorded as a failure, never retried blindly. */
@@ -21,7 +39,7 @@ export class ProviderRefusalError extends Error {
 export type ProviderFailure = 'TIMEOUT' | 'REFUSED' | 'PROVIDER_ERROR';
 
 export type ProviderResult =
-  | { ok: true; raw: unknown; latencyMs: number }
+  | { ok: true; raw: unknown; usage?: ProviderUsage; latencyMs: number }
   | { ok: false; failure: ProviderFailure; latencyMs: number };
 
 /**
@@ -40,8 +58,13 @@ export async function callProvider(
   });
   const started = Date.now();
   try {
-    const raw = await Promise.race([provider.analyse(prompt, controller.signal), timedOut]);
-    return { ok: true, raw, latencyMs: Date.now() - started };
+    const answer = await Promise.race([provider.analyse(prompt, controller.signal), timedOut]);
+    return {
+      ok: true,
+      raw: answer.raw,
+      usage: answer.usage,
+      latencyMs: Date.now() - started,
+    };
   } catch (error) {
     const failure: ProviderFailure = controller.signal.aborted
       ? 'TIMEOUT'

@@ -58,5 +58,6 @@ export function fixtureAnswer(pack: EvidencePack): InvestigationOutput {
 export const fixtureProvider: LlmProvider = {
   name: 'fixture',
   model: 'fixture-v1',
-  analyse: async (prompt) => fixtureAnswer(readPack(prompt)),
+  // No usage: the fixture calls nothing and costs nothing.
+  analyse: async (prompt) => ({ raw: fixtureAnswer(readPack(prompt)) }),
 };

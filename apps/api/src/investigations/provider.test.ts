@@ -3,6 +3,7 @@ import type { EvidenceFailure, EvidencePack } from './evidence.js';
 import { fixtureProvider } from './fixture-provider.js';
 import { parseOutput } from './output-schema.js';
 import { buildPrompt } from './prompt.js';
+import type { Prompt } from './prompt.js';
 import type { LlmProvider } from './provider.js';
 import { callProvider, ProviderRefusalError } from './provider.js';
 
@@ -24,11 +25,15 @@ const pack = (failures: EvidenceFailure[]): EvidencePack => ({
   omittedFailures: 0,
 });
 
-const stub = (analyse: LlmProvider['analyse']): LlmProvider => ({
-  name: 'stub',
-  model: 'stub',
-  analyse,
-});
+// Wraps a function returning raw output into a provider, so each test below
+// states only the output it cares about.
+const stub =
+  (analyse: (prompt: Prompt, signal: AbortSignal) => Promise<unknown>): LlmProvider =>
+  ({
+    name: 'stub',
+    model: 'stub',
+    analyse: async (prompt, signal) => ({ raw: await analyse(prompt, signal) }),
+  });
 
 const prompt = buildPrompt(pack([failure(1)]));
 
@@ -77,8 +82,14 @@ describe('callProvider', () => {
 });
 
 describe('fixtureProvider', () => {
-  const analyse = (failures: EvidenceFailure[]) =>
-    fixtureProvider.analyse(buildPrompt(pack(failures)), new AbortController().signal);
+  // Returns the raw output, which is the only part the output schema ever sees.
+const analyse = async (failures: EvidenceFailure[]) => {
+  const answer = await fixtureProvider.analyse(
+    buildPrompt(pack(failures)),
+    new AbortController().signal,
+  );
+  return answer.raw;
+};
 
   it('diagnoses a burst on one dependency, in a schema-valid shape', async () => {
     const raw = await analyse([failure(1), failure(2), failure(3)]);
