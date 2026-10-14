@@ -6,6 +6,8 @@ import { prisma } from './db.js';
 import { registerDemoRoutes } from './demo/routes.js';
 import { registerEventRoutes } from './events/routes.js';
 import { registerErrorHandling } from './http/errors.js';
+import { closeQueues } from './jobs/queues.js';
+import { registerJobRoutes } from './jobs/routes.js';
 import { registerLabRoutes } from './labs/routes.js';
 import { logger as defaultLogger } from './observability/logger.js';
 
@@ -45,6 +47,8 @@ export async function buildApp(options: {
 
   registerLabRoutes(app);
   registerEventRoutes(app);
+  registerJobRoutes(app);
+  app.addHook('onClose', closeQueues);
   if (options.config.DEMO_ENABLED) {
     registerDemoRoutes(app);
   }
