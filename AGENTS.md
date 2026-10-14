@@ -220,7 +220,7 @@ the verification event. It passes on a fresh stack and on a re-run.
 
 ## 7. What is built (phase by phase)
 
-All merged to `main` except Phase 10 (PR #16, draft). Jira: story for Phase N
+All merged to `main` except Phase 10 (PR #16, ready for the owner to merge). Jira: story for Phase N
 is `LOC-(5+N)`.
 
 | Phase | Jira | PR | What |
@@ -233,7 +233,7 @@ is `LOC-(5+N)`.
 | 8 | LOC-13 | #13 | Policy engine: allow-list as data, pure 7-step evaluator, recorded proposals, one starting state per proposal source |
 | 9 | LOC-14 | #14 | Approve/reject (row lock, expiry), execute (revalidate, simulate outside tx, verify all labs), expiry sweep, end-to-end backend test |
 | 12 | LOC-17 | #15 | Dashboard (run **before** 10 and 11 by agreement): BFF login, overview, incidents, incident detail with approve/reject, audit; Zod-parsed responses |
-| 10 | LOC-15 | **#16 draft** | Live updates over SSE (see section 8) |
+| 10 | LOC-15 | **#16 ready** | Live updates over SSE (see section 8) |
 
 Key behaviours worth knowing (details in `ARCHITECTURE.md`):
 
@@ -259,39 +259,25 @@ Latest verified numbers (Phase 10 branch): API unit 543, integration 170
 (twice on a fresh DB), coverage 98.3%; web 75 tests, 99.3%; fresh clone green;
 compose smoke green on a fresh build and on a re-run.
 
-## 8. In flight: finish PR #16 (Phase 10), then merge
+## 8. Phase 10 (PR #16): ready for the owner to merge
 
-Branch `feat/LOC-15-live-updates`, draft PR #16. Code, tests, docs and the
-routine are done. **One self-review finding is open, fix approved in
-principle but not yet implemented:**
+Branch `feat/LOC-15-live-updates`, PR #16, marked ready. The self-review
+finding is fixed (`fix(web): keep one live stream per tab across
+navigation`): `LiveRefresh` lives once in `app/(dashboard)/layout.tsx`, opens
+its `EventSource` once on mount, and reads the current incident from the URL
+(`incidentFromPath`) through a ref. Background, so nobody re-litigates it: a
+per-page stream reopened on every navigation, and Next only notices a closed
+browser connection about 65 s later, so relayed API streams piled up;
+propagating `ReadableStream.cancel` upstream did not help (64 s). A closed
+tab still lingers about a minute, once per tab, which is acceptable.
 
-- **Problem:** every page mounts its own `LiveRefresh`, so each navigation
-  opens a new `EventSource`. Next only notices a closed browser connection
-  about **65 s** later, so the relayed upstream API stream lingers that long
-  (measured with 15 streams). Clicking around piles up orphaned API streams,
-  each with a 15 s heartbeat that does a session DB lookup. Propagating
-  `ReadableStream.cancel` to an `AbortController` was tried and does **not**
-  help (64 s); it was reverted.
-- **Fix to implement:** mount `LiveRefresh` **once in
-  `apps/web/src/app/(dashboard)/layout.tsx`** (layouts persist across
-  App Router navigation) and remove it from the three pages. Derive the
-  incident id from the URL with `usePathname()` (`/incidents/<id>` -> that id;
-  anything else -> refresh on any event). Keep `lib/live.ts` `isRelevant` as
-  is. Update `components.test.tsx` (navigation keeps one EventSource; the
-  incident filter follows the pathname) and mutation-check it.
-- **Re-measure** (expect the API connection count to stay at 1 per tab while
-  navigating). Count API connections on :4000 inside the api container:
-  `docker compose exec -T api sh -c "awk 'NR>1 && \$2 ~ /:0FA0\$/ && \$4==\"01\"' /proc/net/tcp /proc/net/tcp6 | wc -l"`
-- Then: `fix(web): keep one live stream per tab across navigation`, re-run
-  the routine, update the PR body's "Draft: self-review finding pending"
-  section into "Self-review fix", `gh pr ready 16`, Jira: LOC-63 and LOC-64
-  Done, LOC-15 In Testing with a comment (deviation: no Redis pub/sub,
-  option A agreed). The owner merges; then LOC-15 Done.
+After the owner merges: Jira LOC-15 Done (LOC-63, LOC-64 already Done), pull
+`main`, and start Phase 11.
 
 ## 9. What is left, in order
 
-The agreed order after Phase 9 is 12 (done), 10 (in flight), **11, 13, 14,
-15**. Each needs the plan-first loop above; read the phase in `PLAN.md` and
+The agreed order after Phase 9 is 12 (done), 10 (ready to merge), **11, 13,
+14, 15**. Each needs the plan-first loop above; read the phase in `PLAN.md` and
 the matching `.claude/skills/*` recipe first.
 
 1. **Phase 11: real LLM provider, opt-in (LOC-16; subtasks LOC-65, LOC-66).**
