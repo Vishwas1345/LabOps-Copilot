@@ -18,18 +18,14 @@ export default defineConfig({
       reporter: ['text', 'json-summary', 'lcov'],
       reportsDirectory: 'coverage',
       include: ['src/**/*.ts'],
-      // Unit coverage is measured over pure logic. These files are covered by
-      // the integration suite instead, which does not exist yet - do not read
-      // their absence here as proof they work:
-      //   index.ts             process bootstrap, needs a real signal
-      //   db.ts                Prisma singleton, needs a real database
-      //   app.ts               route wiring, needs a real database
-      // Remove an entry as soon as the module gains unit-testable behaviour.
+      // `npm run coverage` uses vitest.coverage.config.ts, which reuses these
+      // settings but counts unit and integration specs together, so code that
+      // needs a real database is measured rather than excluded. The one file
+      // left out is process bootstrap, which no test runs:
+      //   index.ts             reads env, binds a port, handles signals
       exclude: [
         'src/**/*.test.ts',
         'src/index.ts',
-        'src/db.ts',
-        'src/app.ts',
       ],
       thresholds: {
         lines: 70,
