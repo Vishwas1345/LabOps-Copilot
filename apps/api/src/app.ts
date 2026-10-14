@@ -4,6 +4,7 @@ import type pino from 'pino';
 import type { Config } from './config/env.js';
 import { prisma } from './db.js';
 import { registerDemoRoutes } from './demo/routes.js';
+import { registerEventRoutes } from './events/routes.js';
 import { registerErrorHandling } from './http/errors.js';
 import { registerLabRoutes } from './labs/routes.js';
 import { logger as defaultLogger } from './observability/logger.js';
@@ -43,6 +44,7 @@ export async function buildApp(options: {
   });
 
   registerLabRoutes(app);
+  registerEventRoutes(app);
   if (options.config.DEMO_ENABLED) {
     registerDemoRoutes(app);
   }
