@@ -7,7 +7,7 @@ import {
   ConcurrentTransitionError,
   LabNotFoundError,
   transitionLab,
-} from './labs.service.js';
+} from './service.js';
 
 const ACTOR: Actor = { type: 'system', id: 'labs-service-test' };
 const created: string[] = [];

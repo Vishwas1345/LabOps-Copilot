@@ -1,0 +1,154 @@
+import type { Lab, LabSource, Prisma } from '@prisma/client';
+import type { Actor } from '../audit/audit.js';
+import { writeAudit } from '../audit/audit.js';
+import { prisma } from '../db.js';
+import type { ListLabsQuery } from './schemas.js';
+import type { LabStatus } from './transitions.js';
+import { assertTransition } from './transitions.js';
+
+/**
+ * What the API exposes about a lab. A separate type rather than the Prisma
+ * row, so adding a column never silently widens the public response
+ * (CLAUDE.md 4: modules expose behaviour, not tables).
+ */
+export interface LabView {
+  id: string;
+  name: string;
+  labType: string;
+  status: LabStatus;
+  source: LabSource;
+  dependencyIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LabPage {
+  items: LabView[];
+  /** Pass back as `cursor` for the next page; null on the last page. */
+  nextCursor: string | null;
+}
+
+type LabWithDependencies = Lab & { dependencies: { dependencyId: string }[] };
+
+export function toLabView(lab: LabWithDependencies): LabView {
+  return {
+    id: lab.id,
+    name: lab.name,
+    labType: lab.labType,
+    status: lab.status,
+    source: lab.source,
+    dependencyIds: lab.dependencies.map((link) => link.dependencyId),
+    createdAt: lab.createdAt.toISOString(),
+    updatedAt: lab.updatedAt.toISOString(),
+  };
+}
+
+const withDependencyIds = {
+  dependencies: { select: { dependencyId: true } },
+} as const;
+
+/**
+ * Newest first, `id` as the tie-breaker so the order is total and a page
+ * boundary never skips or repeats a lab created in the same millisecond.
+ * Fetches one extra row to learn whether another page exists without a
+ * separate count query.
+ */
+export async function listLabs(query: ListLabsQuery): Promise<LabPage> {
+  const rows = await prisma.lab.findMany({
+    where: query.status ? { status: query.status } : undefined,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: query.limit + 1,
+    ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+    include: withDependencyIds,
+  });
+
+  const hasMore = rows.length > query.limit;
+  const page = hasMore ? rows.slice(0, query.limit) : rows;
+
+  return {
+    items: page.map(toLabView),
+    nextCursor: hasMore ? page[page.length - 1].id : null,
+  };
+}
+
+export async function getLab(labId: string): Promise<LabView> {
+  const lab = await prisma.lab.findUnique({
+    where: { id: labId },
+    include: withDependencyIds,
+  });
+  if (!lab) {
+    throw new LabNotFoundError(labId);
+  }
+  return toLabView(lab);
+}
+
+export class LabNotFoundError extends Error {
+  constructor(readonly labId: string) {
+    super(`lab not found: ${labId}`);
+    this.name = 'LabNotFoundError';
+  }
+}
+
+/** Another transaction moved the lab between our read and our write. */
+export class ConcurrentTransitionError extends Error {
+  constructor(
+    readonly labId: string,
+    readonly expected: LabStatus,
+  ) {
+    super(`lab ${labId} is no longer ${expected}`);
+    this.name = 'ConcurrentTransitionError';
+  }
+}
+
+export interface LabTransition {
+  from: LabStatus;
+  to: LabStatus;
+}
+
+/**
+ * The only way a lab's status changes. Runs inside the caller's transaction so
+ * the status and its audit entry commit or roll back together.
+ *
+ * The write is conditional on the status we read (compare-and-set): if a
+ * concurrent transaction moved the lab first, zero rows match and this throws
+ * instead of overwriting their change. That avoids holding a row lock while
+ * keeping two racing transitions from both winning.
+ */
+export async function transitionLab(
+  tx: Prisma.TransactionClient,
+  labId: string,
+  to: LabStatus,
+  actor: Actor,
+  context: { correlationId?: string; reason?: string } = {},
+): Promise<LabTransition> {
+  const lab = await tx.lab.findUnique({
+    where: { id: labId },
+    select: { status: true },
+  });
+  if (!lab) {
+    throw new LabNotFoundError(labId);
+  }
+
+  const from = lab.status;
+  assertTransition(from, to);
+
+  const { count } = await tx.lab.updateMany({
+    where: { id: labId, status: from },
+    data: { status: to },
+  });
+  if (count === 0) {
+    throw new ConcurrentTransitionError(labId, from);
+  }
+
+  await writeAudit(tx, {
+    actor,
+    action: 'lab.transition',
+    targetType: 'lab',
+    targetId: labId,
+    outcome: 'applied',
+    correlationId: context.correlationId,
+    metadata: { from, to, reason: context.reason },
+  });
+
+  return { from, to };
+}
