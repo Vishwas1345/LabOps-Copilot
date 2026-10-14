@@ -18,7 +18,8 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      # Overridable when another project already holds 6379 on the host.
+      - "${REDIS_HOST_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -53,6 +54,21 @@ services:
       DEMO_ENABLED: "true"
     ports:
       - "4000:4000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # Same image as the api, different entrypoint; it never serves HTTP.
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["node", "dist/worker.js"]
+    environment:
+      DATABASE_URL: postgresql://labops:labops@postgres:5432/labops
+      REDIS_URL: redis://redis:6379
     depends_on:
       migrate:
         condition: service_completed_successfully
