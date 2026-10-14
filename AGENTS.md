@@ -5,7 +5,7 @@ Read this first, then `CLAUDE.md`, which is the full rulebook and wins on any
 conflict. This file adds what the rulebook cannot: **how we have been working,
 what is built, what is in flight, and what to do next.**
 
-Last updated: 2026-10-14, end of the day's session (Phases 5-10 and 12 built).
+Last updated: 2026-10-14, end of the day's session (Phases 5-11 and 12 built).
 
 ---
 
@@ -189,6 +189,24 @@ the verification event. It passes on a fresh stack and on a re-run.
 - **Local Redis is on host port 6380**, because another project owns 6379:
   root `.env` has `REDIS_HOST_PORT=6380`; `apps/api/.env` has
   `REDIS_URL=redis://localhost:6380`.
+- **Windows is the dev box; there is no Git Bash.** The only `bash.exe` is the
+  WSL launcher, which has neither this project's Node nor Docker context, so
+  `scripts/*.sh` cannot be run as written. `scripts/compose-smoke.ps1` is the
+  PowerShell equivalent and has never been executed. A native
+  `clean-db-check` was run by hand instead: create the throwaway database with
+  `docker compose exec -T postgres psql`, export `TEST_DATABASE_URL` to it, run
+  the suite twice, confirm `_prisma_migrations` exists there (that is the proof
+  the run used it rather than the dev database), then drop it.
+- **`npm install` and `npm run db:generate` are needed after pulling**, and it
+  is easy to forget: a stale install produced missing-module errors for `zod`
+  and ~130 unrelated type errors from an out-of-date Prisma client. CI is green
+  throughout because it installs fresh, so CI passing says nothing about the
+  local install.
+- **Delete `apps/web/.next` before typechecking web.** Stale generated types
+  fail with `Cannot find module '../../../src/app/page.js'` and look like a
+  real break.
+- Docker Desktop needs starting by hand and is slow to boot; prefer it over the
+  per-run latency it adds when the work is not Docker-bound.
 - **Integration tests use their own database** (`TEST_DATABASE_URL`, e.g.
   `labops_test`); the run creates and migrates it and refuses to start if it
   equals `DATABASE_URL`. Never point tests at the dev DB.
@@ -220,8 +238,9 @@ the verification event. It passes on a fresh stack and on a re-run.
 
 ## 7. What is built (phase by phase)
 
-All merged to `main` except Phase 10 (PR #16, ready for the owner to merge). Jira: story for Phase N
-is `LOC-(5+N)`.
+All phases through 12 are merged to `main`. Phase 11 is on branch
+`feat/LOC-16-real-llm-provider`, awaiting review (see section 8). Jira: story
+for Phase N is `LOC-(5+N)`.
 
 | Phase | Jira | PR | What |
 |---|---|---|---|
@@ -233,7 +252,8 @@ is `LOC-(5+N)`.
 | 8 | LOC-13 | #13 | Policy engine: allow-list as data, pure 7-step evaluator, recorded proposals, one starting state per proposal source |
 | 9 | LOC-14 | #14 | Approve/reject (row lock, expiry), execute (revalidate, simulate outside tx, verify all labs), expiry sweep, end-to-end backend test |
 | 12 | LOC-17 | #15 | Dashboard (run **before** 10 and 11 by agreement): BFF login, overview, incidents, incident detail with approve/reject, audit; Zod-parsed responses |
-| 10 | LOC-15 | **#16 ready** | Live updates over SSE (see section 8) |
+| 10 | LOC-15 | #16 | Live updates over SSE (see section 8) |
+| 11 | LOC-16 | PR open | Real LLM provider, opt-in: Gemini over plain `fetch`, Zod → Gemini schema transform, bounded retry, token usage in `modelMetadata`, opt-in live test |
 
 Key behaviours worth knowing (details in `ARCHITECTURE.md`):
 
@@ -259,40 +279,84 @@ Latest verified numbers (Phase 10 branch): API unit 543, integration 170
 (twice on a fresh DB), coverage 98.3%; web 75 tests, 99.3%; fresh clone green;
 compose smoke green on a fresh build and on a re-run.
 
-## 8. Phase 10 (PR #16): ready for the owner to merge
+## 8. Phase 10 (PR #16): merged
 
-Branch `feat/LOC-15-live-updates`, PR #16, marked ready. The self-review
-finding is fixed (`fix(web): keep one live stream per tab across
-navigation`): `LiveRefresh` lives once in `app/(dashboard)/layout.tsx`, opens
-its `EventSource` once on mount, and reads the current incident from the URL
-(`incidentFromPath`) through a ref. Background, so nobody re-litigates it: a
-per-page stream reopened on every navigation, and Next only notices a closed
-browser connection about 65 s later, so relayed API streams piled up;
-propagating `ReadableStream.cancel` upstream did not help (64 s). A closed
-tab still lingers about a minute, once per tab, which is acceptable.
+Merged to `main`. The self-review finding was fixed (`fix(web): keep one live
+stream per tab across navigation`): `LiveRefresh` lives once in
+`app/(dashboard)/layout.tsx`, opens its `EventSource` once on mount, and reads
+the current incident from the URL (`incidentFromPath`) through a ref. Background,
+so nobody re-litigates it: a per-page stream reopened on every navigation, and
+Next only notices a closed browser connection about 65 s later, so relayed API
+streams piled up; propagating `ReadableStream.cancel` upstream did not help
+(64 s). A closed tab still lingers about a minute, once per tab, which is
+acceptable.
 
-After the owner merges: Jira LOC-15 Done (LOC-63, LOC-64 already Done), pull
-`main`, and start Phase 11.
+## 8b. Phase 11 (LOC-16): what is built, and what is still unverified
+
+Branch `feat/LOC-16-real-llm-provider`, PR open as a draft. Five commits:
+lockfile reconciliation, config, provider, live test, docs, plus one fix.
+
+**Built.** `LLM_PROVIDER` gains `gemini` beside `fixture` (fixture still the
+default, so no deploy can start calling a paid API by accident). A second
+`LlmProvider` over plain `fetch` — no SDK, per `CLAUDE.md` §2. `gemini-schema.ts`
+derives the request schema from the same Zod schema the output is validated
+against. `analyse()` returns `{ raw, usage? }` so `modelMetadata` records token
+counts. Retry covers 429/5xx only; a 400 fails on the first attempt.
+
+**The finding worth keeping.** On a live run the model returned a full sentence
+where an event id belonged and another where one of four enum values belonged,
+with the schema accepted throughout. Gemini enforced **shape**, not **values**,
+and could not enforce length or range at all. Had this pipeline trusted
+`responseSchema` as its boundary, a model would have handed it a free-text
+recovery action. Zod rejected both. That is the argument for Phase 7's boundary
+restated with evidence. `ARCHITECTURE.md` §9 and `README.md` carry the
+enforcement table.
+
+**Also learned, from calling the API rather than reading the docs:** the docs
+show `type: [x, null]` for nullable and the endpoint requires `nullable: true`;
+the docs list `additionalProperties` as supported and this endpoint rejects it;
+raw REST needs UPPERCASE type names, which the SDK maps and `fetch` does not.
+`gemini-2.5-pro` now answers 404 to new accounts.
+
+**Verified on the branch.** lint 0; typecheck 0; unit 610 (21 files);
+integration 170 (21 files); integration twice on a throwaway database (exit 0
+both runs, database proven migrated then dropped); API coverage 98.47% (780
+tests); web coverage 99.31% (82 tests); typecheck on all four branch commits;
+audit gate 6 known / 6 baselined; live run `verdict=VALID`, 731 input and 272
+output tokens, 6/6. Both new safety guards were mutation-checked.
+
+**Still unverified — do these before calling Phase 11 closed:**
+
+1. **Compose smoke (section 5 step 7).** Never run. Windows has no Git Bash
+   here; `scripts/compose-smoke.ps1` was written as the equivalent and has
+   **never been executed**, so treat it as untested until it passes once.
+2. **Fresh clone (section 5 step 5).** Never run on this branch.
+3. **Jira LOC-16 was never moved to In Progress** — no `jira` CLI and no
+   `JIRA_API_TOKEN` / `JIRA_EMAIL` in this environment. Do it by hand.
+4. **The live CI job has never run.** `.github/workflows/llm-live.yml` needs the
+   `GEMINI_API_KEY` repository secret; dispatch it once manually to confirm.
+5. **Rotate the Gemini key.** It was pasted into a chat transcript in plaintext.
+   It is git-ignored and was never committed, but treat it as exposed.
+
+**Model availability is a live risk, not a code defect.** The free tier is
+throttled: `gemini-flash-latest`, `gemini-3.5-flash` and `gemini-3.8-flash`
+returned 503 on four consecutive attempts, and `gemini-3.1-pro-preview`
+returned 429. `gemini-3.1-flash-lite` answered. A demo can still be blocked by
+Google-side demand. Decide deliberately whether the demo keeps `fixture` as its
+default and Gemini as a documented switch, or whether to budget for a paid key.
+
+**Nothing in compose reaches a model.** The compose file passes no `LLM_*`
+variable, so the worker defaults to `fixture`; the smoke test and CI therefore
+cannot call a network provider. Verified by reading `docker-compose.yml`, not
+assumed.
 
 ## 9. What is left, in order
 
-The agreed order after Phase 9 is 12 (done), 10 (ready to merge), **11, 13,
-14, 15**. Each needs the plan-first loop above; read the phase in `PLAN.md` and
-the matching `.claude/skills/*` recipe first.
+The agreed order after Phase 9 is 12 (done), 10 (done), **11 (built, unverified
+- see section 8b), 13, 14, 15**. Each needs the plan-first loop above; read the
+phase in `PLAN.md` and the matching `.claude/skills/*` recipe first.
 
-1. **Phase 11: real LLM provider, opt-in (LOC-16; subtasks LOC-65, LOC-66).**
-   A provider behind the existing `LlmProvider` interface
-   (`apps/api/src/investigations/provider.ts`); `LLM_PROVIDER` currently
-   accepts only `fixture` (`config/env.ts`) and gains the real one plus
-   `LLM_API_KEY`, `LLM_MODEL`. Structured output constrained by the same Zod
-   schema; honour the `AbortSignal` (`callProvider` already races the
-   timeout); bounded retry with backoff; `modelMetadata` stores model and token
-   counts, never the key. Tests: a `*.live.test.ts` excluded from the default
-   run and an opt-in CI job; CI must never call a network model by default.
-   Default to the latest Claude models if Anthropic is chosen. This is also
-   where a real-model prompt-injection check becomes possible (fixture tests
-   only prove the plumbing).
-2. **Phase 13: integration settings and secrets, adapter-gated (LOC-18;
+1. **Phase 13: integration settings and secrets, adapter-gated (LOC-18;
    LOC-71..74).** Read `ARCHITECTURE.md §13` (Integration gate) and the
    `cloudlabs-adapter` skill. `secrets/crypto.ts` (AES-256-GCM, versioned key
    from `CREDENTIALS_KEY`), `ProviderAdapter` with simulator and a CloudLabs
@@ -300,13 +364,13 @@ the matching `.claude/skills/*` recipe first.
    `connected`), settings endpoints that never echo credentials, a settings
    page in simulator mode. **Do not invent CloudLabs endpoints, auth or
    webhook signing.** Sync/webhooks stay unbuilt.
-3. **Phase 14: E2E tests and metrics (LOC-19; LOC-75, LOC-76).** Playwright
+2. **Phase 14: E2E tests and metrics (LOC-19; LOC-75, LOC-76).** Playwright
    journey in CI against compose (seeded scenario, fixture LLM), including the
    negative cases visible in the UI (permission incident stays separate, a
    blocked action shows its rule) and the click-through nobody has done yet in
    a real browser. OTel metrics from real runs only. Also a good place to add
    an alert/metric for long-running transactions (they delay live updates).
-4. **Phase 15: dependency graph (optional) and delivery (LOC-20;
+3. **Phase 15: dependency graph (optional) and delivery (LOC-20;
    LOC-77..79).** React Flow graph; deployment target and release pipeline
    (the `deploy` input exists in CI but nothing sets it); README walkthrough
    with real screenshots and real numbers. Fix the deployment-related known
