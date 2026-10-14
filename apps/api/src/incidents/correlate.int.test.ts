@@ -221,6 +221,37 @@ describe('correlateWindow', () => {
     expect(incidents.map((incident) => incident.labs.length)).toEqual([1, 1]);
   });
 
+  // Negative: an old failure in a resolved incident must not hide the lab's
+  // new failure inside the same loaded range.
+  it('gives a lab that fails again after resolution a new incident', async () => {
+    const first = await failedLab('2024-02-08T10:01:00.000Z', {
+      errorCategory: 'PROVISION_TIMEOUT',
+    });
+    await correlateWindow(windowOf('2024-02-08T10:01:00.000Z'), log);
+    await prisma.incident.updateMany({
+      where: { anchorEventId: first.eventId },
+      data: { status: 'resolved' },
+    });
+    const { eventId: again } = await ingestEvent(
+      {
+        providerEventId: randomUUID(),
+        labId: first.labId,
+        type: 'provision_failed',
+        errorCategory: 'PROVISION_TIMEOUT',
+        message: 'provisioning failed',
+        occurredAt: '2024-02-08T10:06:00.000Z',
+        source: 'provider',
+      },
+      ACTOR,
+    );
+
+    const outcome = await correlateWindow(windowOf('2024-02-08T10:06:00.000Z'), log);
+
+    expect(outcome.incidentsCreated).toBe(1);
+    const reopened = await prisma.incident.findFirst({ where: { anchorEventId: again } });
+    expect(reopened?.status).toBe('open');
+  });
+
   // Negative: a malformed payload is rejected before anything is read.
   it('rejects a payload with unknown fields', async () => {
     await expect(

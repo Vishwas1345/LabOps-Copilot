@@ -95,10 +95,14 @@ async function unassigned(
         },
       ],
     },
-    select: { eventId: true, labId: true },
+    select: { eventId: true, labId: true, incident: { select: { status: true } } },
   });
   const takenEvents = new Set(taken.map((row) => row.eventId));
-  const busyLabs = new Set(taken.map((row) => row.labId));
+  // Only unresolved incidents make a lab busy: an old failure in a resolved
+  // incident must not hide the lab's new failure.
+  const busyLabs = new Set(
+    taken.filter((row) => row.incident.status !== 'resolved').map((row) => row.labId),
+  );
   const seenLabs = new Set<string>();
 
   return failures.filter((failure) => {
