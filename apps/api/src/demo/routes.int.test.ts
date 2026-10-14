@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { loadConfig } from '../config/env.js';
 import { buildApp } from '../app.js';
 import { prisma } from '../db.js';
 
@@ -8,8 +9,8 @@ const RUN_ID = `training-event:${SEED}`;
 const URL = '/api/demo/scenarios/training-event';
 
 const CORS_ORIGIN = 'http://localhost:3000';
-const enabled = await buildApp({ config: { CORS_ORIGIN, DEMO_ENABLED: true } });
-const disabled = await buildApp({ config: { CORS_ORIGIN, DEMO_ENABLED: false } });
+const enabled = await buildApp({ config: { ...loadConfig(), CORS_ORIGIN, DEMO_ENABLED: true } });
+const disabled = await buildApp({ config: { ...loadConfig(), CORS_ORIGIN, DEMO_ENABLED: false } });
 
 async function removeScenarioRows() {
   await prisma.lab.deleteMany({ where: { id: { startsWith: PREFIX } } });

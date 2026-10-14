@@ -1,0 +1,60 @@
+// Sign-in and sign-out, each with its audit entry in the same transaction.
+
+import { randomBytes } from 'node:crypto';
+import { writeAudit } from '../audit/audit.js';
+import { prisma } from '../db.js';
+import { hashPassword, verifyPassword } from './password.js';
+import type { SessionOperator } from './session.js';
+import { createSession, revokeSession } from './session.js';
+
+export interface SignedIn {
+  operator: SessionOperator;
+  token: string;
+  expiresAt: Date;
+}
+
+// Compared against when the username is unknown, so a miss costs the same
+// scrypt time as a wrong password and timing does not reveal who exists.
+let dummyHash: Promise<string> | undefined;
+const unknownUserHash = () => (dummyHash ??= hashPassword(randomBytes(16).toString('hex')));
+
+/** Null for an unknown user or a wrong password alike; the caller cannot tell which. */
+export async function signIn(username: string, password: string): Promise<SignedIn | null> {
+  const operator = await prisma.operator.findUnique({ where: { username } });
+  const valid = await verifyPassword(password, operator?.passwordHash ?? (await unknownUserHash()));
+
+  return prisma.$transaction(async (tx) => {
+    if (!operator || !valid) {
+      await writeAudit(tx, {
+        actor: { type: 'human', id: 'anonymous' },
+        action: 'auth.login',
+        targetType: 'operator',
+        targetId: username,
+        outcome: 'rejected',
+      });
+      return null;
+    }
+    const session = await createSession(tx, operator.id);
+    await writeAudit(tx, {
+      actor: { type: 'human', id: operator.id },
+      action: 'auth.login',
+      targetType: 'operator',
+      targetId: operator.id,
+      outcome: 'succeeded',
+    });
+    return { operator: { id: operator.id, username: operator.username }, ...session };
+  });
+}
+
+export async function signOut(operator: SessionOperator, token: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await revokeSession(tx, token);
+    await writeAudit(tx, {
+      actor: { type: 'human', id: operator.id },
+      action: 'auth.logout',
+      targetType: 'operator',
+      targetId: operator.id,
+      outcome: 'succeeded',
+    });
+  });
+}

@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
+import { loadConfig } from '../config/env.js';
+import { signedInCookie } from '../auth/session.fixture.js';
 import { buildApp } from '../app.js';
 import { prisma } from '../db.js';
 import { correlationWindow } from '../events/correlation-window.js';
@@ -8,8 +10,9 @@ import { createLogger } from '../observability/logger.js';
 import { correlateWindow } from './correlate.job.js';
 
 const app = await buildApp({
-  config: { CORS_ORIGIN: 'http://localhost:3000', DEMO_ENABLED: false },
+  config: { ...loadConfig(), DEMO_ENABLED: false },
 });
+const headers = { cookie: (await signedInCookie()).cookie };
 const ACTOR = { type: 'system', id: 'incident-routes-test' } as const;
 const labs: string[] = [];
 const dependency = await prisma.dependency.create({ data: { kind: 'image-registry' } });
@@ -23,7 +26,7 @@ afterAll(async () => {
 });
 
 async function getJson(url: string) {
-  const response = await app.inject({ method: 'GET', url });
+  const response = await app.inject({ method: 'GET', url, headers });
   return { status: response.statusCode, body: response.json() };
 }
 

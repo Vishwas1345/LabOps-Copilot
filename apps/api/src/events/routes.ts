@@ -5,6 +5,7 @@ import type {
   RawRequestDefaultExpression,
   RawServerDefault,
 } from 'fastify';
+import { actorOf } from '../auth/guard.js';
 import { AppError } from '../http/errors.js';
 import { labParams } from '../labs/schemas.js';
 import { ConcurrentTransitionError, getLab, LabNotFoundError } from '../labs/service.js';
@@ -25,7 +26,7 @@ export function registerEventRoutes<Logger extends FastifyBaseLogger>(
 ): void {
   app.post('/api/events', { bodyLimit: EVENT_BODY_LIMIT_BYTES }, async (request, reply) => {
     try {
-      const result = await ingestEvent(request.body, { type: 'system', id: 'events-api' });
+      const result = await ingestEvent(request.body, actorOf(request));
       return reply.status(result.duplicate ? 200 : 201).send({ data: result });
     } catch (error) {
       if (error instanceof UnknownReferenceError) {

@@ -1,10 +1,13 @@
 import { afterAll, describe, expect, it } from 'vitest';
+import { loadConfig } from '../config/env.js';
+import { signedInCookie } from '../auth/session.fixture.js';
 import { buildApp } from '../app.js';
 import { prisma } from '../db.js';
 
 const app = await buildApp({
-  config: { CORS_ORIGIN: 'http://localhost:3000', DEMO_ENABLED: false },
+  config: { ...loadConfig(), DEMO_ENABLED: false },
 });
+const headers = { cookie: (await signedInCookie()).cookie };
 const created: string[] = [];
 
 afterAll(async () => {
@@ -27,7 +30,7 @@ async function createLabs(count: number, status: 'ready' | 'failed' = 'ready') {
 }
 
 async function getJson(url: string) {
-  const response = await app.inject({ method: 'GET', url });
+  const response = await app.inject({ method: 'GET', url, headers });
   return { status: response.statusCode, body: response.json() };
 }
 

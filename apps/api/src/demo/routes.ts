@@ -19,7 +19,8 @@ const body = z
   .strict();
 
 // Registered only when DEMO_ENABLED is true (see app.ts), so in any other
-// environment the route does not exist: a 404, not a 403.
+// environment the route does not exist: a 404, not a 403. Public for the demo
+// only; it runs the simulator and touches no real resource.
 export function registerDemoRoutes<Logger extends FastifyBaseLogger>(
   app: FastifyInstance<
     RawServerDefault,
@@ -28,7 +29,7 @@ export function registerDemoRoutes<Logger extends FastifyBaseLogger>(
     Logger
   >,
 ): void {
-  app.post('/api/demo/scenarios/:name', async (request, reply) => {
+  app.post('/api/demo/scenarios/:name', { config: { public: true } }, async (request, reply) => {
     const { name } = params.parse(request.params);
     const { seed } = body.parse(request.body ?? {});
 

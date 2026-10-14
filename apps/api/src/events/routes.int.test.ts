@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
+import { loadConfig } from '../config/env.js';
+import { signedInCookie } from '../auth/session.fixture.js';
 import { buildApp } from '../app.js';
 import { prisma } from '../db.js';
 
 const app = await buildApp({
-  config: { CORS_ORIGIN: 'http://localhost:3000', DEMO_ENABLED: false },
+  config: { ...loadConfig(), DEMO_ENABLED: false },
 });
+const headers = { cookie: (await signedInCookie()).cookie };
 const lab = await prisma.lab.create({ data: { name: 'events-routes-test' } });
 
 afterAll(async () => {
@@ -26,7 +29,7 @@ const event = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const post = (payload: unknown) =>
-  app.inject({ method: 'POST', url: '/api/events', payload: payload as object });
+  app.inject({ method: 'POST', url: '/api/events', payload: payload as object, headers });
 const storedCount = () => prisma.operationalEvent.count({ where: { labId: lab.id } });
 
 describe('POST /api/events', () => {
@@ -78,7 +81,7 @@ describe('GET /api/labs/:id/events', () => {
     await post(event({ occurredAt: '2026-01-15T08:00:00.000Z' }));
     await post(event({ occurredAt: '2026-01-15T11:00:00.000Z' }));
 
-    const response = await app.inject({ method: 'GET', url: `/api/labs/${lab.id}/events` });
+    const response = await app.inject({ method: 'GET', url: `/api/labs/${lab.id}/events`, headers });
 
     expect(response.statusCode).toBe(200);
     const times = response.json().data.map((e: { occurredAt: string }) => e.occurredAt);
@@ -86,7 +89,7 @@ describe('GET /api/labs/:id/events', () => {
   });
 
   it('returns 404 for an unknown lab', async () => {
-    const response = await app.inject({ method: 'GET', url: '/api/labs/nope/events' });
+    const response = await app.inject({ method: 'GET', url: '/api/labs/nope/events', headers });
 
     expect(response.statusCode).toBe(404);
   });

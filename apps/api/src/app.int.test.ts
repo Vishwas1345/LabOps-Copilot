@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { buildApp } from './app.js';
+import { signedInCookie } from './auth/session.fixture.js';
 import { loadConfig } from './config/env.js';
 import { prisma } from './db.js';
 
@@ -32,7 +33,8 @@ describe('api against a real database', () => {
     });
 
     try {
-      const response = await app.inject({ method: 'GET', url: '/api/labs' });
+      const { cookie } = await signedInCookie();
+      const response = await app.inject({ method: 'GET', url: '/api/labs', headers: { cookie } });
 
       expect(response.statusCode).toBe(200);
       const ids = (response.json().data as Array<{ id: string }>).map(

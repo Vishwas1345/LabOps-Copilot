@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
+import { loadConfig } from '../config/env.js';
+import { signedInCookie } from '../auth/session.fixture.js';
 import { buildApp } from '../app.js';
 import { prisma } from '../db.js';
 
 const app = await buildApp({
-  config: { CORS_ORIGIN: 'http://localhost:3000', DEMO_ENABLED: false },
+  config: { ...loadConfig(), DEMO_ENABLED: false },
 });
+const headers = { cookie: (await signedInCookie()).cookie };
 
 afterAll(async () => {
   await app.close();
@@ -22,7 +25,7 @@ describe('GET /api/jobs/:id', () => {
       },
     });
 
-    const response = await app.inject({ method: 'GET', url: `/api/jobs/${job.id}` });
+    const response = await app.inject({ method: 'GET', url: `/api/jobs/${job.id}`, headers });
 
     expect(response.statusCode).toBe(200);
     expect(response.json().data).toMatchObject({
@@ -34,7 +37,7 @@ describe('GET /api/jobs/:id', () => {
   });
 
   it('returns 404 for an unknown job', async () => {
-    const response = await app.inject({ method: 'GET', url: '/api/jobs/nope' });
+    const response = await app.inject({ method: 'GET', url: '/api/jobs/nope', headers });
 
     expect(response.statusCode).toBe(404);
     expect(response.json().error.code).toBe('JOB_NOT_FOUND');
