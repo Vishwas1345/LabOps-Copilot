@@ -1,0 +1,14 @@
+# Default gitleaks rules, plus an allowlist for things that look like secrets
+# but are not: the fake secrets redaction tests must contain verbatim (one exact
+# string each), and public GitHub advisory ids in .github/audit-baseline.json,
+# whose "key" field trips the generic-api-key rule.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Redaction test fixtures and public advisory ids"
+regexes = [
+  '''ghp_1234567890abcdefghijABCDEFGHIJ123456''',
+  '''sk-live-abc123''',
+  '''(?i)^GHSA(-[23456789cfghjmpqrvwx]{4}){3}$''',
+]
