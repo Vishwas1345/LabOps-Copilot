@@ -14,7 +14,7 @@ operational reference.
 |---|---|---|---|
 | `web` (Next.js) | 3000 | Operator UI; server components call the API | Exists |
 | `api` (Fastify) | 4000 | HTTP API: validate, persist, enqueue; SSE | Exists (labs, events, jobs, incidents) |
-| `worker` (BullMQ) | none | Runs queued jobs and the reconciler (startup, then every 60 s); never serves HTTP | Exists; runs correlation (Phase 5) |
+| `worker` (BullMQ) | none | Runs queued jobs and the reconciler (startup, then every 60 s); never serves HTTP | Exists; runs correlation (Phase 5) and investigations (Phase 7) |
 | `postgres` 16 | 5432 | All durable business state | Exists |
 | `redis` 7 | 6379 (host port overridable) | Queue transport; never the source of truth | Exists |
 | `migrate` (one-shot) | none | Applies Prisma migrations, seeds the demo operator, then exits; api starts only after it succeeds | Exists |
@@ -85,6 +85,8 @@ reach another project's instance.
 | `API_PORT` | api | `4000` | Port |
 | `CORS_ORIGIN` | api | `http://localhost:3000` | Allowed browser origin |
 | `LOG_LEVEL` | api | `info` | Pino level (test runs use `warn`) |
+| `LLM_PROVIDER` | worker | `fixture` | Only `fixture` is accepted until Phase 11; no default run can reach a network model |
+| `LLM_TIMEOUT_MS` | worker | `30000` | Enforced by our code, not the provider's |
 | `SESSION_COOKIE_SECURE` | api | `true` (`false` in compose and `.env.example`) | Session cookie only over https; off only for local http |
 | `SEED_OPERATOR_USERNAME` | migrate (seed) | `operator` | Operator the seed creates or resets |
 | `SEED_OPERATOR_PASSWORD` | migrate (seed) | unset: seeds nobody | 12+ characters; root `.env` for compose, a masked random value in CI; never committed |
@@ -100,7 +102,7 @@ reach another project's instance.
 | Variable | Phase | Purpose |
 |---|---|---|
 | `APPROVAL_TTL_MINUTES` | 9 | Approval expiry (default 30) |
-| `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TIMEOUT_MS` | 11 | Model provider; `fixture` by default |
+| `LLM_API_KEY`, `LLM_MODEL` | 11 | Real model provider credentials and model |
 | `CREDENTIALS_KEY` | 13 | Encryption key for stored integration credentials |
 
 The api parses and validates its variables at startup (`apps/api/src/config/env.ts`),
@@ -138,6 +140,9 @@ placeholders only.
 - The reconciler resends `queued`/`running` rows older than a 2-minute lease
   that Redis no longer has; past `MAX_ATTEMPTS` it fails and audits them.
 - Inspect a job: `GET /api/jobs/:id` (from Postgres; payload never returned).
+- A queue may define `onExhausted`, run in the transaction that fails a job
+  for good (runner's last attempt or reconciler). The investigate queue uses it
+  to send a stranded incident to `manual_review`.
 - The correlate job holds a Postgres advisory lock (key `7316001`) for its
   transaction, so correlation runs one at a time across workers.
 
@@ -171,7 +176,8 @@ same database as `DATABASE_URL`. Locally it reads `apps/api/.env` and needs
 web page shows "API: ok" through `API_INTERNAL_URL`, and the demo scenario
 runs and ingests events (at least 19 labs end up failed), `/api/labs` refuses
 an anonymous request, the seeded operator signs in, the worker runs a correlate
-job, and the scenario's 12-lab incident exists. It needs
+job, the scenario's 12-lab incident exists, and the worker completes an
+investigation of it with the fixture provider. It needs
 `SEED_OPERATOR_PASSWORD` (the value compose seeded); CI generates a masked one
 per run. It catches Dockerfile and
 startup bugs that unit and integration tests cannot see. Run it locally against

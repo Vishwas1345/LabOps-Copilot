@@ -1,6 +1,6 @@
 # LabOps Copilot — Implementation Plan
 
-**Status:** Approved. Phases 0–6 done (LOC-5 to LOC-11); next is Phase 7.
+**Status:** Approved. Phases 0–7 done (LOC-5 to LOC-12); next is Phase 8.
 
 Phase 2 deviations, both deliberate: the demo endpoint returns 201/200, not
 202, because nothing is queued until Phase 4; and the simulator's
@@ -32,6 +32,19 @@ logout and password resets really revoke and no `SESSION_SECRET` exists; no
 `credentials` change until the Phase 12 login UI, since no browser call needs
 a session yet; and the guard is global deny-by-default rather than a
 per-route `requireOperator`, so a forgotten route is closed, not open.
+
+Phase 7 deviations: the incident moves to `investigating` in the request's
+transaction, not in the job, so correlation stops adding labs the moment an
+operator asks; the model output has no `requiresApproval` (approval is never
+the model's call, so a model sending it fails validation); evidence fields are
+`evidenceFor`/`evidenceAgainst` text arrays; event metadata is left out of the
+evidence pack entirely; `GET /api/incidents/:id/investigations` is added so
+results can be read; a diagnosis with an action stays `investigating` until
+the Phase 8 policy step; and jobs gained an `onExhausted` hook so an
+investigation that runs out of retries sends its incident to `manual_review`
+(ARCHITECTURE §11). The action enum lands now as an advisory value, ahead of
+the policy engine, because nothing can execute it before Phases 8 and 9.
+
 **Source:** `SPEC.md` (this folder), `ARCHITECTURE.md`, `CLAUDE.md`; infrastructure details in `docs/infra/INFRA.md`
 **Starting point:** skeleton — Fastify `/health` + `/api/labs`, one-table Prisma schema
 (`apps/api/prisma/schema.prisma`), lab transition map (`apps/api/src/labs/transitions.ts`),

@@ -78,3 +78,19 @@ wait_for "worker ran job $job_id" \
 # Correlation ran in the worker: the scenario's 12-timeout burst is one incident.
 wait_for "scenario burst correlated into one incident" \
   sh -c "curl -fs -b '$jar' '$API_URL/api/incidents?severity=high&limit=100' | grep -q '\"labCount\":12'"
+
+# The worker investigates that incident with the fixture provider (never a live
+# model). On a re-run the incident is already past investigation (409), so the
+# check is that a completed investigation exists either way.
+incident_id="$(curl -fs -b "$jar" "$API_URL/api/incidents?severity=high&limit=100" \
+  | tr '}' '\n' | grep '"labCount":12' | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)"
+[ -n "$incident_id" ] || { echo "FAILED: no 12-lab incident to investigate" >&2; exit 1; }
+status="$(curl -s -b "$jar" -o /dev/null -w '%{http_code}' -X POST \
+  "$API_URL/api/incidents/$incident_id/investigate")"
+case "$status" in
+  200|202|409) echo "ok: investigation requested ($status)" ;;
+  *) echo "FAILED: investigate returned $status" >&2; exit 1 ;;
+esac
+wait_for "worker completed the investigation" \
+  sh -c "curl -fs -b '$jar' '$API_URL/api/incidents/$incident_id/investigations' \
+    | grep -q '\"status\":\"completed\"'"
