@@ -1,11 +1,11 @@
 # LabOps Copilot — Implementation Plan
 
-**Status:** Approved. Phases 0–11 and 12 done (LOC-5 to LOC-16, LOC-17): the
-workflow runs end to end in a browser, with live updates and an opt-in real
-model. Next is Phase 13.
+**Status:** Approved. Phases 0–13 and 12 done (LOC-5 to LOC-16, LOC-17, LOC-18):
+the workflow runs end to end in a browser, with live updates, an opt-in real
+model, and integration settings that report honestly that no live connector has
+been verified. Next is Phase 14.
 
-**Remaining (3):** 13 integration settings and secrets, adapter-gated
-(LOC-18); 14 end-to-end tests and metrics (LOC-19); 15 dependency graph
+**Remaining (2):** 14 end-to-end tests and metrics (LOC-19); 15 dependency graph
 (optional) and delivery (LOC-20).
 
 **Order changed after Phase 9:** the dashboard (Phase 12) ran before live
@@ -456,6 +456,37 @@ Phase 11 deviations, settled by measurement rather than by the docs:
 **Verify:** integration tests; open the settings page in simulator mode.
 **Rollback:** revert; drop `IntegrationConnection`.
 **Done when:** F2a is complete up to the integration gate.
+
+Phase 13 deviations, settled by building it:
+
+- **The adapter interface lost three methods.** `fetchLabs`, `registerWebhook`
+  and `normalizeIncomingEvent` were drafted as optional and are now absent. An
+  optional method invites an implementation by someone who has not read the
+  integration gate; a missing one cannot be called by accident.
+- **`stateFor` derives the state, so `connected` cannot be assigned.** A request
+  body carrying `{"state":"connected"}` is rejected as an unknown field, and the
+  only route to `connected` is an adapter that reported the capabilities to
+  justify it.
+- **`canExecuteRecovery` is typed as the literal `false`,** not `boolean`, so a
+  future adapter cannot enable live recovery without a visible type change.
+- **The credentials key is held in the environment** (`CREDENTIALS_KEY`, base64
+  of 32 bytes), the same trust model `DATABASE_URL` uses. External KMS was
+  rejected as a dependency the MVP does not need; the weakness — an env key is
+  readable by anything that can read the process, and rotating means re-sealing
+  every row — is documented rather than hidden, and `keyVersion` keeps rotation
+  contained.
+- **A wrong key and altered bytes fail identically.** The error answers neither,
+  because distinguishing them is exactly what a probe against stored ciphertext
+  would be testing for.
+- **The settings page renders no connection fields at all.** Drawing an input
+  for an authentication scheme nobody has verified would be inventing the
+  contract. The page shows state and capabilities, and says the auth method is
+  unconfirmed.
+- **The migration was hand-written and verified from zero** on a throwaway
+  database, after Phase 11 left Prisma's bookkeeping corrupted. This avoided the
+  same problem rather than repeating it.
+- **`sync`, `webhooks` and `deliveries` remain unbuilt,** as planned. Their
+  contract is unverified.
 
 ### Phase 14 — End-to-end tests and metrics
 

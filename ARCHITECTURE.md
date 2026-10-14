@@ -838,6 +838,48 @@ External payloads enter the *same* normalisation path as simulator events, so
 the correlation, investigation and recovery pipeline is identical whether data
 is simulated or live. That is the whole point of the adapter boundary.
 
+**How Phase 13 implements it** (`integrations/`, `secrets/`)
+
+The interface above is narrower than it was drafted, and the difference is the
+point. Only two methods exist:
+
+```ts
+interface ProviderAdapter {
+  readonly provider: string;
+  readonly displayName: string;
+  readonly capabilities: ProviderCapabilities;
+  testConnection(config: ConnectionConfig): Promise<ConnectionResult>;
+}
+```
+
+`fetchLabs`, `registerWebhook` and `normalizeIncomingEvent` were **removed**
+rather than left as optional stubs. An optional method invites a future
+implementation by someone who has not read this section; an absent one cannot be
+called by accident.
+
+Three properties make the gate structural rather than a convention:
+
+1. **`connected` is derived, never assigned.** `stateFor(capabilities)` maps
+   reported capabilities to a state. The only route to `connected` is an adapter
+   that proved it, and a request body carrying `{"state":"connected"}` is
+   rejected as an unknown field.
+2. **`canExecuteRecovery` is typed as the literal `false`.** A future adapter
+   cannot enable live recovery without changing the type, which is a visible
+   diff rather than a value someone flipped in a commit.
+3. **No capability combination yields `connected` for the CloudLabs adapter.**
+   It reports `NO_CAPABILITIES`, makes no network call, and a test asserts
+   `not_configured, never connected` by name.
+
+The credentials key is held in the environment (`CREDENTIALS_KEY`, base64 of 32
+bytes), the same trust model `DATABASE_URL` already uses. The weakness is
+stated rather than hidden: a key in the environment is readable by anything that
+can read the process, and rotating it means re-sealing every stored credential.
+`keyVersion` on each row is what keeps that a contained change.
+
+A wrong key and altered ciphertext fail **identically**. Telling them apart is
+precisely what a probe against stored bytes would be testing for, so the error
+message answers neither.
+
 ---
 
 ## 14. Security model
