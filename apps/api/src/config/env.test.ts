@@ -17,7 +17,16 @@ describe('loadConfig', () => {
       CORS_ORIGIN: 'http://localhost:3000',
       LOG_LEVEL: 'info',
       DEMO_ENABLED: false,
+      SESSION_COOKIE_SECURE: true,
     });
+  });
+
+  // Fail-safe: only an explicit 'false' sends the session cookie over http.
+  it('keeps the session cookie Secure unless explicitly turned off', () => {
+    expect(loadConfig({ ...VALID, SESSION_COOKIE_SECURE: 'false' }).SESSION_COOKIE_SECURE).toBe(
+      false,
+    );
+    expect(() => loadConfig({ ...VALID, SESSION_COOKIE_SECURE: 'maybe' })).toThrow();
   });
 
   it('parses DEMO_ENABLED as a boolean', () => {

@@ -1,6 +1,8 @@
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
 import type pino from 'pino';
+import { registerAuthGuard } from './auth/guard.js';
+import { registerAuthRoutes } from './auth/routes.js';
 import type { Config } from './config/env.js';
 import { prisma } from './db.js';
 import { registerDemoRoutes } from './demo/routes.js';
@@ -17,7 +19,8 @@ const BODY_LIMIT_BYTES = 64 * 1024;
 
 // Share our logger: `logger: true` would create a second one without redaction.
 export async function buildApp(options: {
-  config: Pick<Config, 'CORS_ORIGIN' | 'DEMO_ENABLED'>;
+  config: Pick<Config, 'CORS_ORIGIN' | 'DEMO_ENABLED' | 'REDIS_URL' | 'QUEUE_PREFIX'> &
+    Partial<Pick<Config, 'SESSION_COOKIE_SECURE'>>;
   logger?: pino.Logger;
 }) {
   const app = Fastify({
@@ -28,8 +31,14 @@ export async function buildApp(options: {
   registerErrorHandling(app);
 
   await app.register(cors, { origin: options.config.CORS_ORIGIN });
+  await registerAuthGuard(app);
+  await registerAuthRoutes(app, {
+    redisUrl: options.config.REDIS_URL,
+    keyPrefix: options.config.QUEUE_PREFIX,
+    secureCookie: options.config.SESSION_COOKIE_SECURE ?? true,
+  });
 
-  app.get('/health', async () => {
+  app.get('/health', { config: { public: true } }, async () => {
     let database: 'up' | 'down' = 'down';
 
     try {

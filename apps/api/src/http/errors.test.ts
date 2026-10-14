@@ -4,7 +4,13 @@ import { buildApp } from '../app.js';
 import { createLogger } from '../observability/logger.js';
 import { AppError } from './errors.js';
 
-const TEST_CONFIG = { CORS_ORIGIN: 'http://localhost:3000', DEMO_ENABLED: false };
+// The rate limiter connects lazily, so unit tests never reach this Redis.
+const TEST_CONFIG = {
+  CORS_ORIGIN: 'http://localhost:3000',
+  DEMO_ENABLED: false,
+  REDIS_URL: 'redis://localhost:6379',
+  QUEUE_PREFIX: 'labops-unit',
+};
 
 let current: Awaited<ReturnType<typeof buildApp>> | undefined;
 
@@ -19,16 +25,18 @@ async function appWithRoutes() {
   const app = await buildApp({ config: TEST_CONFIG, logger });
   current = app;
 
-  app.get('/app-error', async () => {
+  // Probe routes are public: these tests are about the envelope, not auth.
+  const open = { config: { public: true } };
+  app.get('/app-error', open, async () => {
     throw new AppError(409, 'CONFLICT', 'already approved', { id: 'ra-1' });
   });
-  app.get('/zod-error', async () => {
+  app.get('/zod-error', open, async () => {
     z.object({ limit: z.number().max(100) }).parse({ limit: 'sk-live-echo' });
   });
-  app.get('/bug', async () => {
+  app.get('/bug', open, async () => {
     throw new Error('db password is hunter2 at /srv/app/secret.ts:42');
   });
-  app.post('/echo', async (request) => request.body);
+  app.post('/echo', open, async (request) => request.body);
 
   return { app, logs: () => lines.join('') };
 }

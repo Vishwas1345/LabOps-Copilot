@@ -3,7 +3,13 @@ import { buildApp } from './app.js';
 import { createLogger } from './observability/logger.js';
 
 const SECRET = 'sk-live-should-never-appear';
-const TEST_CONFIG = { CORS_ORIGIN: 'http://localhost:3000', DEMO_ENABLED: false };
+// The rate limiter connects lazily, so unit tests never reach this Redis.
+const TEST_CONFIG = {
+  CORS_ORIGIN: 'http://localhost:3000',
+  DEMO_ENABLED: false,
+  REDIS_URL: 'redis://localhost:6379',
+  QUEUE_PREFIX: 'labops-unit',
+};
 
 let current: Awaited<ReturnType<typeof buildApp>> | undefined;
 

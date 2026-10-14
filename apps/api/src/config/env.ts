@@ -14,6 +14,8 @@ const envSchema = z.object({
   CORS_ORIGIN: z.url({ protocol: /^https?$/ }).default('http://localhost:3000'),
   // Off unless explicitly enabled: demo routes must never ship by accident.
   DEMO_ENABLED: z.stringbool().default(false),
+  // Secure by default; only local http development turns it off.
+  SESSION_COOKIE_SECURE: z.stringbool().default(true),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
