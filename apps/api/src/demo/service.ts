@@ -3,6 +3,7 @@
 
 import { writeAudit } from '../audit/audit.js';
 import { prisma } from '../db.js';
+import { ingestEvent } from '../events/service.js';
 import { createSimulatedLabs } from '../labs/service.js';
 import type { ScenarioName } from '../labs/simulator.js';
 import { SCENARIOS } from '../labs/simulator.js';
@@ -16,7 +17,10 @@ export interface ScenarioRun {
   created: boolean;
   labs: number;
   dependencies: number;
-  plannedEvents: number;
+  /** New events stored by this run (0 on a replay). */
+  eventsIngested: number;
+  /** Events the dedup key recognised, including the scenario's redelivery. */
+  duplicatesSkipped: number;
 }
 
 export async function runScenario(
@@ -39,6 +43,15 @@ export async function runScenario(
     return count;
   });
 
+  // The same path external events take: one validated ingest per event, in
+  // scenario order, so dedup and lab transitions behave exactly as in prod.
+  const actor = { type: 'system', id: 'demo-scenario' } as const;
+  let eventsIngested = 0;
+  for (const event of scenario.events) {
+    const result = await ingestEvent(event, actor);
+    if (!result.duplicate) eventsIngested += 1;
+  }
+
   return {
     scenarioRunId,
     scenario: name,
@@ -47,7 +60,7 @@ export async function runScenario(
     created: labsCreated > 0,
     labs: scenario.labs.length,
     dependencies: scenario.dependencies.length,
-    // Ingested from Phase 3 on; reported now so the run is self-describing.
-    plannedEvents: scenario.events.length,
+    eventsIngested,
+    duplicatesSkipped: scenario.events.length - eventsIngested,
   };
 }

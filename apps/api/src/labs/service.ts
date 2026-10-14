@@ -5,7 +5,7 @@ import { prisma } from '../db.js';
 import type { ListLabsQuery } from './schemas.js';
 import type { Scenario } from './simulator.js';
 import type { LabStatus } from './transitions.js';
-import { assertTransition } from './transitions.js';
+import { assertTransition, canTransition } from './transitions.js';
 
 // The public shape of a lab, so a new column never widens the API by accident.
 export interface LabView {
@@ -165,4 +165,23 @@ export async function createSimulatedLabs(
     skipDuplicates: true,
   });
   return count;
+}
+
+// For event-driven changes: a late or repeated event that the state machine
+// does not allow is still evidence, so it skips the move instead of throwing.
+export async function tryTransitionLab(
+  tx: Prisma.TransactionClient,
+  labId: string,
+  to: LabStatus,
+  actor: Actor,
+  context: { correlationId?: string; reason?: string } = {},
+): Promise<LabTransition | null> {
+  const lab = await tx.lab.findUnique({ where: { id: labId }, select: { status: true } });
+  if (!lab) {
+    throw new LabNotFoundError(labId);
+  }
+  if (!canTransition(lab.status, to)) {
+    return null;
+  }
+  return transitionLab(tx, labId, to, actor, context);
 }
