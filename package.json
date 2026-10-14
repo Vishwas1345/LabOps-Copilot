@@ -6,9 +6,10 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w @labops/api\" \"npm run dev -w @labops/web\"",
+    "dev": "concurrently -n api,worker,web -c blue,yellow,green \"npm run dev -w @labops/api\" \"npm run dev:worker -w @labops/api\" \"npm run dev -w @labops/web\"",
     "dev:api": "npm run dev -w @labops/api",
     "dev:web": "npm run dev -w @labops/web",
+    "dev:worker": "npm run dev:worker -w @labops/api",
     "db:up": "docker compose up -d postgres",
     "db:generate": "npm run prisma:generate -w @labops/api",
     "db:migrate": "npm run prisma:migrate -w @labops/api",
