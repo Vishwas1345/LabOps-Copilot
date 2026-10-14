@@ -1,4 +1,5 @@
-// Worker process entrypoint. Runs jobs and the reconciler; never serves HTTP.
+// Worker process entrypoint. Runs jobs, the reconciler and the approval
+// expiry sweep; never serves HTTP.
 
 import { loadConfig } from './config/env.js';
 import { prisma } from './db.js';
@@ -8,6 +9,7 @@ import { createInvestigateJob } from './investigations/investigate.job.js';
 import { closeQueues } from './jobs/queues.js';
 import { reconcileJobs } from './jobs/reconcile.js';
 import { createExecuteJob } from './recovery/execute.job.js';
+import { expireStaleApprovals } from './recovery/expire.js';
 import { createWorker } from './jobs/worker.js';
 import { logger } from './observability/logger.js';
 import { initTracing } from './observability/tracing.js';
@@ -42,8 +44,14 @@ async function main() {
     })
       .then((outcome) => log.info(outcome, 'reconciled jobs'))
       .catch((error: unknown) => log.error({ err: error }, 'reconcile failed'));
-  await reconcile();
-  const timer = setInterval(reconcile, RECONCILE_INTERVAL_MS);
+  const sweep = () =>
+    expireStaleApprovals()
+      .then((expired) => expired > 0 && log.info({ expired }, 'expired stale approvals'))
+      .catch((error: unknown) => log.error({ err: error }, 'approval sweep failed'));
+  // One tick for both housekeeping jobs; each is safe to run in every worker.
+  const tick = () => Promise.all([reconcile(), sweep()]);
+  await tick();
+  const timer = setInterval(tick, RECONCILE_INTERVAL_MS);
 
   // Let the active job finish before exiting; BullMQ retries it if killed.
   const shutdown = (signal: NodeJS.Signals) => {

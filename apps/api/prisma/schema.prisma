@@ -357,4 +357,6 @@ model RecoveryAction {
   @@index([incidentId, createdAt(sort: Desc)])
   // Rate limits and concurrency look up recent actions by target.
   @@index([targetIds], type: Gin)
+  // The expiry sweep finds awaiting_approval rows past their deadline.
+  @@index([status, expiresAt])
 }
