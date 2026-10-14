@@ -117,6 +117,12 @@ export function registerRecoveryRoutes<Logger extends FastifyBaseLogger>(
         blockedAt: row.blockedAt,
         policyDecisions: row.policyDecisions,
         expiresAt: row.expiresAt?.toISOString() ?? null,
+        approvedBy: row.approvedBy,
+        approvedAt: row.approvedAt?.toISOString() ?? null,
+        executedAt: row.executedAt?.toISOString() ?? null,
+        // Before-state and execution-time policy decisions, then verification.
+        result: row.result,
+        verificationResult: row.verificationResult,
         createdAt: row.createdAt.toISOString(),
       })),
     };
