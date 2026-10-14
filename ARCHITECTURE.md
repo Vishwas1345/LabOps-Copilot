@@ -278,14 +278,14 @@ erDiagram
   OPERATIONAL_EVENT {
     string id PK
     string labId FK
-    string eventType
-    string errorCode "normalised category"
-    string message "redacted"
-    string dependencyId
+    string type "provision_succeeded|provision_failed"
+    string errorCategory "closed enum; CHECK: set iff failed"
+    string message "redacted at entry"
+    string dependencyId FK "SET NULL on delete"
     string deduplicationKey "UNIQUE"
-    string traceId
+    string source "simulated|provider"
     datetime occurredAt
-    json metadata "redacted"
+    json metadata "redacted at entry"
   }
   INCIDENT {
     string id PK
@@ -738,14 +738,15 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | `Lab`, `Dependency`, `LabDependency` with status enums | Done (Phase 1) | Remaining models per §6 (Phases 3–13) |
 | Append-only `AuditEntry` (DB trigger), `writeAudit` | Done (Phase 1) | — |
 | Guarded `transitionLab` (compare-and-set + audit in one transaction) | Done (Phase 1) | — |
-| `GET /api/labs` (paginated), `GET /api/labs/:id` | Done (Phase 1) | Recent events (Phase 3) |
+| `GET /api/labs` (paginated), `GET /api/labs/:id` | Done (Phase 1) | — |
 | Compose: postgres, redis, migrate, api, web | Done, verified end to end | Worker service (Phase 4) |
 | Pino with shared Fastify instance and key-name redaction | Done | Child-logger context (Phase 4) |
 | Vitest unit + integration suites, CI gates | Done | Playwright (Phase 14) |
 | CI: change detection, build, lint, tests, coverage, quality gate | Done | Release and deploy (Phase 15) |
 | Deterministic simulator (`labs/simulator.ts`), `training-event` scenario | Done (Phase 2) | Event emission (Phase 3) |
 | Demo scenario endpoint, flag-gated and idempotent | Done (Phase 2) | — |
-| Event ingestion + dedup | Not started | Phase 3 |
+| Event ingestion: validation, redaction at entry, DB dedup, lab transitions | Done (Phase 3) | Trace ids (Phase 4) |
+| `POST /api/events`, `GET /api/labs/:id/events` | Done (Phase 3) | Auth (Phase 6) |
 | BullMQ worker, OTel tracing | Not started | Phase 4 |
 | Correlation engine | Not started | Phase 5 |
 | AI investigation | Not started | Phases 7, 11 |
