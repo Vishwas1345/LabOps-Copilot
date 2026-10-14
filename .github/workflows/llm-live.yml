@@ -1,0 +1,90 @@
+name: llm live
+
+# The only job in this repository that calls a network model.
+#
+# It is manual by design: `on: workflow_dispatch` and nothing else. A push or a
+# pull request can never start it, so the default CI run makes no model call and
+# cannot be broken by provider throttling or by a model's opinion of the day.
+# CLAUDE.md 5 requires exactly that, and vitest.config.ts excludes
+# *.live.test.ts from `npm test` so the suite cannot even be selected by
+# accident.
+#
+# Needs the GEMINI_API_KEY repository secret. Run it deliberately, not on every
+# merge: the free tier throttles hard and a red run usually means Google is
+# busy, not that the code is wrong.
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Model to exercise (must be reachable by the key)
+        required: false
+        default: gemini-3.1-flash-lite
+      base-url:
+        description: Override the API base url
+        required: false
+        default: https://generativelanguage.googleapis.com/v1beta
+
+permissions:
+  contents: read
+
+concurrency:
+  group: llm-live-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/api
+
+jobs:
+  live:
+    name: live model check
+    runs-on: ubuntu-latest
+    # Six attempts with backoff against a throttled tier needs room.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: .
+
+      - name: Require the key
+        # Dispatched deliberately, so a missing secret is a configuration
+        # mistake worth failing on rather than silently skipping.
+        run: |
+          if [ -z "${{ secrets.GEMINI_API_KEY }}" ]; then
+            echo "::error::GEMINI_API_KEY secret is not set on this repository"
+            exit 1
+          fi
+
+      - name: Type check and lint
+        run: |
+          npm run typecheck -w @labops/api
+          npm run lint -w @labops/api
+
+      # The key is passed as an env var, never written into a file, never
+      # echoed, and never placed in a command line.
+      - name: Run the live provider tests
+        run: npm run test:live
+        env:
+          LLM_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_MODEL: ${{ inputs.model }}
+          LLM_BASE_URL: ${{ inputs.base-url }}
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          {
+            echo "### The live run failed"
+            echo ""
+            echo "Before treating this as a code defect, check the provider:"
+            echo "- the free tier returns 503 under load, so a red run often means Google is busy"
+            echo "- a model retired or closed to new accounts fails as 404"
+            echo "- the unit and integration suites are the gates; this one is informational"
+          } >> "$GITHUB_STEP_SUMMARY"

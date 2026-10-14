@@ -14,6 +14,7 @@
     "lint": "eslint src",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "coverage": "vitest run --coverage --config vitest.coverage.config.ts",
     "prisma:generate": "prisma generate",
