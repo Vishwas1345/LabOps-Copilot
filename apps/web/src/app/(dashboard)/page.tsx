@@ -23,7 +23,6 @@ export default async function OverviewPage({
       searchParams,
     ]);
   const totalLabs = Object.values(labs).reduce((sum, count) => sum + count, 0);
-  const unresolved = incidents.filter((incident) => incident.status !== 'resolved');
 
   if (totalLabs === 0) {
     return (
@@ -84,12 +83,17 @@ export default async function OverviewPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Unresolved incidents</CardTitle>
-          <CardDescription>Newest first</CardDescription>
+          <CardTitle>Recent incidents</CardTitle>
+          <CardDescription>
+            The {incidents.length} newest.{' '}
+            <Link href="/incidents?status=open" className="hover:underline">
+              All open incidents
+            </Link>
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          {unresolved.length === 0 && <p className="text-muted-foreground">Nothing unresolved.</p>}
-          {unresolved.map((incident) => (
+          {incidents.length === 0 && <p className="text-muted-foreground">No incidents yet.</p>}
+          {incidents.map((incident) => (
             <Link key={incident.id} href={`/incidents/${incident.id}`} className="flex items-center justify-between gap-2 hover:underline">
               <span className="truncate">{incident.title}</span>
               <StatusBadge status={incident.status} />
