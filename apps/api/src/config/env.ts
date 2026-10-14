@@ -16,6 +16,10 @@ const envSchema = z.object({
   DEMO_ENABLED: z.stringbool().default(false),
   // Secure by default; only local http development turns it off.
   SESSION_COOKIE_SECURE: z.stringbool().default(true),
+  // Only the deterministic fixture exists until Phase 11 adds a real model.
+  LLM_PROVIDER: z.enum(['fixture']).default('fixture'),
+  // Enforced by our code, not the provider's: a hung model cannot hold a job.
+  LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(30_000),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
