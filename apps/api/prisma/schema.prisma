@@ -282,6 +282,9 @@ enum InvestigationFailure {
   TIMEOUT
   MALFORMED_OUTPUT
   SCHEMA_REJECTED
+  // The provider says it stopped at the token ceiling, so the output is half an
+  // object. Distinct from MALFORMED_OUTPUT because the cause and the fix differ.
+  TRUNCATED_OUTPUT
   REFUSED
   PROVIDER_ERROR
   JOB_EXHAUSTED

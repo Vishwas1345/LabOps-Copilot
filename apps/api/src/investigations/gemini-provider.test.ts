@@ -137,6 +137,73 @@ describe('createGeminiProvider', () => {
     expect(calls).toHaveLength(1);
   });
 
+  // A provider-side finish reason is the difference between "the model wrote
+  // nonsense" and "we cut it off". Without it both look identical downstream.
+  it('reports a MAX_TOKENS truncation rather than hiding it', async () => {
+    const { fetchImpl } = recordingFetch(async () =>
+      new Response(
+        JSON.stringify({
+          candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: '{"outcome"' }] } }],
+        }),
+      ),
+    );
+
+    const answer = await run(fetchImpl);
+
+    expect(answer.finishReason).toBe('MAX_TOKENS');
+    expect(answer.raw).toBe('{"outcome"');
+  });
+
+  it('reports an ordinary STOP finish reason too', async () => {
+    const { fetchImpl } = recordingFetch(async () => geminiOk('{"a":1}'));
+    const answer = await run(fetchImpl);
+
+    expect(answer.finishReason).toBeUndefined();
+  });
+
+  // Negative: every refusal reason is a refusal, and none may be retried.
+  it.each(['SAFETY', 'RECITATION', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII'])(
+    'treats %s as a refusal and does not retry',
+    async (reason) => {
+      const { fetchImpl, calls } = recordingFetch(async () =>
+        new Response(
+          JSON.stringify({ candidates: [{ finishReason: reason, content: { parts: [{ text: '' }] } }] }),
+        ),
+      );
+
+      await expect(run(fetchImpl)).rejects.toThrow(ProviderRefusalError);
+      expect(calls).toHaveLength(1);
+    },
+  );
+
+  // Negative: a cancelled call must not wait out the backoff we owe the
+  // provider before noticing the caller has gone.
+  it('does not sleep when the signal aborted during a retry', async () => {
+    const controller = new AbortController();
+    const sleeps: number[] = [];
+    const { fetchImpl } = recordingFetch(async () => {
+      controller.abort();
+      return new Response('busy', { status: 503 });
+    });
+
+    await createGeminiProvider({
+      apiKey: KEY,
+      model: 'gemini-test',
+      baseUrl: BASE,
+      maxAttempts: 3,
+      fetchImpl,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+    })
+      .analyse(prompt, controller.signal)
+      .catch(() => undefined);
+
+    // The abort lands during the first response, so the next attempt must be
+    // refused before its backoff rather than after it.
+    expect(sleeps).not.toContain(750);
+  });
+
   // Negative: an empty candidate list is not a success with an invented answer.
   it('returns empty raw output rather than inventing a diagnosis', async () => {
     const { fetchImpl } = recordingFetch(async () => new Response(JSON.stringify({ candidates: [] })));
