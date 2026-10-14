@@ -330,6 +330,7 @@ erDiagram
   }
   AUDIT_ENTRY {
     string id PK
+    bigint seq "UNIQUE, total order across processes"
     string actorType "human|system|worker|ai"
     string actorId
     string action
@@ -729,14 +730,17 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 |---|---|---|
 | npm workspaces, root scripts | Done | — |
 | Next.js shell + layout | Done | Dashboard routes (Phase 12) |
-| Fastify app, CORS, `/health`, `/api/labs` | Done | View types and pagination (Phase 1) |
+| Fastify app, CORS, `/health` | Done | — |
 | Zod config validation, error envelope, body limit | Done (Phase 0) | — |
-| Prisma `Lab` model, checked-in migrations, drift check | Done (Phase 0) | Full schema per §6 (Phases 1–13) |
+| Prisma migrations, drift check | Done (Phase 0) | — |
+| `Lab`, `Dependency`, `LabDependency` with status enums | Done (Phase 1) | Remaining models per §6 (Phases 3–13) |
+| Append-only `AuditEntry` (DB trigger), `writeAudit` | Done (Phase 1) | — |
+| Guarded `transitionLab` (compare-and-set + audit in one transaction) | Done (Phase 1) | — |
+| `GET /api/labs` (paginated), `GET /api/labs/:id` | Done (Phase 1) | Recent events (Phase 3) |
 | Compose: postgres, redis, migrate, api, web | Done, verified end to end | Worker service (Phase 4) |
 | Pino with shared Fastify instance and key-name redaction | Done | Child-logger context (Phase 4) |
 | Vitest unit + integration suites, CI gates | Done | Playwright (Phase 14) |
 | CI: change detection, build, lint, tests, coverage, quality gate | Done | Release and deploy (Phase 15) |
-| Audit trail | Not started | Phase 1 |
 | Labs simulator | Not started | Phase 2 |
 | Event ingestion + dedup | Not started | Phase 3 |
 | BullMQ worker, OTel tracing | Not started | Phase 4 |

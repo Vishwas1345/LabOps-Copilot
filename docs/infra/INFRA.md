@@ -145,8 +145,10 @@ Three workflows in `.github/workflows/`. Triggered on pushes and pull requests t
 `apps/api/.env`; it needs `npm run db:up && npm run db:migrate` first.
 
 **Coverage:** 70% lines, functions, branches and statements in both workspaces.
-Entry points and wiring that only integration or E2E tests can reach are
-excluded, each with a comment saying why.
+The api coverage job runs unit and integration specs together against a
+migrated Postgres service container, so database code is measured, not
+excluded; only `src/index.ts` (process bootstrap) is left out. The web job
+excludes server components, which only E2E can reach.
 
 **Known gaps**
 

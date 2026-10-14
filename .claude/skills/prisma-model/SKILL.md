@@ -46,8 +46,13 @@ down here.
 ## Apply and verify
 
 ```bash
+npm run prisma:migrate:dev -w @labops/api -- --name <change> --create-only
+# Read the generated SQL before applying. Prisma turns a type change into
+# DROP COLUMN + ADD COLUMN, which erases data; rewrite it as
+# ALTER COLUMN ... TYPE ... USING. Raw SQL for partial indexes, CHECK
+# constraints and triggers is added here too.
+npm run prisma:migrate:dev -w @labops/api
 npm run db:generate
-npm run db:push
 npm run build -w @labops/api
 ```
 

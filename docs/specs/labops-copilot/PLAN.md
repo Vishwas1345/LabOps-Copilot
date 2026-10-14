@@ -1,6 +1,6 @@
 # LabOps Copilot — Implementation Plan
 
-**Status:** Approved. Phase 0 done (LOC-5); next is Phase 1.
+**Status:** Approved. Phases 0–1 done (LOC-5, LOC-6); next is Phase 2.
 **Source:** `SPEC.md` (this folder), `ARCHITECTURE.md`, `CLAUDE.md`; infrastructure details in `docs/infra/INFRA.md`
 **Starting point:** skeleton — Fastify `/health` + `/api/labs`, one-table Prisma schema
 (`apps/api/prisma/schema.prisma`), lab transition map (`apps/api/src/labs/transitions.ts`),
