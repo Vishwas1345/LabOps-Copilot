@@ -7,7 +7,7 @@ import type { JobMessage } from './queues.js';
 import { closeQueues, getQueue, MAX_ATTEMPTS } from './queues.js';
 import { reconcileJobs } from './reconcile.js';
 import { dispatchJob, recordJob } from './record.js';
-import type { JobHandler } from './runner.js';
+import type { ExhaustedHook, JobHandler } from './runner.js';
 import { createWorker } from './worker.js';
 
 const log = createLogger(undefined, 'silent');
@@ -22,8 +22,8 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-const startWorker = (handle: JobHandler) => {
-  worker = createWorker('correlate', { correlate: { span: 'test.job', handle } }, log);
+const startWorker = (handle: JobHandler, onExhausted?: ExhaustedHook) => {
+  worker = createWorker('correlate', { correlate: { span: 'test.job', handle, onExhausted } }, log);
 };
 
 async function enqueue(payload = { n: 1 }) {
@@ -75,9 +75,16 @@ describe('worker', () => {
 
   // Negative: a failing handler is retried, then failed and audited.
   it('retries, then marks the job failed with an audit entry', async () => {
-    startWorker(async () => {
-      throw new Error('downstream exploded password=hunter2');
-    });
+    const exhausted: unknown[] = [];
+    startWorker(
+      async () => {
+        throw new Error('downstream exploded password=hunter2');
+      },
+      // Runs once, in the transaction that fails the job, with its payload.
+      async (payload) => {
+        exhausted.push(payload);
+      },
+    );
 
     const record = await enqueue();
     const row = await rowWhen(record.id, (s) => s === 'failed', 30_000);
@@ -90,6 +97,7 @@ describe('worker', () => {
       where: { action: 'job.failed', targetId: record.id },
     });
     expect(audit?.outcome).toBe('failed');
+    expect(exhausted).toEqual([{ n: 1 }]);
   }, 40_000);
 
   // Work that arrives while a run is active must not be lost.

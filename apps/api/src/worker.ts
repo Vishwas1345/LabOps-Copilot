@@ -3,6 +3,8 @@
 import { loadConfig } from './config/env.js';
 import { prisma } from './db.js';
 import { handleCorrelate } from './incidents/correlate.job.js';
+import { fixtureProvider } from './investigations/fixture-provider.js';
+import { createInvestigateJob } from './investigations/investigate.job.js';
 import { closeQueues } from './jobs/queues.js';
 import { reconcileJobs } from './jobs/reconcile.js';
 import { createWorker } from './jobs/worker.js';
@@ -19,14 +21,19 @@ async function main() {
   });
   const log = logger.child({ process: 'worker' });
 
-  const worker = createWorker(
-    'correlate',
-    { correlate: { span: 'incident.correlate', handle: handleCorrelate } },
-    log,
+  // Only the fixture exists until Phase 11; config rejects any other name.
+  const providers = { fixture: fixtureProvider };
+  const investigate = createInvestigateJob(
+    providers[config.LLM_PROVIDER],
+    config.LLM_TIMEOUT_MS,
   );
+  const workers = [
+    createWorker('correlate', { correlate: { span: 'incident.correlate', handle: handleCorrelate } }, log),
+    createWorker('investigate', { investigate }, log),
+  ];
 
   const reconcile = () =>
-    reconcileJobs()
+    reconcileJobs(new Date(), { investigate: investigate.onExhausted })
       .then((outcome) => log.info(outcome, 'reconciled jobs'))
       .catch((error: unknown) => log.error({ err: error }, 'reconcile failed'));
   await reconcile();
@@ -37,7 +44,7 @@ async function main() {
     void (async () => {
       log.info({ signal }, 'shutting down');
       clearInterval(timer);
-      await worker.close();
+      await Promise.all(workers.map((worker) => worker.close()));
       await closeQueues();
       await tracing.shutdown();
       await prisma.$disconnect();

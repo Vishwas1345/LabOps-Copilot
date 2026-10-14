@@ -6,12 +6,16 @@ import { prisma } from '../db.js';
 import type { QueueName } from './queues.js';
 import { getQueue, MAX_ATTEMPTS } from './queues.js';
 import { dispatchJob } from './record.js';
+import type { ExhaustedHook } from './runner.js';
 
 // Long enough that a row the API is about to dispatch is never touched.
 export const LEASE_MS = 2 * 60_000;
 
+// The same exhaustion hooks the workers use: a job lost for good must settle
+// its domain state exactly as a job that failed its last attempt does.
 export async function reconcileJobs(
   now: Date = new Date(),
+  onExhausted: Partial<Record<QueueName, ExhaustedHook>> = {},
 ): Promise<{ redispatched: number; failed: number }> {
   const stale = await prisma.jobExecution.findMany({
     where: {
@@ -41,6 +45,7 @@ export async function reconcileJobs(
           outcome: 'failed',
           metadata: { queue, reason: 'lost after max attempts' },
         });
+        await onExhausted[queue]?.(row.payload, tx);
       });
       failed += 1;
     } else {
