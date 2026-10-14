@@ -111,10 +111,12 @@ docker compose up --build    # postgres, redis, migrate, api, web
 quality gate — see `.github/workflows/`.
 
 Vitest coverage thresholds are set at 70% for lines, functions, branches and
-statements. The api and web `vitest.config.ts` files exclude entry points and
-wiring that only an integration or E2E suite can reach; each exclusion carries a
-comment saying so. Shrinking those exclusions to make a number look better is
-the same as disabling a test.
+statements. In the api, `npm run coverage` counts unit **and** integration specs
+together (`vitest.coverage.config.ts`, needs a migrated database), so code that
+talks to PostgreSQL is measured rather than excluded. Only process bootstrap
+(`src/index.ts`) is excluded. The web config excludes server components, which
+only the E2E suite can reach. Every exclusion carries a comment saying why.
+Adding exclusions to make a number look better is the same as disabling a test.
 
 Environment: `apps/api/.env` (copy from `apps/api/.env.example`) and
 `apps/web/.env`. Never commit a real secret. `.env` is git-ignored.

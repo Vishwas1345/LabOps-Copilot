@@ -94,7 +94,7 @@ An illegal transition throws identically in the API, the worker and the tests.
 ## Verify
 
 ```bash
-npm run db:generate && npm run db:push
+npm run db:migrate && npm run db:generate
 npm run build -w @labops/api
 ```
 

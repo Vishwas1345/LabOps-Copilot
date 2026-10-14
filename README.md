@@ -319,8 +319,8 @@ Illustrative surface. Implemented endpoints are marked ✅.
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `GET` | `/health` | Service and database status ✅ |
-| `GET` | `/api/labs` | List labs, filter by status ✅ (no filter yet) |
-| `GET` | `/api/labs/:id` | Lab and recent events |
+| `GET` | `/api/labs` | List labs; `status` filter, cursor pagination (`limit` 1–100) ✅ |
+| `GET` | `/api/labs/:id` | Lab with its dependency ids ✅ (recent events arrive with ingestion, Phase 3) |
 | `POST` | `/api/events` | Ingest a normalized operational event |
 | `GET` | `/api/incidents` | List and filter incidents |
 | `GET` | `/api/incidents/:id` | Incident, affected labs and evidence |
