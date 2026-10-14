@@ -23,7 +23,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=build /repo/apps/web/.next apps/web/.next
 COPY --from=build /repo/apps/web/public apps/web/public
-COPY --from=build /repo/apps/web/next.config.ts apps/web/next.config.ts
+COPY --from=build /repo/apps/web/next.config.mjs apps/web/next.config.mjs
 
 USER node
 EXPOSE 3000
