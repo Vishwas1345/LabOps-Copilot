@@ -17,11 +17,12 @@ export default defineConfig({
       reportsDirectory: 'coverage',
       include: ['src/**/*.ts'],
       // Coverage counts integration specs too (vitest.coverage.config.ts), so
-      // only the two process entrypoints, which no test runs, are excluded.
+      // only the process entrypoints, which no test runs, are excluded.
       exclude: [
         'src/**/*.test.ts',
         'src/index.ts',
         'src/worker.ts',
+        'src/seed-operator.ts',
       ],
       thresholds: {
         lines: 70,

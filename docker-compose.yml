@@ -33,9 +33,16 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
       target: build
+    # Then seeds the demo operator. An unset password seeds nobody, so the
+    # stack still boots; set SEED_OPERATOR_PASSWORD in the root .env to sign in.
     environment:
       DATABASE_URL: postgresql://labops:labops@postgres:5432/labops
-    command: ["npm", "run", "prisma:migrate", "-w", "@labops/api"]
+      SEED_OPERATOR_USERNAME: ${SEED_OPERATOR_USERNAME:-operator}
+      SEED_OPERATOR_PASSWORD: ${SEED_OPERATOR_PASSWORD:-}
+    command:
+      - sh
+      - -c
+      - npm run prisma:migrate -w @labops/api && node apps/api/dist/seed-operator.js
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,6 +59,8 @@ services:
       CORS_ORIGIN: http://localhost:3000
       # Compose is the local/demo stack; the demo routes stay off elsewhere.
       DEMO_ENABLED: "true"
+      # Served over plain http on localhost, so the cookie cannot be Secure here.
+      SESSION_COOKIE_SECURE: "false"
     ports:
       - "4000:4000"
     depends_on:
