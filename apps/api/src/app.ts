@@ -1,9 +1,16 @@
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
+import type pino from 'pino';
 import { prisma } from './db.js';
+import { logger as defaultLogger } from './observability/logger.js';
 
-export async function buildApp() {
-  const app = Fastify({ logger: true });
+// `logger: true` would make Fastify build its own Pino instance without our
+// redaction, so every `request.log` call would bypass it. Passing the shared
+// instance keeps one logger with one set of rules.
+export async function buildApp(
+  options: { logger?: pino.Logger } = {},
+) {
+  const app = Fastify({ loggerInstance: options.logger ?? defaultLogger });
 
   await app.register(cors, {
     origin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
