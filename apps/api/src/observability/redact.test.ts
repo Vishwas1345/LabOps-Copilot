@@ -93,6 +93,22 @@ describe('redactText', () => {
     ['api_key: sk-live-123', 'api_key: [redacted]'],
     ['TOKEN=abc def', 'TOKEN=[redacted] def'],
     ['auth header Bearer eyJhbGciOi.payload.sig', 'auth header Bearer [redacted]'],
+    // Secrets recognisable by shape, with no key= in front (found in Phase 7 review).
+    ['API key sk-live-4f9a8b7c6d5e4f3a2b1c rejected', 'API key sk-live-[redacted] rejected'],
+    ['key sk-proj-AbCdEf0123456789XyZ0 invalid', 'key sk-proj-[redacted] invalid'],
+    ['stripe pk_test_51HabcdefGHIJKLmnop', 'stripe pk_test_[redacted]'],
+    ['AccessKeyId AKIAIOSFODNN7EXAMPLE denied', 'AccessKeyId AKIA[redacted] denied'],
+    ['clone failed: ghp_1234567890abcdefghijABCDEFGHIJ123456', 'clone failed: ghp_[redacted]'],
+    [
+      'github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ used',
+      'github_pat_[redacted] used',
+    ],
+    ['jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl expired', 'jwt [redacted] expired'],
+    [
+      'db postgresql://admin:S3cretPw@db.internal:5432/labs down',
+      'db postgresql://admin:[redacted]@db.internal:5432/labs down',
+    ],
+    ['fetch https://bot:t0k3n@git.example.com/repo.git', 'fetch https://bot:[redacted]@git.example.com/repo.git'],
   ])('redacts %p', (input, expected) => {
     expect(redactText(input)).toBe(expected);
   });
@@ -102,6 +118,13 @@ describe('redactText', () => {
     ['tokenCount=5 retries=2'],
     ['secretary assigned'],
     ['VM provisioning timed out pulling the base image'],
+    // Look-alikes the shape patterns must not touch.
+    ['pip install scikit-learn sk-learn'],
+    ['registry http://registry.internal:5000/v2/ unreachable'],
+    ['owner alice@example.com notified'],
+    ['ghp_short is too short to be a token'],
+    ['AKIA prefix alone'],
+    ['payload eyJhbGciOiJIUzI1NiJ9 without signature'],
   ])('leaves %p alone', (input) => {
     expect(redactText(input)).toBe(input);
   });
