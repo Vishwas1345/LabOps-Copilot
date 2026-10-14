@@ -285,13 +285,33 @@ Long-running work must never hold a transaction open.
 - Name types in domain terms (`Incident`, `RecoveryAction`, `AuditEntry`) — not
   generic containers.
 
-### Comments and docs
+### Code quality — the bar is top-notch
 
-- Comment **why**, never **what**. No comments that restate the code.
-- Document non-obvious constraints, safety decisions and rejected alternatives.
-  This project's interview value *is* the reasoning — capture it in
-  `ARCHITECTURE.md` rather than scattering it through the code.
+Every line must earn its place. Reviewers read this code as evidence of
+judgement, so noise counts against it as much as bugs do.
+
+- **Clean and small.** Clear names over clever code. One job per function. No
+  dead code, commented-out code, speculative options or unused exports.
+- **Least machinery that does the job.** No abstraction until a second real
+  caller needs it.
+- **Consistent.** Match the patterns already in the module before inventing one.
+
+### Comments
+
+Short, relevant, and only where they add something the code cannot say.
+
+- **Where:** at the top of a file (what it owns, in one or two lines) or just
+  before a function whose *why* is not obvious. Not on every line.
+- **What:** the reason, constraint, or rejected alternative. Never restate what
+  the code does.
+- **Size:** one to three lines. If it needs a paragraph, the reasoning belongs
+  in `ARCHITECTURE.md` and the comment points there.
+- **Safety decisions always get a comment**: why a check exists, what it
+  prevents. These are the comments a reviewer looks for.
 - No emojis in code, commits, or documentation.
+
+Good: `// Compare-and-set: a concurrent transition makes this match zero rows.`
+Bad: a ten-line block explaining Postgres isolation levels above an `update`.
 
 ### Errors and logging
 
@@ -439,6 +459,13 @@ A change is complete when:
 
 - [ ] Typecheck passes for the affected workspace.
 - [ ] Tests cover the new behaviour, including the negative case.
+- [ ] Each safety test is **mutation-checked**: break the guard it protects and
+      confirm the test fails. A test that cannot fail is not a test.
+- [ ] Integration tests pass twice in a row from a **reset** database
+      (`npx prisma migrate reset --force` in `apps/api`).
+- [ ] All checks pass from a **fresh clone** (`npm ci`, no local generated
+      files), so nothing depends on this machine's state.
+- [ ] Code and comments meet §7 *Code quality* and *Comments*.
 - [ ] Every state transition writes an audit entry in the same transaction.
 - [ ] Any new external input is validated with Zod and redacted if sensitive.
 - [ ] Any new side effect is idempotent.
