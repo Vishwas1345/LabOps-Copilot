@@ -1,8 +1,4 @@
-/**
- * Browser-side API access. The browser talks to the API only - never to
- * PostgreSQL, Redis or the LLM (CLAUDE.md 4). `NEXT_PUBLIC_API_URL` holds a URL
- * and nothing else; a token must never reach this module.
- */
+// API access for the web app. NEXT_PUBLIC_API_URL holds a URL, never a token.
 
 export class InvalidApiUrlError extends Error {
   constructor(readonly value: string) {
@@ -13,10 +9,7 @@ export class InvalidApiUrlError extends Error {
 
 const DEFAULT_API_URL = 'http://localhost:4000';
 
-/**
- * Normalises the configured base URL: enforces an absolute http(s) origin and
- * strips a trailing slash so path joining never produces a double slash.
- */
+/** Requires an absolute http(s) URL; strips a trailing slash before joining. */
 export function buildApiUrl(
   baseUrl: string | undefined = process.env.NEXT_PUBLIC_API_URL,
   path = '',
@@ -46,10 +39,7 @@ export interface HealthResponse {
   checks: { database: string };
 }
 
-/**
- * Returns null rather than throwing: an unreachable API is a degraded dashboard,
- * not a crashed page.
- */
+/** Null, not a throw: an unreachable API degrades the page, it does not crash it. */
 export async function fetchHealth(
   baseUrl?: string,
   init?: RequestInit,

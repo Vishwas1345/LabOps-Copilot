@@ -1,12 +1,5 @@
-/**
- * Lab lifecycle transitions declared as data rather than scattered status
- * assignments, so the API, the worker and the tests all reject the same
- * illegal moves (CLAUDE.md 6).
- *
- * The database stores status as the `LabStatus` enum, which decides which
- * values exist. This map decides which moves between them are legal. The
- * type check below breaks the build if the two lists ever drift apart.
- */
+// Legal lab status moves, declared as data so API, worker and tests agree.
+// The DB enum decides which statuses exist; this map decides the moves.
 
 import type { LabStatus as DbLabStatus } from '@prisma/client';
 
@@ -20,8 +13,7 @@ export const LAB_STATUSES = [
 
 export type LabStatus = (typeof LAB_STATUSES)[number];
 
-// Compile-time only: fails typecheck if a status exists in one list but not
-// the other.
+// Fails typecheck if this list and the DB enum ever differ.
 const _statusesMatchDatabase: [LabStatus] extends [DbLabStatus]
   ? [DbLabStatus] extends [LabStatus]
     ? true
@@ -64,11 +56,7 @@ export function canTransition(from: LabStatus, to: LabStatus): boolean {
   return LAB_TRANSITIONS[from].includes(to);
 }
 
-/**
- * Throws unless the move is declared above. Callers inside a transaction use
- * this rather than branching, so an illegal transition cannot be written by
- * accident.
- */
+/** Throws unless the move is declared above. */
 export function assertTransition(from: LabStatus, to: LabStatus): void {
   if (!canTransition(from, to)) {
     throw new IllegalTransitionError(from, to);

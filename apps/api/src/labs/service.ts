@@ -6,11 +6,7 @@ import type { ListLabsQuery } from './schemas.js';
 import type { LabStatus } from './transitions.js';
 import { assertTransition } from './transitions.js';
 
-/**
- * What the API exposes about a lab. A separate type rather than the Prisma
- * row, so adding a column never silently widens the public response
- * (CLAUDE.md 4: modules expose behaviour, not tables).
- */
+// The public shape of a lab, so a new column never widens the API by accident.
 export interface LabView {
   id: string;
   name: string;
@@ -47,12 +43,8 @@ const withDependencyIds = {
   dependencies: { select: { dependencyId: true } },
 } as const;
 
-/**
- * Newest first, `id` as the tie-breaker so the order is total and a page
- * boundary never skips or repeats a lab created in the same millisecond.
- * Fetches one extra row to learn whether another page exists without a
- * separate count query.
- */
+// Newest first; `id` breaks ties so pages never skip or repeat a lab.
+// One extra row tells us whether a next page exists, without a count query.
 export async function listLabs(query: ListLabsQuery): Promise<LabPage> {
   const rows = await prisma.lab.findMany({
     where: query.status ? { status: query.status } : undefined,
@@ -105,15 +97,8 @@ export interface LabTransition {
   to: LabStatus;
 }
 
-/**
- * The only way a lab's status changes. Runs inside the caller's transaction so
- * the status and its audit entry commit or roll back together.
- *
- * The write is conditional on the status we read (compare-and-set): if a
- * concurrent transaction moved the lab first, zero rows match and this throws
- * instead of overwriting their change. That avoids holding a row lock while
- * keeping two racing transitions from both winning.
- */
+// The only way a lab's status changes; status and audit share the caller's
+// transaction. Compare-and-set: a concurrent change makes the write match zero rows.
 export async function transitionLab(
   tx: Prisma.TransactionClient,
   labId: string,

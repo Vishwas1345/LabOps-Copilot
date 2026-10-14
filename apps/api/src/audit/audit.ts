@@ -1,13 +1,8 @@
 import type { ActorType, Prisma } from '@prisma/client';
 import { redactSecrets } from '../observability/redact.js';
 
-/**
- * The only write path into AuditEntry. It takes the caller's transaction
- * client rather than the global one, so a state change and the entry
- * describing it commit or roll back together (CLAUDE.md 6). There is no
- * update or delete function: the table is append-only, and a database
- * trigger enforces that even for code that bypasses this module.
- */
+// The only write path into AuditEntry. Takes the caller's transaction so a
+// change and its entry commit together; a DB trigger makes the table append-only.
 
 export interface Actor {
   type: ActorType;
@@ -38,8 +33,7 @@ export async function writeAudit(
       targetId: entry.targetId,
       outcome: entry.outcome,
       correlationId: entry.correlationId,
-      // Callers build metadata from our own values, but audit rows live
-      // forever, so a secret-named key is censored before it can be stored.
+      // Audit rows live forever, so secret-named keys never get stored.
       metadata: entry.metadata
         ? (redactSecrets(entry.metadata) as Prisma.InputJsonObject)
         : undefined,

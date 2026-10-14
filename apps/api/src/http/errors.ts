@@ -8,12 +8,8 @@ import type {
 } from 'fastify';
 import { ZodError } from 'zod';
 
-/**
- * One error shape for every response (CLAUDE.md 7):
- *   { error: { code, message, requestId } }
- * A client branches on `code`; `requestId` lets an operator find the matching
- * log line. Stack traces and internal messages never leave the process.
- */
+// One error shape for every response: { error: { code, message, requestId } }.
+// requestId links a response to its log line; stacks never leave the process.
 export interface ErrorEnvelope {
   error: {
     code: string;
@@ -49,8 +45,7 @@ function envelope(
   };
 }
 
-// Generic over the logger because the app is built with our Pino instance,
-// which Fastify types differently from its base logger.
+// Generic over the logger: Fastify types our Pino instance differently.
 export function registerErrorHandling<Logger extends FastifyBaseLogger>(
   app: FastifyInstance<
     RawServerDefault,
@@ -77,8 +72,7 @@ export function registerErrorHandling<Logger extends FastifyBaseLogger>(
         .send(envelope('VALIDATION_FAILED', 'request is invalid', request.id, details));
     }
 
-    // Fastify's own client errors (malformed JSON, body too large) carry a
-    // 4xx status and a safe message; keep both.
+    // Fastify's client errors (bad JSON, body too large) have safe messages.
     const status = 'statusCode' in error ? error.statusCode : undefined;
     if (status !== undefined && status >= 400 && status < 500) {
       return reply
@@ -86,7 +80,7 @@ export function registerErrorHandling<Logger extends FastifyBaseLogger>(
         .send(envelope(error.code ?? 'BAD_REQUEST', error.message, request.id));
     }
 
-    // Anything else is a bug. Log it in full, return nothing about it.
+    // Anything else is a bug: log it in full, reveal nothing.
     request.log.error({ err: error }, 'unhandled error');
     return reply
       .status(500)

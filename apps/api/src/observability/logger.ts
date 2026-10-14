@@ -1,14 +1,8 @@
 import pino from 'pino';
 import { redactSecrets } from './redact.js';
 
-/**
- * Two layers, deliberately overlapping. `formatters.log` censors secret-named
- * keys at any depth and casing (see redact.ts). The `redact` paths still cover
- * request headers, which arrive inside objects the walk does not descend into.
- *
- * Neither layer replaces redacting where data enters the system (CLAUDE.md 5);
- * they exist so a forgotten log call is caught rather than trusted.
- */
+// Safety net, not the control (secrets are stripped where data enters):
+// key-name redaction at any depth, plus header paths the walk cannot reach.
 export function createLogger(destination?: pino.DestinationStream): pino.Logger {
   return pino(
     {

@@ -1,13 +1,7 @@
 import { z } from 'zod';
 
-/**
- * Every variable the API reads, validated once at startup. A bad value stops
- * the process before it binds a port, rather than surfacing later as a
- * confusing runtime failure.
- *
- * Only variables a module actually reads belong here. REDIS_URL joins when the
- * queue does (Phase 4).
- */
+// Every variable the API reads, validated at startup so bad config fails fast.
+// Add a variable only when a module reads it.
 const envSchema = z.object({
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
   API_HOST: z.string().min(1).default('127.0.0.1'),
@@ -27,10 +21,7 @@ export class ConfigError extends Error {
   }
 }
 
-/**
- * Problems name the variable and the rule it broke, never the value: a
- * malformed DATABASE_URL still carries a password that must not reach a log.
- */
+// Errors name the variable, never its value: DATABASE_URL carries a password.
 export function loadConfig(
   env: Record<string, string | undefined> = process.env,
 ): Config {

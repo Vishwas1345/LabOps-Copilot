@@ -16,8 +16,7 @@ export default defineConfig({
         'src/next-env.d.ts',
         // Next.js generates these; not our code to cover.
         'src/app/**/*.d.ts',
-        // Server components render through Next's runtime, not jsdom. They are
-        // covered by the Playwright E2E suite, which does not exist yet.
+        // Server components need Next's runtime; Playwright covers them (Phase 14).
         'src/app/**/*.tsx',
       ],
       thresholds: {

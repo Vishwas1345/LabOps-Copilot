@@ -9,8 +9,8 @@ import { AppError } from '../http/errors.js';
 import { labParams, listLabsQuery } from './schemas.js';
 import { getLab, LabNotFoundError, listLabs } from './service.js';
 
-// HTTP surface only: validate, delegate to the service, shape the response.
-// Read-only for now; authorisation arrives with operator auth (Phase 6).
+// HTTP only: validate, delegate to the service, shape the response.
+// Authorisation arrives with operator auth (Phase 6).
 export function registerLabRoutes<Logger extends FastifyBaseLogger>(
   app: FastifyInstance<
     RawServerDefault,
