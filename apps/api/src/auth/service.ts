@@ -15,13 +15,13 @@ export interface SignedIn {
 
 // Compared against when the username is unknown, so a miss costs the same
 // scrypt time as a wrong password and timing does not reveal who exists.
-let dummyHash: Promise<string> | undefined;
-const unknownUserHash = () => (dummyHash ??= hashPassword(randomBytes(16).toString('hex')));
+// Built at load, not on first use, or the first miss would pay for two hashes.
+const unknownUserHash = hashPassword(randomBytes(16).toString('hex'));
 
 /** Null for an unknown user or a wrong password alike; the caller cannot tell which. */
 export async function signIn(username: string, password: string): Promise<SignedIn | null> {
   const operator = await prisma.operator.findUnique({ where: { username } });
-  const valid = await verifyPassword(password, operator?.passwordHash ?? (await unknownUserHash()));
+  const valid = await verifyPassword(password, operator?.passwordHash ?? (await unknownUserHash));
 
   return prisma.$transaction(async (tx) => {
     if (!operator || !valid) {
