@@ -86,7 +86,8 @@ describe('AuditEntry', () => {
   it('rejects an actor type outside the enum', async () => {
     await expect(
       prisma.$executeRawUnsafe(
-        `INSERT INTO "AuditEntry" (id, "actorType", "actorId", action, "targetType", "targetId", outcome)
+        `INSERT INTO "AuditEntry"
+           (id, "actorType", "actorId", action, "targetType", "targetId", outcome)
          VALUES ('${randomUUID()}', 'robot', 'x', 'a', 't', 't', 'o')`,
       ),
     ).rejects.toThrow(/invalid input value for enum/);

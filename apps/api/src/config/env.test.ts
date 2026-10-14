@@ -3,12 +3,15 @@ import { ConfigError, loadConfig } from './env.js';
 
 const VALID = {
   DATABASE_URL: 'postgresql://labops:s3cret-pw@localhost:5432/labops',
+  REDIS_URL: 'redis://localhost:6379',
 };
 
 describe('loadConfig', () => {
   it('applies defaults for optional variables', () => {
     expect(loadConfig(VALID)).toEqual({
       DATABASE_URL: VALID.DATABASE_URL,
+      REDIS_URL: VALID.REDIS_URL,
+      QUEUE_PREFIX: 'labops',
       API_HOST: '127.0.0.1',
       API_PORT: 4000,
       CORS_ORIGIN: 'http://localhost:3000',
@@ -40,6 +43,8 @@ describe('loadConfig', () => {
     ['CORS_ORIGIN', 'javascript:alert(1)'],
     ['LOG_LEVEL', 'verbose'],
     ['DEMO_ENABLED', 'maybe'],
+    ['REDIS_URL', 'http://localhost:6379'],
+    ['OTEL_EXPORTER_OTLP_ENDPOINT', 'not a url'],
   ])('rejects %s=%p', (key, value) => {
     expect(() => loadConfig({ ...VALID, [key]: value })).toThrow(ConfigError);
   });

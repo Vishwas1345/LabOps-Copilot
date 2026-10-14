@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isSecretKey, REDACTED, redactSecrets } from './redact.js';
+import { isSecretKey, REDACTED, redactSecrets, redactText } from './redact.js';
 
 describe('isSecretKey', () => {
   it.each([
@@ -82,5 +82,25 @@ describe('redactSecrets', () => {
       deep = { next: deep };
     }
     expect(() => redactSecrets(deep)).not.toThrow();
+  });
+});
+
+describe('redactText', () => {
+  it.each([
+    ['password=hunter2 rejected', 'password=[redacted] rejected'],
+    ['api_key: sk-live-123', 'api_key: [redacted]'],
+    ['TOKEN=abc def', 'TOKEN=[redacted] def'],
+    ['auth header Bearer eyJhbGciOi.payload.sig', 'auth header Bearer [redacted]'],
+  ])('redacts %p', (input, expected) => {
+    expect(redactText(input)).toBe(expected);
+  });
+
+  // Negative: ordinary operational text must survive, or evidence is lost.
+  it.each([
+    ['tokenCount=5 retries=2'],
+    ['secretary assigned'],
+    ['VM provisioning timed out pulling the base image'],
+  ])('leaves %p alone', (input) => {
+    expect(redactText(input)).toBe(input);
   });
 });
