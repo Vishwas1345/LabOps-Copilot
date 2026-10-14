@@ -92,6 +92,7 @@ reach another project's instance.
 | `LLM_MODEL` | worker | `gemini-3.1-flash-lite` | Chosen by measurement, not preference. The most volatile value here; override it |
 | `LLM_BASE_URL` | worker | `https://generativelanguage.googleapis.com/v1beta` | Must be https, or http on a loopback host, because the key rides in a header |
 | `LLM_MAX_ATTEMPTS` | worker | `3` | Total attempts against 429/5xx. The free tier throttles hard; a 400 is never retried |
+| `CREDENTIALS_KEY` | api | unset | base64 of exactly 32 bytes: the AES-256 key for integration credentials. Optional; when absent the settings page works and saving a credential returns 503 `CREDENTIALS_KEY_MISSING` rather than storing anything in the clear. Rotating it means re-sealing every stored credential; `keyVersion` on each row is what keeps that contained |
 | `SESSION_COOKIE_SECURE` | api | `true` (`false` in compose and `.env.example`) | Session cookie only over https; off only for local http |
 | `SEED_OPERATOR_USERNAME` | migrate (seed) | `operator` | Operator the seed creates or resets |
 | `SEED_OPERATOR_PASSWORD` | migrate (seed) | unset: seeds nobody | 12+ characters; root `.env` for compose, a masked random value in CI; never committed |
@@ -102,12 +103,6 @@ reach another project's instance.
 | `NEXT_PUBLIC_API_URL` | web | `http://localhost:4000` | API URL fallback (URLs only, never tokens) |
 | `SESSION_COOKIE_SECURE` | web | `true` (`false` in compose) | The web origin's session cookie only over https; off only for local http |
 | `API_INTERNAL_URL` | web | falls back to `NEXT_PUBLIC_API_URL` | API URL for server-side rendering |
-
-**Planned**
-
-| Variable | Phase | Purpose |
-|---|---|---|
-| `CREDENTIALS_KEY` | 13 | Encryption key for stored integration credentials |
 
 The api parses and validates its variables at startup (`apps/api/src/config/env.ts`),
 so the process fails fast on bad configuration, and the error names the variable

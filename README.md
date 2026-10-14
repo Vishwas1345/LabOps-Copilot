@@ -311,6 +311,7 @@ For the faster dev loop, run `npm run db:up` for infrastructure only and
 | `LLM_MODEL` | `gemini-3.1-flash-lite` | Override this; it is the most volatile value in the project |
 | `LLM_BASE_URL` | Gemini's REST endpoint | Must be https, or http on loopback: the key rides in a header |
 | `LLM_MAX_ATTEMPTS` | `3` | Total attempts against 429/5xx |
+| `CREDENTIALS_KEY` | unset | base64 of exactly 32 bytes, holding the AES-256 key for integration credentials. Optional: without it the settings page works and saving a credential fails by name rather than storing anything in the clear |
 
 To run against a real model, set `LLM_PROVIDER=gemini` and `LLM_API_KEY` in
 `apps/api/.env`, then:
@@ -332,8 +333,7 @@ header only — never in a URL, a log, a prompt, or `modelMetadata`.
 | `API_INTERNAL_URL` | falls back to `NEXT_PUBLIC_API_URL` | API base URL for server-side rendering; `http://api:4000` in Docker Compose |
 
 The full list, including `REDIS_URL`, `DEMO_ENABLED` and `LOG_LEVEL`, is in
-`docs/infra/INFRA.md` §4. The planned credentials encryption key is added to
-`.env.example` in Phase 13. Real secrets are never committed; `.env` is
+`docs/infra/INFRA.md` §4. Real secrets are never committed; `.env` is
 git-ignored.
 
 ---
@@ -412,6 +412,10 @@ Illustrative surface. Implemented endpoints are marked ✅.
 | `POST` | `/api/integrations/cloudlabs/sync` | Trigger a manual sync, if supported |
 | `POST` | `/api/integrations/cloudlabs/webhooks` | Receive verified webhook deliveries |
 | `GET` | `/api/integrations/cloudlabs/deliveries` | Recent redacted delivery outcomes |
+| `GET` | `/api/integrations` | Configured integrations and their reported capabilities ✅ |
+| `PUT` | `/api/integrations/cloudlabs` | Store a sealed credential; the response never echoes it ✅ |
+| `POST` | `/api/integrations/cloudlabs/test` | Run the adapter's own probe ✅ |
+| `DELETE` | `/api/integrations/cloudlabs` | Disconnect and remove the stored credential ✅ |
 | `POST` | `/api/demo/scenarios/:name` | Create a seeded scenario's labs and ingest its events (`training-event`); idempotent per seed; only when `DEMO_ENABLED` ✅ |
 
 All request bodies are validated. A consistent error envelope is used
@@ -549,6 +553,7 @@ phase-by-phase plan, with what each phase delivers and how it is verified, is
 | 12 | Operator dashboard: the whole workflow in a browser (built before 10 and 11) | Done |
 | 10 | Live updates over SSE: gap-free, resumable, relayed through the web server | Done |
 | 11 | Real LLM provider (opt-in) | Done |
+| 13 | Integration settings and secrets, adapter-gated | Done (no live connector: the gate is closed) |
 | 13–15 | Integration settings, E2E tests and metrics, delivery | Not started |
 
 ---
