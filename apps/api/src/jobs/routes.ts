@@ -21,6 +21,18 @@ export function registerJobRoutes<Logger extends FastifyBaseLogger>(
     Logger
   >,
 ): void {
+  // Queue health for the overview: rows by queue and status, from Postgres.
+  app.get('/api/jobs/summary', async () => {
+    const rows = await prisma.jobExecution.groupBy({
+      by: ['queue', 'status'],
+      _count: { _all: true },
+      orderBy: [{ queue: 'asc' }, { status: 'asc' }],
+    });
+    return {
+      data: rows.map((row) => ({ queue: row.queue, status: row.status, count: row._count._all })),
+    };
+  });
+
   app.get('/api/jobs/:id', async (request) => {
     const { id } = params.parse(request.params);
     const job = await prisma.jobExecution.findUnique({ where: { id } });

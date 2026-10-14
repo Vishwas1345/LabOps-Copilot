@@ -1,6 +1,7 @@
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
 import type pino from 'pino';
+import { registerAuditRoutes } from './audit/routes.js';
 import { registerAuthGuard } from './auth/guard.js';
 import { registerAuthRoutes } from './auth/routes.js';
 import type { Config } from './config/env.js';
@@ -60,6 +61,7 @@ export async function buildApp(options: {
   registerLabRoutes(app);
   registerEventRoutes(app);
   registerJobRoutes(app);
+  registerAuditRoutes(app);
   registerIncidentRoutes(app);
   registerInvestigationRoutes(app);
   registerRecoveryRoutes(app, {

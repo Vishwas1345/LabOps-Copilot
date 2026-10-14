@@ -43,7 +43,8 @@ export async function writeAudit(
 }
 
 export interface AuditEntryView {
-  /** Commit order; a string because it is a bigint. */
+  /** Insertion order (a sequence is assigned at insert, not at commit); a
+   *  string because it is a bigint. */
   seq: string;
   actorType: ActorType;
   actorId: string;
@@ -57,7 +58,7 @@ export interface AuditEntryView {
 // footgun on an append-only table that only grows.
 const MAX_TARGET_ENTRIES = 500;
 
-/** One target's history, in commit order. */
+/** One target's history, in insertion order. */
 export async function listAuditFor(
   targetType: string,
   targetId: string,
@@ -76,4 +77,37 @@ export async function listAuditFor(
     metadata: row.metadata,
     createdAt: row.createdAt.toISOString(),
   }));
+}
+
+export interface AuditFeedEntry extends AuditEntryView {
+  targetType: string;
+  targetId: string;
+}
+
+/** Every entry, newest first; `cursor` is the last seq of the previous page. */
+export async function listAudit(query: {
+  cursor?: string;
+  limit: number;
+}): Promise<{ items: AuditFeedEntry[]; nextCursor: string | null }> {
+  const rows = await prisma.auditEntry.findMany({
+    where: query.cursor ? { seq: { lt: BigInt(query.cursor) } } : undefined,
+    orderBy: { seq: 'desc' },
+    take: query.limit + 1,
+  });
+  const hasMore = rows.length > query.limit;
+  const page = hasMore ? rows.slice(0, query.limit) : rows;
+  return {
+    items: page.map((row) => ({
+      seq: row.seq.toString(),
+      actorType: row.actorType,
+      actorId: row.actorId,
+      action: row.action,
+      targetType: row.targetType,
+      targetId: row.targetId,
+      outcome: row.outcome,
+      metadata: row.metadata,
+      createdAt: row.createdAt.toISOString(),
+    })),
+    nextCursor: hasMore ? page[page.length - 1].seq.toString() : null,
+  };
 }

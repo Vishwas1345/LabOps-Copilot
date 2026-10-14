@@ -5,7 +5,7 @@ import { prisma } from '../db.js';
 import type { ListLabsQuery } from './schemas.js';
 import type { Scenario } from './simulator.js';
 import type { LabStatus } from './transitions.js';
-import { assertTransition, canTransition } from './transitions.js';
+import { assertTransition, canTransition, LAB_STATUSES } from './transitions.js';
 
 // The public shape of a lab, so a new column never widens the API by accident.
 export interface LabView {
@@ -220,4 +220,15 @@ export async function labStatusesOf(
     select: { id: true, status: true },
   });
   return new Map(rows.map((row) => [row.id, row.status]));
+}
+
+/** Lab count for every status, zero included, so the overview never guesses. */
+export async function labCountsByStatus(): Promise<Record<LabStatus, number>> {
+  const rows = await prisma.lab.groupBy({ by: ['status'], _count: { _all: true } });
+  const counts = Object.fromEntries(LAB_STATUSES.map((status) => [status, 0])) as Record<
+    LabStatus,
+    number
+  >;
+  for (const row of rows) counts[row.status] = row._count._all;
+  return counts;
 }
