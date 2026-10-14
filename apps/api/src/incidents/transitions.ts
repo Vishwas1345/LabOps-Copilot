@@ -28,7 +28,8 @@ export const INCIDENT_TRANSITIONS: Readonly<Record<IncidentStatus, readonly Inci
   // Only verification decides between these two (CLAUDE.md 6).
   recovering: ['resolved', 'manual_review'],
   resolved: [],
-  manual_review: ['investigating'],
+  // An operator may re-run analysis, or propose an action that policy allows.
+  manual_review: ['investigating', 'awaiting_approval'],
 };
 
 export class IllegalIncidentTransitionError extends Error {
