@@ -131,8 +131,17 @@ export async function applyAndVerify(
       // Compare-and-set: a replay or an exhaustion already settled it.
       if (action.status !== 'running') return 'skipped';
 
+      // Only labs still recovering take the simulated result. One an event
+      // moved meanwhile (a real platform reporting success or failure) keeps
+      // that newer evidence; verification below reads whatever is true now.
+      const current = await labStatusesOf(tx, [...results.keys()]);
+      const changedByEvents: string[] = [];
       for (const [labId, to] of results) {
-        await transitionLab(tx, labId, to, WORKER, { reason: `recovery action ${id}` });
+        if (current.get(labId) === 'recovering') {
+          await transitionLab(tx, labId, to, WORKER, { reason: `recovery action ${id}` });
+        } else {
+          changedByEvents.push(labId);
+        }
       }
       const scope = await lockIncidentScope(tx, incidentId);
       const after = snapshot(await labStatusesOf(tx, scope.labIds));
@@ -150,6 +159,7 @@ export async function applyAndVerify(
             passed,
             after,
             notReady: notReady.map(([labId]) => labId),
+            changedByEvents,
             checkedAt: new Date().toISOString(),
           },
         },
