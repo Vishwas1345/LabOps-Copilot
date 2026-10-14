@@ -193,7 +193,12 @@ when the job queue lands.
 cp apps/api/.env.example apps/api/.env
 ```
 
-Defaults match the compose credentials, so no edit is needed for local use.
+Defaults match the compose credentials. To sign in, set `SEED_OPERATOR_PASSWORD`
+(12+ characters) in that file, then create the operator:
+
+```bash
+npm run seed:operator -w @labops/api
+```
 
 ### 4. Apply migrations and generate the client
 
@@ -234,12 +239,18 @@ The home page renders live API and database status.
 ### Docker Compose
 
 The compose file is the reproducible baseline for local development and CI. It
-runs PostgreSQL, Redis, a one-shot `migrate` service, the API and the web app.
-The API starts only after migrations have applied:
+runs PostgreSQL, Redis, a one-shot `migrate` service (which also seeds the demo
+operator), the API, the worker and the web app. The API starts only after
+migrations have applied. Choose the operator password first, in the root `.env`
+(git-ignored):
 
 ```bash
+echo "SEED_OPERATOR_PASSWORD=$(openssl rand -hex 16)" >> .env
 docker compose up --build
 ```
+
+Sign in as `operator` with that password via `POST /api/auth/login`; every
+`/api/*` route except login and the demo trigger needs the session cookie.
 
 For the faster dev loop, run `npm run db:up` for infrastructure only and
 `npm run dev` for the API and web app with hot reload.
@@ -257,6 +268,9 @@ For the faster dev loop, run `npm run db:up` for infrastructure only and
 | `API_HOST` | `127.0.0.1` | API bind address |
 | `API_PORT` | `4000` | API port |
 | `CORS_ORIGIN` | `http://localhost:3000` | Allowed browser origin |
+| `SESSION_COOKIE_SECURE` | `true` (`false` in `.env.example` and compose) | Send the session cookie over https only; off only for local http |
+| `SEED_OPERATOR_USERNAME` | `operator` | Operator `seed:operator` creates or resets |
+| `SEED_OPERATOR_PASSWORD` | unset (seeds nobody) | That operator's password, 12+ characters; never committed |
 
 `apps/web/.env`:
 
@@ -265,9 +279,9 @@ For the faster dev loop, run `npm run db:up` for infrastructure only and
 | `NEXT_PUBLIC_API_URL` | `http://localhost:4000` | API base URL for the browser |
 | `API_INTERNAL_URL` | falls back to `NEXT_PUBLIC_API_URL` | API base URL for server-side rendering; `http://api:4000` in Docker Compose |
 
-Planned variables — encryption key for integration credentials, LLM provider
-and model, Redis URL, log level, and demo-mode flag — will be added to
-`.env.example` as their modules are implemented. Real secrets are never
+The full list, including `REDIS_URL`, `DEMO_ENABLED` and `LOG_LEVEL`, is in
+`docs/infra/INFRA.md` §4. Planned variables (the credentials encryption key, the
+LLM provider and model) are added to `.env.example` as their modules land. Real secrets are never
 committed; `.env` is git-ignored.
 
 ---
@@ -320,7 +334,10 @@ Illustrative surface. Implemented endpoints are marked ✅.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/health` | Service and database status ✅ |
+| `GET` | `/health` | Service and database status (public) ✅ |
+| `POST` | `/api/auth/login` | Sign in; sets the session cookie; rate limited (public) ✅ |
+| `POST` | `/api/auth/logout` | Revoke the session ✅ |
+| `GET` | `/api/auth/me` | The signed-in operator ✅ |
 | `GET` | `/api/labs` | List labs; `status` filter, cursor pagination (`limit` 1–100) ✅ |
 | `GET` | `/api/labs/:id` | Lab with its dependency ids ✅ |
 | `GET` | `/api/labs/:id/events` | The lab's events, newest first, paginated ✅ |
@@ -471,7 +488,8 @@ phase-by-phase plan, with what each phase delivers and how it is verified, is
 | 3 | Event ingestion: validation, redaction, dedup, lab transitions | Done |
 | 4 | Queue, worker process, reconciler, tracing across API and worker | Done |
 | 5 | Deterministic correlation in the worker, incident read APIs | Done |
-| 6–9 | Operator auth, AI investigation, policies, approval, execution, verification | Not started |
+| 6 | Operator sign-in: server-side sessions, deny-by-default routes, login rate limit | Done |
+| 7–9 | AI investigation, policies, approval, execution, verification | Not started |
 | 10–12 | Live updates, real LLM provider, operator dashboard | Not started |
 | 13–15 | Integration settings, E2E tests and metrics, delivery | Not started |
 

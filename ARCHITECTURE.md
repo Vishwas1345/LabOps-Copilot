@@ -137,6 +137,8 @@ apps/api/src/
   index.ts            process bootstrap, graceful shutdown
   app.ts              Fastify assembly, plugins, error handler
   config/             env parsing (Zod), feature flags
+  auth/               operators, scrypt hashing, server-side sessions,
+                      deny-by-default route guard, login rate limit
   observability/      Pino logger, OTel bootstrap, metrics, correlation IDs
   secrets/            envelope encryption, redaction helpers, key rotation
   labs/               Lab model, lifecycle state machine, simulator engine
@@ -153,13 +155,14 @@ apps/api/src/
   events-stream/      SSE hub, per-subscriber filtering
   demo/               flag-gated scenario trigger (DEMO_ENABLED); calls the
                       labs service, never touches real provider data
+  seed-operator.ts    one-shot: creates or resets the demo operator
   worker.ts           worker entrypoint: wires domain job handlers to jobs/;
                       jobs/ itself stays generic and imports no domain
 ```
 
 **Dependency rule:** modules may depend *downward* only —
 `recovery → policies → approvals → incidents → events → labs`.
-`audit`, `observability` and `jobs` are cross-cutting and depend on nothing
+`audit`, `observability`, `jobs` and `auth` are cross-cutting and depend on nothing
 above them. Circular imports are a build error, enforced by an ESLint
 `import/no-cycle` rule.
 
@@ -254,6 +257,7 @@ erDiagram
   LAB ||--o{ LAB_DEPENDENCY : "depends on"
   DEPENDENCY ||--o{ LAB_DEPENDENCY : ""
   LAB ||--o{ OPERATIONAL_EVENT : emits
+  OPERATOR ||--o{ OPERATOR_SESSION : "signs in with"
   INCIDENT ||--o{ INCIDENT_LAB : groups
   LAB ||--o{ INCIDENT_LAB : affected
   INCIDENT ||--o{ INVESTIGATION : "has"
@@ -307,6 +311,17 @@ erDiagram
     string reason "shown verbatim"
     float signalScore "null for the anchor"
     json signals "per-signal breakdown"
+  }
+  OPERATOR {
+    string id PK
+    string username "UNIQUE"
+    string passwordHash "scrypt; never returned or logged"
+  }
+  OPERATOR_SESSION {
+    string id PK "SHA-256 of the cookie token"
+    string operatorId FK
+    datetime expiresAt "8 h absolute"
+    datetime revokedAt "set by logout or password reset"
   }
   INVESTIGATION {
     string id PK
@@ -664,7 +679,10 @@ is simulated or live. That is the whole point of the adapter boundary.
 | Forged webhook | Documented signature/token verification, timestamp replay window, rate and size limits |
 | Duplicate or replayed write | Unique dedup and idempotency keys; duplicate returns prior result |
 | Stale approval replay | TTL + precondition revalidation inside the execution transaction |
-| Unauthorised approval | Authenticated operator identity recorded on every approval; RBAC if time permits |
+| Unauthorised access | Deny by default: a global guard requires a session on every route unless it opts out (`config.public`); a test requests every registered route anonymously |
+| Stolen or leaked session | Random 32-byte token; only its SHA-256 is stored; httpOnly, SameSite=Lax, Secure cookie; 8 h absolute expiry; logout and password reset revoke server-side |
+| Credential guessing | scrypt hashing; login rate limited per IP through Redis (fails closed); unknown user and wrong password answer identically and cost the same hash time |
+| Unauthorised approval | Audit `actorId` comes from the session, never the request body; RBAC if time permits |
 | Resource exhaustion | Body size limits, per-route rate limits, bounded queues, bounded retries, timeouts on all outbound calls |
 | Demo endpoints in production | `/api/demo/*` gated behind a flag that is off outside local/demo environments |
 
@@ -777,12 +795,13 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Deterministic simulator (`labs/simulator.ts`), `training-event` scenario | Done (Phase 2) | Event emission (Phase 3) |
 | Demo scenario endpoint, flag-gated and idempotent | Done (Phase 2) | — |
 | Event ingestion: validation, redaction at entry, DB dedup, lab transitions | Done (Phase 3) | Trace ids (Phase 4) |
-| `POST /api/events`, `GET /api/labs/:id/events` | Done (Phase 3) | Auth (Phase 6) |
+| `POST /api/events`, `GET /api/labs/:id/events` | Done (Phase 3) | — |
 | Worker process, BullMQ queue, outbox job rows, reconciler | Done (Phase 4) | — |
 | OTel tracing: `event.ingest` → `incident.correlate` in one trace | Done (Phase 4) | Remaining spans per stage |
 | `GET /api/jobs/:id` | Done (Phase 4) | — |
 | Correlation engine: scoring, anchor clustering, correlate job, `Incident`/`IncidentLab` | Done (Phase 5) | Sequence and transition signals once labs have event history |
-| `GET /api/incidents`, `/:id`, `/:id/audit` | Done (Phase 5) | Auth (Phase 6) |
+| `GET /api/incidents`, `/:id`, `/:id/audit` | Done (Phase 5) | — |
+| Operator auth: sessions, guard, login rate limit, seeded operator | Done (Phase 6) | Login UI (Phase 12); RBAC if time permits |
 | AI investigation | Not started | Phases 7, 11 |
 | Policies, approvals, execution, verification | Not started | Phases 8–9 |
 | SSE, dashboard, React Flow | Not started | Phases 10, 12, 15 |
