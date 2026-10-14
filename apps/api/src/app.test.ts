@@ -3,6 +3,7 @@ import { buildApp } from './app.js';
 import { createLogger } from './observability/logger.js';
 
 const SECRET = 'sk-live-should-never-appear';
+const TEST_CONFIG = { CORS_ORIGIN: 'http://localhost:3000' };
 
 let current: Awaited<ReturnType<typeof buildApp>> | undefined;
 
@@ -14,7 +15,7 @@ afterEach(async () => {
 async function appWithCapturedLogs() {
   const lines: string[] = [];
   const logger = createLogger({ write: (line: string) => lines.push(line) });
-  const app = await buildApp({ logger });
+  const app = await buildApp({ config: TEST_CONFIG, logger });
   current = app;
   return { app, output: () => lines.join('') };
 }
