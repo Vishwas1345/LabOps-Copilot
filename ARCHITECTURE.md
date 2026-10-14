@@ -656,7 +656,9 @@ automatically.
      **verify** by re-reading every lab in the incident. All `ready` means
      `resolved`; anything else is `manual_review`.
 - Only a retry changes lab state, so a recheck or an escalation can never
-  resolve an incident. A replay changes nothing, a crash after step 1 resumes,
+  resolve an incident. The apply step moves only labs still `recovering`: a
+  lab an ingested event moved meanwhile keeps that newer evidence
+  (`verificationResult.changedByEvents`). A replay changes nothing, a crash after step 1 resumes,
   and an exhausted job fails the action and returns labs to `failed`.
 - **Expiry sweep** (`recovery/expire.ts`) runs on the worker's 60 s tick with
   `FOR UPDATE SKIP LOCKED`; approve and execute check expiry too, so
