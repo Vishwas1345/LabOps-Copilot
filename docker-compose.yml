@@ -25,6 +25,20 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-shot: applies checked-in migrations, then exits. It uses the build
+  # stage because the runtime image omits the Prisma CLI (a dev dependency).
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: build
+    environment:
+      DATABASE_URL: postgresql://labops:labops@postgres:5432/labops
+    command: ["npm", "run", "prisma:migrate", "-w", "@labops/api"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -38,8 +52,8 @@ services:
     ports:
       - "4000:4000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 
