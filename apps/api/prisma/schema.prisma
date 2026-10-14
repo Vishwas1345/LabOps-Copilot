@@ -50,6 +50,22 @@ enum JobStatus {
   failed
 }
 
+// Mirrors INCIDENT_STATUSES in src/incidents/transitions.ts.
+enum IncidentStatus {
+  open
+  investigating
+  awaiting_approval
+  recovering
+  resolved
+  manual_review
+}
+
+enum Severity {
+  low
+  medium
+  high
+}
+
 enum ActorType {
   human
   system
@@ -58,18 +74,19 @@ enum ActorType {
 }
 
 model Lab {
-  id           String          @id @default(cuid())
+  id           String             @id @default(cuid())
   name         String
   // Free text until the simulator defines real types (Phase 2).
-  labType      String          @default("standard")
+  labType      String             @default("standard")
   // Starts where the lifecycle state machine starts.
-  status       LabStatus       @default(provisioning)
+  status       LabStatus          @default(provisioning)
   // Every lab is simulated today; a provider-fed lab must say so explicitly.
-  source       LabSource       @default(simulated)
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  source       LabSource          @default(simulated)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
   dependencies LabDependency[]
   events       OperationalEvent[]
+  incidents    IncidentLab[]
 
   // Serves the paginated list: newest first, id as the tie-breaker.
   @@index([createdAt(sort: Desc), id(sort: Desc)])
@@ -78,9 +95,9 @@ model Lab {
 // A shared resource several labs rely on (an image registry, a network).
 // Two labs failing on one dependency is the strongest correlation signal.
 model Dependency {
-  id     String           @id @default(cuid())
+  id     String             @id @default(cuid())
   kind   String
-  status DependencyStatus @default(healthy)
+  status DependencyStatus   @default(healthy)
   labs   LabDependency[]
   events OperationalEvent[]
 }
@@ -117,20 +134,22 @@ model AuditEntry {
 // Stored redacted. A CHECK in the migration requires an errorCategory on
 // failures and forbids one on successes.
 model OperationalEvent {
-  id               String         @id @default(cuid())
-  labId            String
-  lab              Lab            @relation(fields: [labId], references: [id], onDelete: Cascade)
-  type             EventType
-  errorCategory    ErrorCategory?
-  dependencyId     String?
-  dependency       Dependency?    @relation(fields: [dependencyId], references: [id], onDelete: SetNull)
-  message          String
-  metadata         Json?
-  source           LabSource
-  occurredAt       DateTime
-  receivedAt       DateTime       @default(now())
+  id                String         @id @default(cuid())
+  labId             String
+  lab               Lab            @relation(fields: [labId], references: [id], onDelete: Cascade)
+  type              EventType
+  errorCategory     ErrorCategory?
+  dependencyId      String?
+  dependency        Dependency?    @relation(fields: [dependencyId], references: [id], onDelete: SetNull)
+  message           String
+  metadata          Json?
+  source            LabSource
+  occurredAt        DateTime
+  receivedAt        DateTime       @default(now())
   // One row per logical event: a redelivery hits this and is not stored twice.
-  deduplicationKey String         @unique
+  deduplicationKey  String         @unique
+  anchoredIncidents Incident[]
+  incidentLabs      IncidentLab[]
 
   // Correlation reads by lab, by category and by dependency, each over time.
   @@index([labId, occurredAt])
@@ -160,4 +179,44 @@ model JobExecution {
 
   // The reconciler scans for stale queued and running rows.
   @@index([status, updatedAt])
+}
+
+// A candidate incident: failures grouped by deterministic scoring, never by
+// the LLM. A partial unique index (migration) allows one open incident per
+// windowKey, so concurrent or repeated correlation cannot duplicate it.
+model Incident {
+  id                String           @id @default(cuid())
+  title             String
+  status            IncidentStatus   @default(open)
+  severity          Severity
+  windowKey         String
+  anchorEventId     String
+  anchorEvent       OperationalEvent @relation(fields: [anchorEventId], references: [id])
+  // Correlation strength, not certainty; null for a single-lab incident.
+  confidenceScore   Float?
+  correlationReason Json
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  resolvedAt        DateTime?
+  labs              IncidentLab[]
+
+  @@index([status, createdAt(sort: Desc)])
+}
+
+// Why each lab is in an incident: the reason and score the UI shows verbatim.
+model IncidentLab {
+  incidentId  String
+  incident    Incident         @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  labId       String
+  lab         Lab              @relation(fields: [labId], references: [id], onDelete: Cascade)
+  eventId     String
+  event       OperationalEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  reason      String
+  // Score against the anchor; null for the anchor itself.
+  signalScore Float?
+  signals     Json
+  createdAt   DateTime         @default(now())
+
+  @@id([incidentId, labId])
+  @@index([labId])
 }
