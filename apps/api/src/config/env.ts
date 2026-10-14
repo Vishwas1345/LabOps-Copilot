@@ -7,6 +7,8 @@ const envSchema = z.object({
   API_HOST: z.string().min(1).default('127.0.0.1'),
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   CORS_ORIGIN: z.url({ protocol: /^https?$/ }).default('http://localhost:3000'),
+  // Off unless explicitly enabled: demo routes must never ship by accident.
+  DEMO_ENABLED: z.stringbool().default(false),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),

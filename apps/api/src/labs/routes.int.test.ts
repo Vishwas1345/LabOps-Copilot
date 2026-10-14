@@ -2,7 +2,9 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { prisma } from '../db.js';
 
-const app = await buildApp({ config: { CORS_ORIGIN: 'http://localhost:3000' } });
+const app = await buildApp({
+  config: { CORS_ORIGIN: 'http://localhost:3000', DEMO_ENABLED: false },
+});
 const created: string[] = [];
 
 afterAll(async () => {

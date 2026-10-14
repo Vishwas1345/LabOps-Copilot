@@ -338,7 +338,7 @@ Illustrative surface. Implemented endpoints are marked ✅.
 | `POST` | `/api/integrations/cloudlabs/sync` | Trigger a manual sync, if supported |
 | `POST` | `/api/integrations/cloudlabs/webhooks` | Receive verified webhook deliveries |
 | `GET` | `/api/integrations/cloudlabs/deliveries` | Recent redacted delivery outcomes |
-| `POST` | `/api/demo/scenarios/:name` | Trigger a deterministic demo scenario |
+| `POST` | `/api/demo/scenarios/:name` | Create a seeded scenario's labs (`training-event`); idempotent per seed; only when `DEMO_ENABLED` ✅ |
 
 All request bodies are validated. A consistent error envelope is used
 throughout. Demo endpoints are disabled outside local and demo environments.

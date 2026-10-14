@@ -13,7 +13,13 @@ describe('loadConfig', () => {
       API_PORT: 4000,
       CORS_ORIGIN: 'http://localhost:3000',
       LOG_LEVEL: 'info',
+      DEMO_ENABLED: false,
     });
+  });
+
+  it('parses DEMO_ENABLED as a boolean', () => {
+    expect(loadConfig({ ...VALID, DEMO_ENABLED: 'true' }).DEMO_ENABLED).toBe(true);
+    expect(loadConfig({ ...VALID, DEMO_ENABLED: 'false' }).DEMO_ENABLED).toBe(false);
   });
 
   it('coerces the port from a string', () => {
@@ -33,6 +39,7 @@ describe('loadConfig', () => {
     ['API_PORT', 'abc'],
     ['CORS_ORIGIN', 'javascript:alert(1)'],
     ['LOG_LEVEL', 'verbose'],
+    ['DEMO_ENABLED', 'maybe'],
   ])('rejects %s=%p', (key, value) => {
     expect(() => loadConfig({ ...VALID, [key]: value })).toThrow(ConfigError);
   });

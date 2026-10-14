@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import type pino from 'pino';
 import type { Config } from './config/env.js';
 import { prisma } from './db.js';
+import { registerDemoRoutes } from './demo/routes.js';
 import { registerErrorHandling } from './http/errors.js';
 import { registerLabRoutes } from './labs/routes.js';
 import { logger as defaultLogger } from './observability/logger.js';
@@ -12,7 +13,7 @@ const BODY_LIMIT_BYTES = 64 * 1024;
 
 // Share our logger: `logger: true` would create a second one without redaction.
 export async function buildApp(options: {
-  config: Pick<Config, 'CORS_ORIGIN'>;
+  config: Pick<Config, 'CORS_ORIGIN' | 'DEMO_ENABLED'>;
   logger?: pino.Logger;
 }) {
   const app = Fastify({
@@ -42,6 +43,9 @@ export async function buildApp(options: {
   });
 
   registerLabRoutes(app);
+  if (options.config.DEMO_ENABLED) {
+    registerDemoRoutes(app);
+  }
 
   return app;
 }
