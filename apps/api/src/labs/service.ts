@@ -209,3 +209,15 @@ export async function dependencyKindsOf(
   });
   return new Map(rows.map((row) => [row.id, row.kind]));
 }
+
+/** Current status by lab id, read inside the caller's transaction. */
+export async function labStatusesOf(
+  tx: Prisma.TransactionClient,
+  labIds: string[],
+): Promise<Map<string, LabStatus>> {
+  const rows = await tx.lab.findMany({
+    where: { id: { in: labIds } },
+    select: { id: true, status: true },
+  });
+  return new Map(rows.map((row) => [row.id, row.status]));
+}

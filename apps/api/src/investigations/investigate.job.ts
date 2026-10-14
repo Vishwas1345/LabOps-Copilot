@@ -12,6 +12,7 @@ import { prisma } from '../db.js';
 import { transitionIncident } from '../incidents/service.js';
 import type { IncidentStatus } from '../incidents/transitions.js';
 import { IllegalIncidentTransitionError } from '../incidents/transitions.js';
+import { proposeRecommendation } from '../recovery/propose.js';
 import type { JobDefinition } from '../jobs/runner.js';
 import { assembleEvidence } from './evidence.js';
 import type { InvestigationOutput } from './output-schema.js';
@@ -32,7 +33,7 @@ type Result =
 
 /**
  * Where the incident goes next (ARCHITECTURE §7). A diagnosis with an action
- * stays `investigating` for the policy step (Phase 8); nothing executes here.
+ * returns null: the proposal (policy, then approval) decides instead.
  */
 function nextIncidentStatus(result: Result): IncidentStatus | null {
   if (result.kind === 'failed') return 'open';
@@ -48,6 +49,7 @@ async function finish(
   result: Result,
   metadata: Prisma.InputJsonObject,
   evidenceSummary: Prisma.InputJsonObject,
+  approvalTtlMs: number,
 ): Promise<boolean> {
   return prisma.$transaction(async (tx) => {
     const data =
@@ -71,6 +73,20 @@ async function finish(
       await transitionIncident(tx, incidentId, next, WORKER, {
         reason: result.kind === 'failed' ? `investigation failed: ${result.failure}` : 'investigation done',
       });
+    } else if (result.kind === 'completed' && result.output.recommendedAction) {
+      // Same transaction: the diagnosis and its policy decision commit together,
+      // so an incident never sits with a recommendation nobody judged.
+      await proposeRecommendation(
+        tx,
+        incidentId,
+        {
+          actionType: result.output.recommendedAction,
+          targetLabIds: result.output.targetLabIds,
+          investigationId,
+        },
+        WORKER,
+        approvalTtlMs,
+      );
     }
     await writeAudit(tx, {
       actor: WORKER,
@@ -94,7 +110,7 @@ async function finish(
 
 async function runInvestigation(
   provider: LlmProvider,
-  timeoutMs: number,
+  limits: InvestigateLimits,
   raw: unknown,
   log: pino.Logger,
 ): Promise<{ investigationId: string; result: string }> {
@@ -114,7 +130,7 @@ async function runInvestigation(
   });
 
   const { pack, summary, labIds } = await assembleEvidence(incidentId);
-  const call = await callProvider(provider, buildPrompt(pack), timeoutMs);
+  const call = await callProvider(provider, buildPrompt(pack), limits.timeoutMs);
   let result: Result;
   if (!call.ok) {
     result = { kind: 'failed', failure: call.failure };
@@ -132,7 +148,14 @@ async function runInvestigation(
   }
 
   const metadata = { provider: provider.name, model: provider.model, latencyMs: call.latencyMs };
-  const written = await finish(investigationId, incidentId, result, metadata, { ...summary });
+  const written = await finish(
+    investigationId,
+    incidentId,
+    result,
+    metadata,
+    { ...summary },
+    limits.approvalTtlMs,
+  );
   const outcome = result.kind === 'completed' ? result.output.outcome : result.failure;
   log.info({ incidentId, investigationId, outcome, written }, 'investigation finished');
   return { investigationId, result: outcome };
@@ -162,11 +185,19 @@ async function settleExhausted(raw: unknown, tx: Prisma.TransactionClient): Prom
   }
 }
 
+export interface InvestigateLimits {
+  timeoutMs: number;
+  approvalTtlMs: number;
+}
+
 /** Built with its provider, so tests inject malformed, slow or refusing ones. */
-export function createInvestigateJob(provider: LlmProvider, timeoutMs: number): JobDefinition {
+export function createInvestigateJob(
+  provider: LlmProvider,
+  limits: InvestigateLimits,
+): JobDefinition {
   return {
     span: 'investigation.llm',
-    handle: (payload, log) => runInvestigation(provider, timeoutMs, payload, log),
+    handle: (payload, log) => runInvestigation(provider, limits, payload, log),
     onExhausted: settleExhausted,
   };
 }

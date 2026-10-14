@@ -163,3 +163,38 @@ export async function transitionIncident(
   });
   return { from, to };
 }
+
+export interface IncidentScope {
+  status: IncidentStatus;
+  labIds: string[];
+  dependencyIds: string[];
+  /** The failure category that put each lab in the incident. */
+  categoryByLab: Map<string, string | null>;
+}
+
+/**
+ * Locks the incident row for the caller's transaction (SELECT ... FOR UPDATE),
+ * so concurrent proposals for one incident run one at a time, then reads
+ * what policy needs to judge a target. Throws IncidentNotFoundError.
+ */
+export async function lockIncidentScope(
+  tx: Prisma.TransactionClient,
+  incidentId: string,
+): Promise<IncidentScope> {
+  const [locked] = await tx.$queryRaw<Array<{ status: IncidentStatus }>>`
+    SELECT status FROM "Incident" WHERE id = ${incidentId} FOR UPDATE`;
+  if (!locked) {
+    throw new IncidentNotFoundError(incidentId);
+  }
+  const labs = await tx.incidentLab.findMany({
+    where: { incidentId },
+    select: { labId: true, event: { select: { errorCategory: true, dependencyId: true } } },
+  });
+  const dependencyIds = labs.flatMap((lab) => (lab.event.dependencyId ? [lab.event.dependencyId] : []));
+  return {
+    status: locked.status,
+    labIds: labs.map((lab) => lab.labId),
+    dependencyIds: [...new Set(dependencyIds)],
+    categoryByLab: new Map(labs.map((lab) => [lab.labId, lab.event.errorCategory])),
+  };
+}
