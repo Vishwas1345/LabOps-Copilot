@@ -344,7 +344,8 @@ Illustrative surface. Implemented endpoints are marked ✅.
 | `POST` | `/api/events` | Ingest an event: validated, redacted, deduplicated; 201 new, 200 duplicate ✅ |
 | `GET` | `/api/incidents` | List incidents; `status`/`severity` filters, cursor pagination ✅ |
 | `GET` | `/api/incidents/:id` | Incident, each lab with its reason and score, and the events ✅ |
-| `POST` | `/api/incidents/:id/investigate` | Queue an AI investigation |
+| `POST` | `/api/incidents/:id/investigate` | Queue an AI investigation (fixture provider); 202, or 200 with the active one ✅ |
+| `GET` | `/api/incidents/:id/investigations` | Investigation results, newest first ✅ |
 | `POST` | `/api/incidents/:id/recovery-proposals` | Create a policy-validated proposal |
 | `POST` | `/api/recovery-actions/:id/approve` | Approve a proposed action |
 | `POST` | `/api/recovery-actions/:id/reject` | Reject a proposed action |
@@ -489,7 +490,8 @@ phase-by-phase plan, with what each phase delivers and how it is verified, is
 | 4 | Queue, worker process, reconciler, tracing across API and worker | Done |
 | 5 | Deterministic correlation in the worker, incident read APIs | Done |
 | 6 | Operator sign-in: server-side sessions, deny-by-default routes, login rate limit | Done |
-| 7–9 | AI investigation, policies, approval, execution, verification | Not started |
+| 7 | AI investigation: bounded evidence, delimited prompt, strict output, fixture provider | Done |
+| 8–9 | Policies, approval, execution, verification | Not started |
 | 10–12 | Live updates, real LLM provider, operator dashboard | Not started |
 | 13–15 | Integration settings, E2E tests and metrics, delivery | Not started |
 

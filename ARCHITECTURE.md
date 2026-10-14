@@ -325,14 +325,22 @@ erDiagram
   }
   INVESTIGATION {
     string id PK
-    string incidentId FK
-    string status
+    string incidentId FK "one pending/running per incident"
+    string status "pending|running|completed|error"
+    string requestedBy "operator id from the session"
+    string outcome "diagnosis|insufficient_evidence"
     string summary
     string candidateCause
-    json evidenceReferences
-    json missingEvidence
+    string evidenceFor "text[]; event ids in the pack only"
+    string evidenceAgainst "text[]"
+    string missingEvidence "text[]"
     float confidence
-    json modelMetadata "no secrets"
+    string recommendedAction "ActionType allow-list, nullable"
+    string targetLabIds "text[]; cut to the incident's labs"
+    string droppedTargets "text[]; what the model invented"
+    json evidenceSummary "included, omitted, truncated, redacted"
+    string failure "TIMEOUT|MALFORMED_OUTPUT|SCHEMA_REJECTED|REFUSED|PROVIDER_ERROR|JOB_EXHAUSTED"
+    json modelMetadata "provider, model, latency; no prompt, no secrets"
   }
   RECOVERY_ACTION {
     string id PK
@@ -387,6 +395,7 @@ erDiagram
 | One effect per logical event | `UNIQUE(OperationalEvent.deduplicationKey)` |
 | One execution per approved action | `UNIQUE(RecoveryAction.idempotencyKey)` + partial unique index on in-flight job |
 | One incident per correlation window key | `UNIQUE(Incident.windowKey)` for unresolved incidents (partial index), behind an advisory lock that serialises correlation |
+| One active investigation per incident | `UNIQUE(Investigation.incidentId)` while `pending`/`running` (partial index), behind the incident's compare-and-set move to `investigating` |
 | Audit history is append-only | No `UPDATE`/`DELETE` path on `AuditEntry`; role restricted |
 | State transitions are legal | Guarded transition function + `CHECK`-constrained status enums |
 | Concurrent approvals cannot both win | `SELECT ... FOR UPDATE` on the action row inside the transaction |
@@ -537,6 +546,26 @@ flowchart LR
 8. The provider sits behind an interface (`LlmProvider.analyse()`) so tests use
    a deterministic fixture provider and CI never depends on a live model.
 
+
+**How Phase 7 implements them** (`apps/api/src/investigations/`)
+
+- The evidence pack (`evidence.ts`) holds at most 50 failures and 500
+  characters per message, re-redacted; event metadata is never included.
+- The `<evidence>` JSON escapes `<` and `>`, so a message containing
+  `</evidence>` cannot end the block early (`prompt.ts`).
+- `callProvider` enforces `LLM_TIMEOUT_MS` itself, racing the call against an
+  `AbortSignal`, and classifies timeouts, refusals and provider errors.
+- The output schema has no approval or authority field; a model that sends one
+  fails validation (`output-schema.ts`).
+- No transaction is open during the model call. The result and the incident's
+  next state commit together behind a compare-and-set, so overlapping runs
+  record one result.
+- End states: a diagnosis with an action stays `investigating` for the policy
+  step; `ESCALATE_MANUAL` or no action goes to `manual_review`; insufficient
+  evidence and every model failure go back to `open`.
+- Only the deterministic fixture provider exists; it reads the evidence from
+  the prompt text, as a real model would. Prompt-injection tests therefore
+  prove the plumbing, not a model's behaviour; that needs the opt-in live test.
 ---
 
 ## 10. Safety model for recovery
@@ -587,7 +616,7 @@ automatically.
 | Duplicate event delivery | Dedup key insert conflicts → acknowledged as duplicate, no second processing |
 | Duplicate API request | Idempotency key conflict → returns original result |
 | Worker crash mid-job | Row stays `running`; startup reconciliation re-queues or marks `failed` after a lease timeout |
-| Queue job exceeds retries | Marked `failed`, incident moves to `manual_review`, audit entry records final error |
+| Queue job exceeds retries | Marked `failed` with an audit entry; the queue's `onExhausted` hook runs in the same transaction (from the runner's last attempt and from the reconciler), so an investigation goes to `error` and its incident to `manual_review` |
 | LLM timeout / malformed output | Investigation marked `error`; incident unchanged; retried with backoff |
 | DB unavailable | API reports `degraded` via `/health`; writes fail closed rather than silently dropping events |
 | SSE client disconnects | No effect on processing; stream resumes from last event ID |
@@ -802,7 +831,7 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Correlation engine: scoring, anchor clustering, correlate job, `Incident`/`IncidentLab` | Done (Phase 5) | Sequence and transition signals once labs have event history |
 | `GET /api/incidents`, `/:id`, `/:id/audit` | Done (Phase 5) | — |
 | Operator auth: sessions, guard, login rate limit, seeded operator | Done (Phase 6) | Login UI (Phase 12); RBAC if time permits |
-| AI investigation | Not started | Phases 7, 11 |
+| AI investigation: evidence pack, delimited prompt, strict output, fixture provider, investigate job and endpoints | Done (Phase 7) | Real provider and an opt-in live test (Phase 11) |
 | Policies, approvals, execution, verification | Not started | Phases 8–9 |
 | SSE, dashboard, React Flow | Not started | Phases 10, 12, 15 |
 | Integrations (adapter, settings, secrets) | Not started | Phase 13 |
