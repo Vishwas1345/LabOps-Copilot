@@ -4,6 +4,7 @@ import type pino from 'pino';
 import type { Config } from './config/env.js';
 import { prisma } from './db.js';
 import { registerErrorHandling } from './http/errors.js';
+import { registerLabRoutes } from './labs/routes.js';
 import { logger as defaultLogger } from './observability/logger.js';
 
 // No endpoint accepts more than a small JSON document; a tight global limit
@@ -43,10 +44,7 @@ export async function buildApp(options: {
     };
   });
 
-  app.get('/api/labs', async () => {
-    const labs = await prisma.lab.findMany({ orderBy: { createdAt: 'desc' } });
-    return { items: labs };
-  });
+  registerLabRoutes(app);
 
   return app;
 }

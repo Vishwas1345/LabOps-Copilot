@@ -35,7 +35,7 @@ describe('api against a real database', () => {
       const response = await app.inject({ method: 'GET', url: '/api/labs' });
 
       expect(response.statusCode).toBe(200);
-      const ids = (response.json().items as Array<{ id: string }>).map(
+      const ids = (response.json().data as Array<{ id: string }>).map(
         (item) => item.id,
       );
       expect(ids).toContain(lab.id);
