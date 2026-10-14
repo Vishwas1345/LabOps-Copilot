@@ -623,6 +623,10 @@ exactly *which* rule blocked an action and why.
   for the same action and targets returns the unfinished proposal.
 - A retry on `PERMISSION_DENIED` is blocked at the state step: the demo's
   deterministic blocked case.
+- Each source owns one starting state: a diagnosis proposes from
+  `investigating` (which only the investigation leaves), an operator only from
+  `manual_review`. Otherwise an operator proposal accepted mid-investigation
+  could be orphaned when the investigation moved the incident on.
 
 ### Staleness and TOCTOU
 

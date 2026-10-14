@@ -52,8 +52,10 @@ so the proposal endpoint is reachable after a blocked recommendation; no
 creates it; an action type outside the allow-list is a 400 at the API, since
 the database enum cannot store it (the evaluator's step 1 still guards every
 other caller); steps 6-7 are implemented and tested now as pure checks and
-wired to execution in Phase 9; and the automatic proposal runs in the
-investigation's own transaction, so a diagnosis never sits unjudged.
+wired to execution in Phase 9; the automatic proposal runs in the
+investigation's own transaction, so a diagnosis never sits unjudged; and each
+source has one starting state (diagnosis from `investigating`, operator from
+`manual_review`), so an operator cannot propose while an investigation runs.
 
 **Source:** `SPEC.md` (this folder), `ARCHITECTURE.md`, `CLAUDE.md`; infrastructure details in `docs/infra/INFRA.md`
 **Starting point:** skeleton — Fastify `/health` + `/api/labs`, one-table Prisma schema
