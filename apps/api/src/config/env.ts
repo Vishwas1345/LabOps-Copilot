@@ -4,6 +4,11 @@ import { z } from 'zod';
 // Add a variable only when a module reads it.
 const envSchema = z.object({
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  REDIS_URL: z.url({ protocol: /^rediss?$/ }),
+  // Namespaces every queue key, so separate runs never share jobs.
+  QUEUE_PREFIX: z.string().min(1).max(64).default('labops'),
+  // Traces are exported only when a collector is configured.
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.url({ protocol: /^https?$/ }).optional(),
   API_HOST: z.string().min(1).default('127.0.0.1'),
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   CORS_ORIGIN: z.url({ protocol: /^https?$/ }).default('http://localhost:3000'),

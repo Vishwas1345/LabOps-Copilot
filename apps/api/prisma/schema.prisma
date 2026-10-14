@@ -43,6 +43,13 @@ enum EventType {
   provision_failed
 }
 
+enum JobStatus {
+  queued
+  running
+  succeeded
+  failed
+}
+
 enum ActorType {
   human
   system
@@ -129,4 +136,28 @@ model OperationalEvent {
   @@index([labId, occurredAt])
   @@index([errorCategory, occurredAt])
   @@index([dependencyId, occurredAt])
+}
+
+// Postgres mirror of queue state: Redis is transport, this is the record.
+// Written in the same transaction as the work that needs it (outbox), so a
+// job is never lost if Redis is down at enqueue time.
+model JobExecution {
+  id           String    @id @default(cuid())
+  queue        String
+  // Idempotency key; also the BullMQ job id, so duplicate enqueues collapse.
+  jobKey       String    @unique
+  payload      Json
+  status       JobStatus @default(queued)
+  // Bumped on every re-enqueue, so a finishing run can tell it is stale.
+  generation   Int       @default(1)
+  attempts     Int       @default(0)
+  errorSummary String?
+  traceparent  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  startedAt    DateTime?
+  finishedAt   DateTime?
+
+  // The reconciler scans for stale queued and running rows.
+  @@index([status, updatedAt])
 }

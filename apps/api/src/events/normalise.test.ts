@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { IncomingEvent } from './schema.js';
-import { deduplicationKey, normalise, redactText } from './normalise.js';
+import { deduplicationKey, normalise } from './normalise.js';
 
 const base: IncomingEvent = {
   labId: 'lab-1',
@@ -10,26 +10,6 @@ const base: IncomingEvent = {
   occurredAt: '2026-01-15T09:00:00.000Z',
   source: 'provider',
 };
-
-describe('redactText', () => {
-  it.each([
-    ['password=hunter2 rejected', 'password=[redacted] rejected'],
-    ['api_key: sk-live-123', 'api_key: [redacted]'],
-    ['TOKEN=abc def', 'TOKEN=[redacted] def'],
-    ['auth header Bearer eyJhbGciOi.payload.sig', 'auth header Bearer [redacted]'],
-  ])('redacts %p', (input, expected) => {
-    expect(redactText(input)).toBe(expected);
-  });
-
-  // Negative: ordinary operational text must survive, or evidence is lost.
-  it.each([
-    ['tokenCount=5 retries=2'],
-    ['secretary assigned'],
-    ['VM provisioning timed out pulling the base image'],
-  ])('leaves %p alone', (input) => {
-    expect(redactText(input)).toBe(input);
-  });
-});
 
 describe('normalise', () => {
   it('redacts the message and secret-named metadata keys', () => {

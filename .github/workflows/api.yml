@@ -158,7 +158,7 @@ jobs:
         run: npm run test:integration -w @labops/api
 
   # Coverage counts unit and integration specs together (see
-  # apps/api/vitest.coverage.config.ts), so it needs a migrated database.
+  # apps/api/vitest.coverage.config.ts), so it needs Postgres and Redis.
   coverage:
     name: coverage
     runs-on: ubuntu-latest
@@ -178,8 +178,18 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       DATABASE_URL: postgresql://labops:labops@localhost:5432/labops_test
+      REDIS_URL: redis://localhost:6379
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
