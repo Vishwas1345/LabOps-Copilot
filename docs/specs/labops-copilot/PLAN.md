@@ -1,7 +1,7 @@
 # LabOps Copilot — Implementation Plan
 
-**Status:** Approved. Phases 0–9 and 12 done (LOC-5 to LOC-14, LOC-17): the
-workflow runs end to end in a browser. Next is Phase 10.
+**Status:** Approved. Phases 0–10 and 12 done (LOC-5 to LOC-15, LOC-17): the
+workflow runs end to end in a browser, with live updates. Next is Phase 11.
 
 **Order changed after Phase 9:** the dashboard (Phase 12) ran before live
 updates (10) and the real LLM (11), so the proven workflow became visible and
@@ -83,6 +83,14 @@ added for the overview (`/api/labs/summary`, `/api/jobs/summary`,
 need an upward import or a call per row), the detail page does. A
 consequence: dashboard logins all reach the API from the web server's IP, so
 the per-IP login limit is effectively global (fails safe; INFRA known gaps).
+
+Phase 10 deviation, agreed in planning (option A): no Redis pub/sub
+published after commit. The stream reads committed audit entries below the
+oldest running transaction (`pg_snapshot_xmin` over a new `xid8` column), and
+the SSE id is that boundary, not `seq`: publishing after commit needed a hook
+at 22 audit call sites, and a `seq`-based replay skips rows that commit out of
+order. One poller per API process instead of one Redis subscriber; the web
+server relays the stream to the browser (BFF).
 
 **Source:** `SPEC.md` (this folder), `ARCHITECTURE.md`, `CLAUDE.md`; infrastructure details in `docs/infra/INFRA.md`
 **Starting point:** skeleton — Fastify `/health` + `/api/labs`, one-table Prisma schema

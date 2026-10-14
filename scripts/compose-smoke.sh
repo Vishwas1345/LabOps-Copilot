@@ -48,6 +48,7 @@ body="$(mktemp)"
 status="$(curl -s -o "$body" -w '%{http_code}' -X POST \
   -H 'content-type: application/json' -d '{"seed":42}' \
   "$API_URL/api/demo/scenarios/training-event")"
+demo_status="$status"
 case "$status" in
   200|201) echo "ok: demo scenario ran ($status)" ;;
   *) echo "FAILED: demo scenario returned $status" >&2; cat "$body" >&2; exit 1 ;;
@@ -65,10 +66,18 @@ printf '{"username":"%s","password":"%s"}' "$OPERATOR" "$SEED_OPERATOR_PASSWORD"
   || { echo "FAILED: operator sign-in" >&2; exit 1; }
 echo "ok: operator signed in"
 
-failed="$(curl -fs -b "$jar" "$API_URL/api/labs?status=failed&limit=100" \
-  | grep -o '"status":"failed"' | wc -l | tr -d ' ')"
-[ "$failed" -ge 19 ] || { echo "FAILED: expected >= 19 failed labs, got $failed" >&2; exit 1; }
-echo "ok: events ingested, $failed labs failed"
+# A fresh run fails 19 of the 40 labs. A re-run replays the scenario (200)
+# after an earlier run may have recovered some, so it only checks they exist.
+if [ "$demo_status" = "201" ]; then
+  failed="$(curl -fs -b "$jar" "$API_URL/api/labs?status=failed&limit=100" \
+    | grep -o '"status":"failed"' | wc -l | tr -d ' ')"
+  [ "$failed" -ge 19 ] || { echo "FAILED: expected >= 19 failed labs, got $failed" >&2; exit 1; }
+  echo "ok: events ingested, $failed labs failed"
+else
+  total="$(curl -fs -b "$jar" "$API_URL/api/labs/summary" | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')"
+  [ "$total" -ge 40 ] || { echo "FAILED: expected the scenario's 40 labs, got $total" >&2; exit 1; }
+  echo "ok: scenario replayed, $total labs present"
+fi
 
 # A real failure event arms a correlate job; the worker container must run it.
 event_body="$(mktemp)"
@@ -115,12 +124,19 @@ if [ "$status" = "202" ]; then
   # verification (every lab ready) may resolve the incident.
   action_id="$(curl -fs -b "$jar" "$API_URL/api/incidents/$incident_id/recovery-actions" \
     | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)"
+  # Watch the live stream through the web relay (cookies ignore ports, so
+  # the API session in the jar reaches the web origin too).
+  stream="$(mktemp)"
+  curl -sN -b "$jar" --max-time 40 "$WEB_URL/api/events/stream" > "$stream" &
+  stream_pid=$!
   approve="$(curl -s -b "$jar" -o /dev/null -w '%{http_code}' -X POST \
     "$API_URL/api/recovery-actions/$action_id/approve")"
   [ "$approve" = "202" ] || { echo "FAILED: approve returned $approve" >&2; exit 1; }
   echo "ok: operator approved the retry"
   wait_for "worker verified recovery and resolved the incident" \
     sh -c "curl -fs -b '$jar' '$API_URL/api/incidents/$incident_id' | grep -q '\"status\":\"resolved\"'"
+  wait_for "the live stream delivered the verification" grep -q 'recovery.verified' "$stream"
+  { kill "$stream_pid" && wait "$stream_pid"; } 2>/dev/null || true
 else
   echo "skip: proposal check (incident handled by an earlier run)"
 fi

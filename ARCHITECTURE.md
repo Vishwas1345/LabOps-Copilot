@@ -116,7 +116,7 @@ flowchart TB
 | `api` | 4000 | HTTP surface, validation, authorisation, enqueue, SSE fan-out | Execute long-running work inline |
 | `worker` | — | Correlation, investigation, recovery execution, verification | Serve HTTP |
 | `postgres` | 5432 | All durable business state | — |
-| `redis` | 6379 | Queue transport, SSE pub/sub, short-lived locks | Be the source of truth for business state |
+| `redis` | 6379 | Queue transport, login rate-limit counters | Be the source of truth for business state |
 
 ### Why SSE and not WebSockets
 
@@ -124,6 +124,30 @@ The dashboard needs server→client push only; the client sends actions over
 ordinary REST. SSE is plain HTTP, survives proxies, reconnects automatically in
 the browser, and needs no additional infrastructure or library. The cost is that
 it cannot carry client→server messages — which this product does not need.
+
+### How live updates stay gap-free (Phase 10)
+
+The stream (`GET /api/events/stream`) is the tail of **committed** audit
+entries; it needs no publisher, so no code path can forget to publish.
+
+- Each `AuditEntry` records the id of the transaction that wrote it (`xid8`,
+  set by the database). A row is read only once it is below
+  `pg_snapshot_xmin`, the oldest running transaction: it is final, and so is
+  everything before it. A rolled-back write never appears.
+- `seq` is **not** used to resume: it follows insertion, and transactions
+  commit out of `seq` order, so "`seq > N`" can skip a row that commits late.
+  The SSE message id is the transaction boundary instead, and `Last-Event-ID`
+  replays exactly what committed after it (over 500 behind: a `reset` event,
+  reload). The id goes on a batch's last message, so a client cut off
+  mid-batch repeats rather than skips: at-least-once.
+- One poller per API process serves every open stream (1 s), and runs only
+  while someone listens. The heartbeat (15 s) re-checks the session and ends
+  the stream once it is revoked.
+- The browser's `EventSource` talks to the web server, which relays the stream
+  with the session cookie (BFF). Events carry action, target, outcome and the
+  incident id, never metadata; pages treat them as "refresh now".
+- Cost: a transaction left open anywhere on the database holds every event
+  back until it finishes. Ours are short; long-running work never holds one.
 
 ---
 
@@ -152,7 +176,8 @@ apps/api/src/
   jobs/               BullMQ queue definitions, worker bootstrap, handlers
   recovery/           simulated action execution + post-action verification
   audit/              append-only audit writer + queries
-  events-stream/      SSE hub, per-subscriber filtering
+  events-stream/      committed-audit feed (xid8 boundary), one poller per
+                      process, SSE route with Last-Event-ID replay
   demo/               flag-gated scenario trigger (DEMO_ENABLED); calls the
                       labs service, never touches real provider data
   seed-operator.ts    one-shot: creates or resets the demo operator
@@ -193,7 +218,8 @@ the API over `API_INTERNAL_URL`. The browser never holds an API credential,
 never makes a cross-origin call, and never talks to PostgreSQL, Redis or the
 LLM; `NEXT_PUBLIC_*` variables hold URLs only. Every API response is
 Zod-parsed; a malformed one shows an error state, never half-rendered data.
-Live updates (Phase 10) will replace the in-flight 2 s refresh.
+Pages refresh live from the event stream (`LiveRefresh`): an incident page on
+its own incident's events, other pages on any.
 
 ---
 
@@ -904,7 +930,8 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Policy engine, allow-list, recovery proposals (automatic and operator) | Done (Phase 8) | — |
 | Approval, execution with revalidation, verification, expiry sweep | Done (Phase 9) | Four-eyes approval with roles (stretch) |
 | Operator dashboard: login, overview, incidents, incident detail with approval, audit | Done (Phase 12) | Live updates (Phase 10) |
-| SSE, React Flow | Not started | Phases 10, 15 |
+| Live updates: committed-audit SSE stream, gap-free replay, web relay, live refresh | Done (Phase 10) | — |
+| React Flow dependency graph | Not started | Phase 15 |
 | Integrations (adapter, settings, secrets) | Not started | Phase 13 |
 
 Build order follows the spec's phases: vertical slice first — simulator →
