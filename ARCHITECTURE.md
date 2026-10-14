@@ -151,6 +151,8 @@ apps/api/src/
   recovery/           simulated action execution + post-action verification
   audit/              append-only audit writer + queries
   events-stream/      SSE hub, per-subscriber filtering
+  demo/               flag-gated scenario trigger (DEMO_ENABLED); calls the
+                      labs service, never touches real provider data
 ```
 
 **Dependency rule:** modules may depend *downward* only —
@@ -741,7 +743,8 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Pino with shared Fastify instance and key-name redaction | Done | Child-logger context (Phase 4) |
 | Vitest unit + integration suites, CI gates | Done | Playwright (Phase 14) |
 | CI: change detection, build, lint, tests, coverage, quality gate | Done | Release and deploy (Phase 15) |
-| Labs simulator | Not started | Phase 2 |
+| Deterministic simulator (`labs/simulator.ts`), `training-event` scenario | Done (Phase 2) | Event emission (Phase 3) |
+| Demo scenario endpoint, flag-gated and idempotent | Done (Phase 2) | — |
 | Event ingestion + dedup | Not started | Phase 3 |
 | BullMQ worker, OTel tracing | Not started | Phase 4 |
 | Correlation engine | Not started | Phase 5 |

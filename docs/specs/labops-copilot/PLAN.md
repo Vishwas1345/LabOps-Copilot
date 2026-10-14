@@ -1,6 +1,11 @@
 # LabOps Copilot — Implementation Plan
 
-**Status:** Approved. Phases 0–1 done (LOC-5, LOC-6); next is Phase 2.
+**Status:** Approved. Phases 0–2 done (LOC-5 to LOC-7); next is Phase 3.
+
+Phase 2 deviations, both deliberate: the demo endpoint returns 201/200, not
+202, because nothing is queued until Phase 4; and the simulator's
+`performAction`/`healthCheck` move to Phase 9, where the executor first uses
+them, so no unused code ships. Their outcomes are already scenario data.
 **Source:** `SPEC.md` (this folder), `ARCHITECTURE.md`, `CLAUDE.md`; infrastructure details in `docs/infra/INFRA.md`
 **Starting point:** skeleton — Fastify `/health` + `/api/labs`, one-table Prisma schema
 (`apps/api/prisma/schema.prisma`), lab transition map (`apps/api/src/labs/transitions.ts`),
