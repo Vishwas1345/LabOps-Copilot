@@ -257,6 +257,7 @@ For the faster dev loop, run `npm run db:up` for infrastructure only and
 | Variable | Default | Purpose |
 |---|---|---|
 | `NEXT_PUBLIC_API_URL` | `http://localhost:4000` | API base URL for the browser |
+| `API_INTERNAL_URL` | falls back to `NEXT_PUBLIC_API_URL` | API base URL for server-side rendering; `http://api:4000` in Docker Compose |
 
 Planned variables — encryption key for integration credentials, LLM provider
 and model, Redis URL, log level, and demo-mode flag — will be added to
