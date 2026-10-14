@@ -3,10 +3,12 @@
  * assignments, so the API, the worker and the tests all reject the same
  * illegal moves (CLAUDE.md 6).
  *
- * The Prisma model currently stores `status` as a String. Converting it to a
- * native enum is tracked as part of the database-model work; until then these
- * literals are the single source of truth at the application boundary.
+ * The database stores status as the `LabStatus` enum, which decides which
+ * values exist. This map decides which moves between them are legal. The
+ * type check below breaks the build if the two lists ever drift apart.
  */
+
+import type { LabStatus as DbLabStatus } from '@prisma/client';
 
 export const LAB_STATUSES = [
   'provisioning',
@@ -17,6 +19,14 @@ export const LAB_STATUSES = [
 ] as const;
 
 export type LabStatus = (typeof LAB_STATUSES)[number];
+
+// Compile-time only: fails typecheck if a status exists in one list but not
+// the other.
+const _statusesMatchDatabase: [LabStatus] extends [DbLabStatus]
+  ? [DbLabStatus] extends [LabStatus]
+    ? true
+    : never
+  : never = true;
 
 export const LAB_TRANSITIONS: Readonly<
   Record<LabStatus, readonly LabStatus[]>
