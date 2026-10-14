@@ -5,7 +5,7 @@ const SECRET = 'sk-live-should-never-appear';
 
 function capture() {
   const lines: string[] = [];
-  const logger = createLogger({ write: (line: string) => lines.push(line) });
+  const logger = createLogger({ write: (line: string) => lines.push(line) }, 'info');
   return { logger, output: () => lines.join('') };
 }
 

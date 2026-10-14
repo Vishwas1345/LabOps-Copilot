@@ -3,10 +3,13 @@ import { redactSecrets } from './redact.js';
 
 // Safety net, not the control (secrets are stripped where data enters):
 // key-name redaction at any depth, plus header paths the walk cannot reach.
-export function createLogger(destination?: pino.DestinationStream): pino.Logger {
+export function createLogger(
+  destination?: pino.DestinationStream,
+  level: string = process.env.LOG_LEVEL ?? 'info',
+): pino.Logger {
   return pino(
     {
-      level: process.env.LOG_LEVEL ?? 'info',
+      level,
       base: { service: 'labops-api' },
       formatters: {
         log: redactSecrets,
