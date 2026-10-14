@@ -109,10 +109,14 @@ export function proposeAction(
     const scope = await lockIncidentScope(tx, incidentId);
     const hash = targetsHash(request.targetIds);
     const keyPrefix = `${incidentId}:${request.actionType}:${hash}:`;
-    const sameAction = await tx.recoveryAction.findMany({
-      where: { idempotencyKey: { startsWith: keyPrefix } },
-      select: { id: true, status: true, blockedAt: true },
-    });
+    // By incident and action (indexed), then the key prefix in memory: a LIKE
+    // on the key cannot use its index under a locale collation.
+    const sameAction = (
+      await tx.recoveryAction.findMany({
+        where: { incidentId, actionType: request.actionType },
+        select: { id: true, status: true, blockedAt: true, idempotencyKey: true },
+      })
+    ).filter((row) => row.idempotencyKey.startsWith(keyPrefix));
     const unfinished = sameAction.find((row) => UNFINISHED.includes(row.status));
     if (unfinished) {
       return {
