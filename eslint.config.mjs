@@ -89,6 +89,13 @@ export default tseslint.config(
   },
 
   {
+    // A live-model spec reports its verdict and token usage to the CI log; that
+    // output is the point of the run, so the backend rule is relaxed here only.
+    files: ['**/*.live.test.ts'],
+    rules: { 'no-console': 'off' },
+  },
+
+  {
     files: ['**/*.test.ts', '**/*.test.tsx'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',

@@ -26,6 +26,7 @@ const REQUIRED = [
       'lint',
       'typecheck',
       'test',
+      'test:live',
       'test:integration',
       'coverage',
       'prisma:validate',
