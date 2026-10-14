@@ -28,6 +28,21 @@ enum DependencyStatus {
   down
 }
 
+// Mirrors ERROR_CATEGORIES in src/labs/failures.ts.
+enum ErrorCategory {
+  PROVISION_TIMEOUT
+  NETWORK_CONFIG
+  PERMISSION_DENIED
+  DEPENDENCY_UNAVAILABLE
+  QUOTA_EXCEEDED
+  VALIDATION_FAILED
+}
+
+enum EventType {
+  provision_succeeded
+  provision_failed
+}
+
 enum ActorType {
   human
   system
@@ -47,6 +62,7 @@ model Lab {
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
   dependencies LabDependency[]
+  events       OperationalEvent[]
 
   // Serves the paginated list: newest first, id as the tie-breaker.
   @@index([createdAt(sort: Desc), id(sort: Desc)])
@@ -59,6 +75,7 @@ model Dependency {
   kind   String
   status DependencyStatus @default(healthy)
   labs   LabDependency[]
+  events OperationalEvent[]
 }
 
 model LabDependency {
@@ -88,4 +105,28 @@ model AuditEntry {
   createdAt     DateTime  @default(now())
 
   @@index([targetType, targetId, seq])
+}
+
+// Stored redacted. A CHECK in the migration requires an errorCategory on
+// failures and forbids one on successes.
+model OperationalEvent {
+  id               String         @id @default(cuid())
+  labId            String
+  lab              Lab            @relation(fields: [labId], references: [id], onDelete: Cascade)
+  type             EventType
+  errorCategory    ErrorCategory?
+  dependencyId     String?
+  dependency       Dependency?    @relation(fields: [dependencyId], references: [id], onDelete: SetNull)
+  message          String
+  metadata         Json?
+  source           LabSource
+  occurredAt       DateTime
+  receivedAt       DateTime       @default(now())
+  // One row per logical event: a redelivery hits this and is not stored twice.
+  deduplicationKey String         @unique
+
+  // Correlation reads by lab, by category and by dependency, each over time.
+  @@index([labId, occurredAt])
+  @@index([errorCategory, occurredAt])
+  @@index([dependencyId, occurredAt])
 }

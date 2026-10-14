@@ -8,7 +8,7 @@ const ofCategory = (events: SimulatedEvent[], category: string) =>
   events.filter((e) => e.errorCategory === category);
 const failedLabNumbers = (seed: number) =>
   SCENARIOS['training-event'](seed)
-    .events.filter((e) => e.type === 'provision.failed')
+    .events.filter((e) => e.type === 'provision_failed')
     .map((e) => e.labId.slice(-2))
     .sort();
 
