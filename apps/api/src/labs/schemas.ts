@@ -4,8 +4,7 @@ import { LAB_STATUSES } from './transitions.js';
 export const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 20;
 
-// Strict: an unknown parameter is a client bug (often a typo such as
-// `stauts`), and silently ignoring it would return unfiltered data.
+// Strict: ignoring a typo like `stauts` would silently return unfiltered data.
 export const listLabsQuery = z
   .object({
     status: z.enum(LAB_STATUSES).optional(),

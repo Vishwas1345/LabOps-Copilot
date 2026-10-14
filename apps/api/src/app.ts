@@ -7,13 +7,10 @@ import { registerErrorHandling } from './http/errors.js';
 import { registerLabRoutes } from './labs/routes.js';
 import { logger as defaultLogger } from './observability/logger.js';
 
-// No endpoint accepts more than a small JSON document; a tight global limit
-// turns an oversized or abusive body into a 413 before it is parsed.
+// No endpoint needs more; oversized bodies get a 413 before parsing.
 const BODY_LIMIT_BYTES = 64 * 1024;
 
-// `logger: true` would make Fastify build its own Pino instance without our
-// redaction, so every `request.log` call would bypass it. Passing the shared
-// instance keeps one logger with one set of rules.
+// Share our logger: `logger: true` would create a second one without redaction.
 export async function buildApp(options: {
   config: Pick<Config, 'CORS_ORIGIN'>;
   logger?: pino.Logger;

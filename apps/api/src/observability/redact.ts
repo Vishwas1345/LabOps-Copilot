@@ -1,14 +1,5 @@
-/**
- * Last-line redaction applied to every log object.
- *
- * Pino's `redact` option matches exact, case-sensitive paths, so a token at the
- * top level, two levels deep, or under `accessToken` slipped through. This walk
- * matches on the key name at any depth instead.
- *
- * It is a safety net, not the control: secrets are still stripped where data
- * enters the system (CLAUDE.md 5). Matching is by key suffix rather than
- * substring so `tokenCount` or `primaryKey` are not censored.
- */
+// Censors secret-named keys at any depth and casing; Pino's path-based redact
+// missed those. Suffix match, so `tokenCount` and `primaryKey` stay visible.
 
 export const REDACTED = '[redacted]';
 
@@ -31,8 +22,7 @@ export function isSecretKey(key: string): boolean {
   return SECRET_KEY_SUFFIXES.some((suffix) => normalised.endsWith(suffix));
 }
 
-// Only plain data is walked. Class instances (Fastify's raw request, Error)
-// are left to Pino's serializers, which already pick safe fields from them.
+// Class instances (raw request, Error) are left to Pino's serializers.
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== 'object') {
     return false;
