@@ -145,8 +145,9 @@ Three workflows in `.github/workflows/`. Triggered on pushes and pull requests t
 `apps/api/.env`; it needs `npm run db:up && npm run db:migrate` first.
 
 **Compose smoke test:** builds both images, boots the full stack, then runs
-`scripts/compose-smoke.sh`: migrations exited 0, `/health` reports ok, and the
-web page shows "API: ok" through `API_INTERNAL_URL`. It catches Dockerfile and
+`scripts/compose-smoke.sh`: migrations exited 0, `/health` reports ok, the
+web page shows "API: ok" through `API_INTERNAL_URL`, and the demo scenario
+runs and ingests events (at least 19 labs end up failed). It catches Dockerfile and
 startup bugs that unit and integration tests cannot see. Run it locally against
 a running stack with `scripts/compose-smoke.sh`.
 

@@ -320,8 +320,9 @@ Illustrative surface. Implemented endpoints are marked ✅.
 |---|---|---|
 | `GET` | `/health` | Service and database status ✅ |
 | `GET` | `/api/labs` | List labs; `status` filter, cursor pagination (`limit` 1–100) ✅ |
-| `GET` | `/api/labs/:id` | Lab with its dependency ids ✅ (recent events arrive with ingestion, Phase 3) |
-| `POST` | `/api/events` | Ingest a normalized operational event |
+| `GET` | `/api/labs/:id` | Lab with its dependency ids ✅ |
+| `GET` | `/api/labs/:id/events` | The lab's events, newest first, paginated ✅ |
+| `POST` | `/api/events` | Ingest an event: validated, redacted, deduplicated; 201 new, 200 duplicate ✅ |
 | `GET` | `/api/incidents` | List and filter incidents |
 | `GET` | `/api/incidents/:id` | Incident, affected labs and evidence |
 | `POST` | `/api/incidents/:id/investigate` | Queue an AI investigation |
@@ -338,7 +339,7 @@ Illustrative surface. Implemented endpoints are marked ✅.
 | `POST` | `/api/integrations/cloudlabs/sync` | Trigger a manual sync, if supported |
 | `POST` | `/api/integrations/cloudlabs/webhooks` | Receive verified webhook deliveries |
 | `GET` | `/api/integrations/cloudlabs/deliveries` | Recent redacted delivery outcomes |
-| `POST` | `/api/demo/scenarios/:name` | Create a seeded scenario's labs (`training-event`); idempotent per seed; only when `DEMO_ENABLED` ✅ |
+| `POST` | `/api/demo/scenarios/:name` | Create a seeded scenario's labs and ingest its events (`training-event`); idempotent per seed; only when `DEMO_ENABLED` ✅ |
 
 All request bodies are validated. A consistent error envelope is used
 throughout. Demo endpoints are disabled outside local and demo environments.
@@ -465,7 +466,8 @@ phase-by-phase plan, with what each phase delivers and how it is verified, is
 |---|---|---|
 | 0 | Config validation, error envelope, migrations, integration-test gate | Done |
 | 1–2 | Audit trail, lab model, deterministic simulator, demo scenario | Done |
-| 3–5 | Event ingestion, queue and worker, correlation | Not started |
+| 3 | Event ingestion: validation, redaction, dedup, lab transitions | Done |
+| 4–5 | Queue and worker, correlation | Not started |
 | 6–9 | Operator auth, AI investigation, policies, approval, execution, verification | Not started |
 | 10–12 | Live updates, real LLM provider, operator dashboard | Not started |
 | 13–15 | Integration settings, E2E tests and metrics, delivery | Not started |
