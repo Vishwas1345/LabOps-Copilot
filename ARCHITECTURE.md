@@ -218,8 +218,9 @@ the API over `API_INTERNAL_URL`. The browser never holds an API credential,
 never makes a cross-origin call, and never talks to PostgreSQL, Redis or the
 LLM; `NEXT_PUBLIC_*` variables hold URLs only. Every API response is
 Zod-parsed; a malformed one shows an error state, never half-rendered data.
-Pages refresh live from the event stream (`LiveRefresh`): an incident page on
-its own incident's events, other pages on any.
+Pages refresh live from the event stream: one `LiveRefresh` in the dashboard
+layout (one stream per tab across navigation) refreshes an incident page on its
+own incident's events, other pages on any.
 
 ---
 
