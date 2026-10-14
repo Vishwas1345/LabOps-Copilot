@@ -464,7 +464,8 @@ phase-by-phase plan, with what each phase delivers and how it is verified, is
 | Phases | Contents | State |
 |---|---|---|
 | 0 | Config validation, error envelope, migrations, integration-test gate | Done |
-| 1–5 | Audit trail, simulator, event ingestion, queue and worker, correlation | Not started |
+| 1–2 | Audit trail, lab model, deterministic simulator, demo scenario | Done |
+| 3–5 | Event ingestion, queue and worker, correlation | Not started |
 | 6–9 | Operator auth, AI investigation, policies, approval, execution, verification | Not started |
 | 10–12 | Live updates, real LLM provider, operator dashboard | Not started |
 | 13–15 | Integration settings, E2E tests and metrics, delivery | Not started |
