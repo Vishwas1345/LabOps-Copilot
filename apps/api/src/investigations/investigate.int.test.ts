@@ -314,6 +314,40 @@ describe('prompt safety', () => {
   });
 });
 
+describe('secrets in event text', () => {
+  // Negative: secrets recognisable only by shape, with no key= in front,
+  // must not survive ingestion or reach the model.
+  it('keeps shape-only secrets out of stored events and the prompt', async () => {
+    const secrets = [
+      'sk-live-4f9a8b7c6d5e4f3a2b1c',
+      'AKIAIOSFODNN7EXAMPLE',
+      'ghp_1234567890abcdefghijABCDEFGHIJ123456',
+      'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl',
+      'S3cretPw',
+    ];
+    const messages = [
+      `deploy failed: key ${secrets[0]} rejected`,
+      `AccessKeyId ${secrets[1]} denied; clone with ${secrets[2]} failed`,
+      `session ${secrets[3]} expired; db postgresql://admin:${secrets[4]}@db:5432 down`,
+    ];
+    const { incidentId, labIds } = await incidentOf(3, { messages });
+    const prompts: Prompt[] = [];
+
+    await investigateWith(
+      stub(async (prompt, signal) => {
+        prompts.push(prompt);
+        return fixtureProvider.analyse(prompt, signal);
+      }),
+      incidentId,
+    );
+
+    const stored = await prisma.operationalEvent.findMany({ where: { labId: { in: labIds } } });
+    const everything = JSON.stringify(stored) + JSON.stringify(prompts);
+    for (const secret of secrets) expect(everything).not.toContain(secret);
+    expect(prompts[0].evidence).toContain('sk-live-[redacted]');
+  });
+});
+
 describe('exhausted investigate jobs', () => {
   // Negative: an infrastructure failure past every retry must not strand the
   // incident in `investigating`; the reconciler path settles it too.

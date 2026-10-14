@@ -60,13 +60,26 @@ export function redactSecrets(
   return walk(object, 0) as Record<string, unknown>;
 }
 
-// key=value or key: value where the key names a secret, plus bearer tokens.
-const SECRET_ASSIGNMENT =
-  /\b(password|passwd|secret|token|api[_-]?key|access[_-]?key)(\s*[:=]\s*)\S+/gi;
-const BEARER_TOKEN = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
+// Free text reaches stored events and, since Phase 7, a model's prompt.
+// key=value assignments and bearer tokens first, then secrets recognisable by
+// shape alone. The prefix stays so an operator can tell what was removed.
+// Patterns cannot be complete; fields known to be risky are excluded instead.
+const TEXT_SECRETS: ReadonlyArray<[RegExp, string]> = [
+  [/\b(password|passwd|secret|token|api[_-]?key|access[_-]?key)(\s*[:=]\s*)\S+/gi, '$1$2[redacted]'],
+  [/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]'],
+  // Provider API keys: sk-..., sk-live-..., pk_test_... (16+ characters after).
+  [/\b((?:sk|pk|rk)[-_](?:(?:live|test|proj)[-_])?)[A-Za-z0-9]{16,}/g, '$1[redacted]'],
+  // AWS access key ids.
+  [/\b(AKIA|ASIA)[A-Z0-9]{16}\b/g, '$1[redacted]'],
+  // GitHub classic and fine-grained tokens.
+  [/\b(gh[pousr]_)[A-Za-z0-9]{30,}/g, '$1[redacted]'],
+  [/\b(github_pat_)[A-Za-z0-9_]{40,}/g, '$1[redacted]'],
+  // JWTs: three base64url segments, the first a JSON header ("eyJ").
+  [/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[redacted]'],
+  // Credentials inside a URL: scheme://user:password@host keeps the user.
+  [/\b([a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:)[^\s@/]+@/gi, '$1[redacted]@'],
+];
 
 export function redactText(text: string): string {
-  return text
-    .replace(SECRET_ASSIGNMENT, '$1$2[redacted]')
-    .replace(BEARER_TOKEN, 'Bearer [redacted]');
+  return TEXT_SECRETS.reduce((result, [pattern, replacement]) => result.replace(pattern, replacement), text);
 }
