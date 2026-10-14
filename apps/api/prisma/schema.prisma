@@ -7,10 +7,85 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Mirrors LAB_STATUSES in src/labs/transitions.ts. The enum makes an illegal
+// status unrepresentable; the transition map decides which moves are legal.
+enum LabStatus {
+  provisioning
+  ready
+  failed
+  recovering
+  stopped
+}
+
+enum LabSource {
+  simulated
+  provider
+}
+
+enum DependencyStatus {
+  healthy
+  degraded
+  down
+}
+
+enum ActorType {
+  human
+  system
+  worker
+  ai
+}
+
 model Lab {
-  id        String   @id @default(cuid())
-  name      String
-  status    String   @default("ready")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String          @id @default(cuid())
+  name         String
+  // Free text until the simulator defines real types (Phase 2).
+  labType      String          @default("standard")
+  // Starts where the lifecycle state machine starts.
+  status       LabStatus       @default(provisioning)
+  // Every lab is simulated today; a provider-fed lab must say so explicitly.
+  source       LabSource       @default(simulated)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  dependencies LabDependency[]
+
+  // Serves the paginated list: newest first, id as the tie-breaker.
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// A shared resource several labs rely on (an image registry, a network).
+// Two labs failing on one dependency is the strongest correlation signal.
+model Dependency {
+  id     String           @id @default(cuid())
+  kind   String
+  status DependencyStatus @default(healthy)
+  labs   LabDependency[]
+}
+
+model LabDependency {
+  labId        String
+  dependencyId String
+  lab          Lab        @relation(fields: [labId], references: [id], onDelete: Cascade)
+  dependency   Dependency @relation(fields: [dependencyId], references: [id], onDelete: Cascade)
+
+  @@id([labId, dependencyId])
+  @@index([dependencyId])
+}
+
+// Append-only: a database trigger (see the migration) rejects UPDATE, DELETE
+// and TRUNCATE, so history cannot be rewritten by any code path.
+model AuditEntry {
+  id            String    @id @default(cuid())
+  // Total order across processes; live updates resume from it (Phase 10).
+  seq           BigInt    @unique @default(autoincrement())
+  actorType     ActorType
+  actorId       String
+  action        String
+  targetType    String
+  targetId      String
+  outcome       String
+  correlationId String?
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+
+  @@index([targetType, targetId, seq])
 }
