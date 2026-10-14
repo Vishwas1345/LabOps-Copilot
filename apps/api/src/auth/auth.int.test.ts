@@ -11,7 +11,8 @@ import { signedInCookie } from './session.fixture.js';
 
 const lines: string[] = [];
 const app = await buildApp({
-  config: { ...loadConfig(), DEMO_ENABLED: true },
+  // Pinned, not inherited: a local .env may turn Secure off for http development.
+  config: { ...loadConfig(), DEMO_ENABLED: true, SESSION_COOKIE_SECURE: true },
   logger: createLogger({ write: (line: string) => lines.push(line) }, 'info'),
 });
 const PASSWORD = 'correct horse battery staple';
