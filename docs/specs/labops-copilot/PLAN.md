@@ -1,6 +1,6 @@
 # LabOps Copilot — Implementation Plan
 
-**Status:** Approved. Phases 0–4 done (LOC-5 to LOC-9); next is Phase 5.
+**Status:** Approved. Phases 0–5 done (LOC-5 to LOC-10); next is Phase 6.
 
 Phase 2 deviations, both deliberate: the demo endpoint returns 201/200, not
 202, because nothing is queued until Phase 4; and the simulator's
@@ -17,6 +17,13 @@ not on events, which is where the queue boundary needs it; the correlate
 handler is a placeholder in `events/` (counts the window's failures) until
 Phase 5 moves real correlation to `incidents/`; `ioredis` is an explicit
 dependency because BullMQ 6 made it optional.
+
+Phase 5 deviations: files are `incidents/scoring.ts`, `clustering.ts`,
+`correlate.job.ts` and `routes.ts`; the preceding-sequence and transition
+signals wait for labs with more than one event; concurrent runs are stopped
+by an advisory lock as well as the `windowKey` index, since overlapping
+windows can pick different anchors; and no `investigate` job is enqueued
+yet, because Phase 7 adds the queue together with its handler.
 **Source:** `SPEC.md` (this folder), `ARCHITECTURE.md`, `CLAUDE.md`; infrastructure details in `docs/infra/INFRA.md`
 **Starting point:** skeleton — Fastify `/health` + `/api/labs`, one-table Prisma schema
 (`apps/api/prisma/schema.prisma`), lab transition map (`apps/api/src/labs/transitions.ts`),

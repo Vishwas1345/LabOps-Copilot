@@ -13,8 +13,8 @@ operational reference.
 | Process | Port | Role | Status |
 |---|---|---|---|
 | `web` (Next.js) | 3000 | Operator UI; server components call the API | Exists |
-| `api` (Fastify) | 4000 | HTTP API: validate, persist, enqueue; SSE | Exists (`/health`, `/api/labs`) |
-| `worker` (BullMQ) | none | Runs queued jobs and the reconciler (startup, then every 60 s); never serves HTTP | Exists (Phase 4); correlate handler is a placeholder until Phase 5 |
+| `api` (Fastify) | 4000 | HTTP API: validate, persist, enqueue; SSE | Exists (labs, events, jobs, incidents) |
+| `worker` (BullMQ) | none | Runs queued jobs and the reconciler (startup, then every 60 s); never serves HTTP | Exists; runs correlation (Phase 5) |
 | `postgres` 16 | 5432 | All durable business state | Exists |
 | `redis` 7 | 6379 (host port overridable) | Queue transport; never the source of truth | Exists |
 | `migrate` (one-shot) | none | Applies Prisma migrations, then exits; api starts only after it succeeds | Exists |
@@ -135,6 +135,8 @@ placeholders only.
 - The reconciler resends `queued`/`running` rows older than a 2-minute lease
   that Redis no longer has; past `MAX_ATTEMPTS` it fails and audits them.
 - Inspect a job: `GET /api/jobs/:id` (from Postgres; payload never returned).
+- The correlate job holds a Postgres advisory lock (key `7316001`) for its
+  transaction, so correlation runs one at a time across workers.
 
 ## 6. CI pipelines
 
@@ -161,7 +163,8 @@ Three workflows in `.github/workflows/`. Triggered on pushes and pull requests t
 **Compose smoke test:** builds both images, boots the full stack, then runs
 `scripts/compose-smoke.sh`: migrations exited 0, `/health` reports ok, the
 web page shows "API: ok" through `API_INTERNAL_URL`, and the demo scenario
-runs and ingests events (at least 19 labs end up failed). It catches Dockerfile and
+runs and ingests events (at least 19 labs end up failed), the worker runs a
+correlate job, and the scenario's 12-lab incident exists. It catches Dockerfile and
 startup bugs that unit and integration tests cannot see. Run it locally against
 a running stack with `scripts/compose-smoke.sh`.
 
@@ -195,6 +198,6 @@ demo endpoints disabled, and an app database role limited to its own schema.
 
 | Signal | Today | Planned |
 |---|---|---|
-| Logs | Pino JSON to stdout; Fastify shares the instance; key-name redaction as a safety net; job logs carry `jobId` and `traceId` | `traceId` on API request logs needs HTTP spans (later); `incidentId` (Phase 5) |
+| Logs | Pino JSON to stdout; Fastify shares the instance; key-name redaction as a safety net; job logs carry `jobId` and `traceId`; correlation logs carry `incidentId` | `traceId` on API request logs needs HTTP spans (later) |
 | Traces | `event.ingest` (api) and `incident.correlate` (worker) in one trace via `traceparent` in the job row | Remaining lifecycle spans as each stage lands |
 | Metrics | None | OTel counters and histograms from real runs only (Phase 14) |
