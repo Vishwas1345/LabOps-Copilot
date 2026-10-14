@@ -94,3 +94,14 @@ esac
 wait_for "worker completed the investigation" \
   sh -c "curl -fs -b '$jar' '$API_URL/api/incidents/$incident_id/investigations' \
     | grep -q '\"status\":\"completed\"'"
+
+# A fresh diagnosis is judged by policy in the same transaction: the scenario's
+# PROVISION_TIMEOUT burst must be awaiting approval. A re-run (409 above) is
+# checking an incident an earlier run already handled, so it is skipped.
+if [ "$status" = "202" ]; then
+  wait_for "policy allowed the recommended retry, awaiting approval" \
+    sh -c "curl -fs -b '$jar' '$API_URL/api/incidents/$incident_id/recovery-actions' \
+      | grep -q '\"status\":\"awaiting_approval\"'"
+else
+  echo "skip: proposal check (incident handled by an earlier run)"
+fi

@@ -162,6 +162,9 @@ apps/api/src/
 
 **Dependency rule:** modules may depend *downward* only —
 `recovery → policies → approvals → incidents → events → labs`.
+`investigations` sits above `recovery` (a diagnosis is proposed in the same
+transaction), and `policies` stays pure: it depends only on `labs`, and the
+caller gathers every fact it judges.
 `audit`, `observability`, `jobs` and `auth` are cross-cutting and depend on nothing
 above them. Circular imports are a build error, enforced by an ESLint
 `import/no-cycle` rule.
@@ -345,9 +348,15 @@ erDiagram
   RECOVERY_ACTION {
     string id PK
     string incidentId FK
-    string actionType "allow-list"
-    string status
-    string idempotencyKey "UNIQUE"
+    string investigationId "null when an operator proposed it"
+    string actionType "ActionType allow-list"
+    string targetIds "text[]; GIN index"
+    string status "rejected_by_policy|awaiting_approval|approved|rejected|expired|running|succeeded|failed|blocked"
+    string idempotencyKey "UNIQUE: incident, action, targets hash, attempt"
+    string proposedBy
+    json policyDecisions "one {step, passed, reason} per step run"
+    string blockedAt "the policy step that stopped it"
+    datetime expiresAt "approval deadline"
     string approvedBy
     datetime executedAt
     json verificationResult
@@ -600,6 +609,21 @@ generic "run this command" path anywhere in the codebase.
 Each step appends a decision with its reason, so the audit trail can explain
 exactly *which* rule blocked an action and why.
 
+### How Phase 8 implements it
+
+- `policies/actions.ts` is the table above as data (targets, eligible lab
+  states, categories an action cannot fix, attempt caps, cooldowns); a test
+  fails if it, the enum and this table ever disagree.
+- `policies/evaluate.ts` is pure: steps in fixed order, stopping at the first
+  failure, one `{ step, passed, reason }` per step run. Proposals run steps
+  1-5; execution re-runs 3-7.
+- `recovery/propose.ts` locks the incident row, gathers facts, evaluates and
+  records the result in one transaction. Allowed: `awaiting_approval` with an
+  expiry. Blocked: `rejected_by_policy`, incident to `manual_review`. A repeat
+  for the same action and targets returns the unfinished proposal.
+- A retry on `PERMISSION_DENIED` is blocked at the state step: the demo's
+  deterministic blocked case.
+
 ### Staleness and TOCTOU
 
 Approval is not permission to execute — it is permission to *re-validate*. The
@@ -833,7 +857,8 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | `GET /api/incidents`, `/:id`, `/:id/audit` | Done (Phase 5) | — |
 | Operator auth: sessions, guard, login rate limit, seeded operator | Done (Phase 6) | Login UI (Phase 12); RBAC if time permits |
 | AI investigation: evidence pack, delimited prompt, strict output, fixture provider, investigate job and endpoints | Done (Phase 7) | Real provider and an opt-in live test (Phase 11) |
-| Policies, approvals, execution, verification | Not started | Phases 8–9 |
+| Policy engine, allow-list, recovery proposals (automatic and operator) | Done (Phase 8) | — |
+| Approval, execution, verification | Not started | Phase 9 |
 | SSE, dashboard, React Flow | Not started | Phases 10, 12, 15 |
 | Integrations (adapter, settings, secrets) | Not started | Phase 13 |
 

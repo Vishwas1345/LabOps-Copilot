@@ -1,6 +1,6 @@
 # LabOps Copilot — Implementation Plan
 
-**Status:** Approved. Phases 0–7 done (LOC-5 to LOC-12); next is Phase 8.
+**Status:** Approved. Phases 0–8 done (LOC-5 to LOC-13); next is Phase 9.
 
 Phase 2 deviations, both deliberate: the demo endpoint returns 201/200, not
 202, because nothing is queued until Phase 4; and the simulator's
@@ -44,6 +44,16 @@ the Phase 8 policy step; and jobs gained an `onExhausted` hook so an
 investigation that runs out of retries sends its incident to `manual_review`
 (ARCHITECTURE §11). The action enum lands now as an advisory value, ahead of
 the policy engine, because nothing can execute it before Phases 8 and 9.
+
+Phase 8 deviations: a new transition `manual_review -> awaiting_approval` (an
+operator's proposal, still policy-checked and approved), agreed in planning,
+so the proposal endpoint is reachable after a blocked recommendation; no
+`proposed` status, because a proposal is judged in the transaction that
+creates it; an action type outside the allow-list is a 400 at the API, since
+the database enum cannot store it (the evaluator's step 1 still guards every
+other caller); steps 6-7 are implemented and tested now as pure checks and
+wired to execution in Phase 9; and the automatic proposal runs in the
+investigation's own transaction, so a diagnosis never sits unjudged.
 
 **Source:** `SPEC.md` (this folder), `ARCHITECTURE.md`, `CLAUDE.md`; infrastructure details in `docs/infra/INFRA.md`
 **Starting point:** skeleton — Fastify `/health` + `/api/labs`, one-table Prisma schema

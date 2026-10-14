@@ -145,6 +145,10 @@ recovery → policies → approvals → incidents → events → labs
 audit, observability, config  (depend on nothing above them)
 ```
 
+`investigations` sits above `recovery` (a diagnosis is proposed in the same
+transaction). `policies` stays pure and imports only `labs`; callers gather
+the facts it judges.
+
 A module must never import *upward*. Never import across a sibling domain
 directly — go through the lower module's public interface. Circular imports are
 a bug; add an `import/no-cycle` ESLint rule when linting is configured.
