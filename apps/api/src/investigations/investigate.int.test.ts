@@ -259,6 +259,54 @@ describe('investigate job outcomes', () => {
     expect(await auditOf('investigation.failed', investigation.id)).toHaveLength(1);
   });
 
+  // A response the provider stopped producing is not one the model got wrong.
+  // Recording MALFORMED_OUTPUT here would blame the model for a token ceiling
+  // we set, and hide the only useful next step: raise maxOutputTokens.
+  it('records a truncated answer as TRUNCATED_OUTPUT, not MALFORMED_OUTPUT', async () => {
+    const { incidentId } = await incidentOf(2);
+    const truncated: LlmProvider = {
+      name: 'stub',
+      model: 'stub',
+      analyse: async () => ({ raw: '{"outcome": "diagno', finishReason: 'MAX_TOKENS' }),
+    };
+
+    const investigation = await investigateWith(truncated, incidentId);
+
+    expect(investigation).toMatchObject({ status: 'error', failure: 'TRUNCATED_OUTPUT' });
+    expect(investigation.modelMetadata).toMatchObject({ finishReason: 'MAX_TOKENS' });
+    expect(await statusOf(incidentId)).toBe('open');
+  });
+
+  // Negative: a plain malformed answer with no truncation must not be relabelled.
+  it('keeps MALFORMED_OUTPUT when the provider stopped normally', async () => {
+    const { incidentId } = await incidentOf(2);
+    const prose: LlmProvider = {
+      name: 'stub',
+      model: 'stub',
+      analyse: async () => ({ raw: 'The registry looks broken.', finishReason: 'STOP' }),
+    };
+
+    const investigation = await investigateWith(prose, incidentId);
+
+    expect(investigation).toMatchObject({ status: 'error', failure: 'MALFORMED_OUTPUT' });
+  });
+
+  // The reason is recorded on successes too, so a later rejection is
+  // attributable rather than guessed at.
+  it('records the finish reason even when the answer was accepted', async () => {
+    const { incidentId } = await incidentOf(2);
+    const good: LlmProvider = {
+      name: 'stub',
+      model: 'stub',
+      analyse: async () => ({ raw: validDiagnosis(), finishReason: 'STOP' }),
+    };
+
+    const investigation = await investigateWith(good, incidentId);
+
+    expect(investigation.status).toBe('completed');
+    expect(investigation.modelMetadata).toMatchObject({ finishReason: 'STOP' });
+  });
+
   // Negative: a stalled job re-run by the queue while the first run is still
   // inside the model call; only one of them may record a result.
   it('records one result when two runs of the same investigation overlap', async () => {

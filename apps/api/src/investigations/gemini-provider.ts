@@ -48,6 +48,18 @@ function isTransient(status: number): boolean {
 }
 
 /**
+ * The provider's reasons for ending a response without an answer. Each is a
+ * refusal, and a refusal is never retried.
+ */
+const REFUSAL_REASONS = new Set([
+  'SAFETY',
+  'RECITATION',
+  'PROHIBITED_CONTENT',
+  'BLOCKLIST',
+  'SPII',
+]);
+
+/**
  * Models under a schema constraint still fence their JSON and occasionally
  * add a sentence of commentary. Trimming the wrapper is a readability
  * concession, not a repair: anything still unparseable is rejected by Zod.
@@ -61,19 +73,22 @@ export function createGeminiProvider(options: GeminiProviderOptions): LlmProvide
   const doFetch = options.fetchImpl ?? fetch;
   const sleep = options.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const attempts = Math.max(1, options.maxAttempts);
+  // Built once per provider, not once per call: the schema is static, and
+  // re-deriving it for every incident would be work thrown away each time.
+  const schema: GeminiSchemaNode = geminiResponseSchema();
 
   return {
     name: 'gemini',
     model: options.model,
 
     async analyse(prompt: Prompt, signal: AbortSignal): Promise<ProviderAnswer> {
-      // Built once: the schema is static, and re-deriving it per attempt would
-      // be work thrown away on every retry.
-      const schema: GeminiSchemaNode = geminiResponseSchema();
-
       let lastError: unknown;
 
       for (let attempt = 0; attempt < attempts; attempt += 1) {
+        // Checked before the backoff, not after: a caller who has given up
+        // should not be made to wait out a delay owed to the provider.
+        if (signal.aborted) throw new ProviderRefusalError();
+
         const wait = BACKOFF_MS[attempt] ?? BACKOFF_MS[BACKOFF_MS.length - 1];
         if (wait > 0) await sleep(wait);
 
@@ -124,11 +139,20 @@ export function createGeminiProvider(options: GeminiProviderOptions): LlmProvide
         const blockReason = body.promptFeedback?.blockReason;
         if (blockReason) throw new ProviderRefusalError();
 
+        // Recorded even on success: STOP is unremarkable, but MAX_TOKENS means
+        // the answer was cut off, and a later rejection has to be attributable
+        // to that rather than blamed on the model.
+        const finishReason = body.candidates?.[0]?.finishReason;
+        if (finishReason && REFUSAL_REASONS.has(finishReason)) {
+          throw new ProviderRefusalError();
+        }
+
         const text = body.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
         const usage = body.usageMetadata;
 
         return {
           raw: stripCodeFence(text),
+          finishReason,
           usage: usage
             ? {
                 inputTokens: usage.promptTokenCount ?? 0,

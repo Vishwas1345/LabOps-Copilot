@@ -25,7 +25,24 @@ const WORKER: Actor = { type: 'worker', id: 'labops-worker' };
 
 const investigatePayload = z.object({ investigationId: z.string().min(1).max(64) }).strict();
 
-type Failure = 'TIMEOUT' | 'MALFORMED_OUTPUT' | 'SCHEMA_REJECTED' | 'REFUSED' | 'PROVIDER_ERROR';
+type Failure =
+  | 'TIMEOUT'
+  | 'MALFORMED_OUTPUT'
+  | 'SCHEMA_REJECTED'
+  | 'TRUNCATED_OUTPUT'
+  | 'REFUSED'
+  | 'PROVIDER_ERROR';
+
+/**
+ * A response the provider stopped producing is not one the model got wrong.
+ * Blaming it on the model hides the real cause, which is a token ceiling we
+ * set, and the fix is not a better prompt.
+ */
+function failureFor(rejection: 'MALFORMED_OUTPUT' | 'SCHEMA_REJECTED', finishReason?: string): Failure {
+  return rejection === 'MALFORMED_OUTPUT' && finishReason === 'MAX_TOKENS'
+    ? 'TRUNCATED_OUTPUT'
+    : rejection;
+}
 
 type Result =
   | { kind: 'completed'; output: InvestigationOutput; droppedTargets: string[] }
@@ -144,7 +161,7 @@ async function runInvestigation(
             eventIds: new Set(pack.failures.map((f) => f.eventId)),
           }),
         }
-      : { kind: 'failed', failure: parsed.failure };
+      : { kind: 'failed', failure: failureFor(parsed.failure, call.finishReason) };
   }
 
   // Token counts are recorded when the provider reports them; the key is never
@@ -153,6 +170,9 @@ async function runInvestigation(
     provider: provider.name,
     model: provider.model,
     latencyMs: call.latencyMs,
+    // Kept on successes too: STOP is unremarkable, and a later rejection has to
+    // be attributable rather than guessed at.
+    ...(call.finishReason ? { finishReason: call.finishReason } : {}),
     ...(call.ok && call.usage
       ? { inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens }
       : {}),

@@ -15,11 +15,16 @@ export interface ProviderUsage {
 /**
  * What a provider hands back. `raw` is deliberately `unknown`: it is validated
  * by output-schema.ts, never trusted, and never inspected before that.
+ *
+ * `finishReason` is the provider's own account of how the answer ended. Without
+ * it a response cut off mid-object is indistinguishable from a model that
+ * simply wrote nonsense, and the recorded reason would be a guess.
  */
 export interface ProviderAnswer {
   raw: unknown;
   /** Absent for providers that do not report usage, such as the fixture. */
   usage?: ProviderUsage;
+  finishReason?: string;
 }
 
 export interface LlmProvider {
@@ -39,8 +44,8 @@ export class ProviderRefusalError extends Error {
 export type ProviderFailure = 'TIMEOUT' | 'REFUSED' | 'PROVIDER_ERROR';
 
 export type ProviderResult =
-  | { ok: true; raw: unknown; usage?: ProviderUsage; latencyMs: number }
-  | { ok: false; failure: ProviderFailure; latencyMs: number };
+  | { ok: true; raw: unknown; usage?: ProviderUsage; finishReason?: string; latencyMs: number }
+  | { ok: false; failure: ProviderFailure; finishReason?: string; latencyMs: number };
 
 /**
  * Never throws. The race against the abort means a provider that ignores its
@@ -63,6 +68,7 @@ export async function callProvider(
       ok: true,
       raw: answer.raw,
       usage: answer.usage,
+      finishReason: answer.finishReason,
       latencyMs: Date.now() - started,
     };
   } catch (error) {
