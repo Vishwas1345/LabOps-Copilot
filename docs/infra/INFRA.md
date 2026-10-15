@@ -232,6 +232,11 @@ excludes server components, which only E2E can reach.
 
 ## 7. Deployment
 
+**See `DEPLOYMENT.md` in this folder** for the full runbook: why a single VM and
+not Vercel or Netlify, every configuration variable, the free-tier risks, the
+hostname options, what has and has not been verified, and the order of work
+before it is genuinely public. The summary:
+
 **A single VM, deployed by hand.** `docker-compose.prod.yml` is a standalone
 file, not an overlay on the development one, and the reason is recorded in its
 header: compose merges sequences, so an overlay inherited the development file's
