@@ -24,6 +24,10 @@ per-phase notes as history).
 - **Open, owner's side only:** rotate the Gemini key, add the
   `GEMINI_API_KEY` repository secret and dispatch `llm-live.yml` once (#20);
   branch protection on `main`.
+- **What to do next is section 13.** Two gaps stand between this project and a
+  demonstration anyone can watch end to end: Google sign-in has never been run
+  against a real Google client, and no scenario yet drives correlation,
+  investigation, policy, approval and verified recovery in one pass.
 - **No phase is planned.** Anything new starts with the plan-first loop in
   section 3.
 
@@ -580,3 +584,94 @@ Phase N = `LOC-(5+N)` (Phase 10 = LOC-15, 11 = LOC-16, 13 = LOC-18, 14 =
 LOC-19, 15 = LOC-20). Transition ids: 11 To Do, 21 In Progress, 31 In
 Testing, 41 Done. Subtasks are Done when their commit lands; the story moves
 to In Testing with the PR and to Done after the owner merges.
+
+---
+
+## 13. Follow-up list — next session
+
+Everything on `main` is done and merged. These are the two gaps between this
+project and a demonstration someone can watch start to finish, plus the state
+the owner should know about. Read `CLAUDE.md` before touching any of it.
+
+### 13a. Google sign-in — configure and test, do not rebuild
+
+**The UI side already exists** (merged in `e5d980d`). Building it again would be
+wasted work:
+
+- `apps/web/src/app/auth/google/start/route.ts` and `.../callback/route.ts`
+- `apps/web/src/lib/google-flow.ts` (PKCE, state, nonce)
+- `login/page.tsx` offers the button only when `/api/auth/providers` reports
+  Google configured; any failure hides it
+
+What is actually missing:
+
+1. **An OAuth client and the four env vars.** `GOOGLE_CLIENT_ID`,
+   `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` (must be
+   `http://localhost:3000/auth/google/callback` locally), `GOOGLE_ALLOWED_EMAILS`
+   in the **root** `.env`. All four or startup fails; empty counts as unset.
+2. **It has never been tested against a real Google client.** Every test signs an
+   ID token with a local key and stubs the token endpoint. One manual run through
+   a real browser is what is missing, and it is the primary goal.
+3. **Known design gap, decide before the demo.** `authorization-url` accepts
+   `state`, `codeChallenge` and `nonce` from the request body and stores nothing;
+   `POST /api/auth/google` then compares the token's nonce against the
+   *client-supplied* nonce. That proves the client repeated a value, so there is
+   **no login-CSRF protection** — which is what `state` exists for. PKCE still
+   protects against an interposer, which is a different threat. Options: accept
+   it for a local demo and record it in section 10, or fix it with server-side
+   storage in Redis. The login rate limiter already proves that pattern and Redis
+   is already there, so fixing it properly is the better answer.
+
+### 13b. A scenario that drives the whole chain in one pass
+
+Every stage exists and is tested in isolation. None has been run as one
+demonstration, start to finish:
+
+```
+simulated lab failures
+  -> events ingested (validated, redacted, deduped, lab transitioned)
+  -> correlate job -> incident
+  -> AI investigation -> proposed actions
+  -> policy (7 steps) -> proposal awaiting approval
+  -> approval -> execute (policy re-checked) -> simulated recovery
+  -> verification -> resolved
+  -> every step in the audit trail, streamed live to the dashboard
+```
+
+**The gap is the data, not the code.** `modules/labs/simulator.ts` (`SCENARIOS`,
+reached by `POST /api/demo/scenarios/:name`) already produces labs, dependencies
+and failures, and it drives the backend end-to-end test. What is missing is a
+scenario *shaped* so the correlation engine fires for a real reason:
+
+- **Two or more labs must fail on one shared dependency.** `schema.prisma` says
+  this is the strongest correlation signal, so independent failures will not group
+  convincingly. Verify the scenario puts more than one lab on the same
+  `Dependency`.
+- Failure `occurredAt` values must land inside **one correlation window**, or the
+  anchor scoring will not cluster them.
+- It should produce at least one **policy-allowed** action so the run reaches
+  approval and a verified recovery, and ideally one **blocked** action too,
+  because the blocked path is the more interesting one to show and the fixture
+  provider is written to produce both.
+- **Seed and stable:** the same seed must give the same run, or the README's
+  numbers cannot be trusted.
+- Then walk it in the browser and retake the README screenshots from that run
+  (`AGENTS.md` §6: screenshots must come from a run that follows the walkthrough
+  exactly).
+
+### 13c. Known issues to record, not defects to fix
+
+- Everything in the demo is **simulated**. Recovery changes no real
+  infrastructure and the UI must keep saying so on every page.
+- The login rate limit is effectively global behind the BFF (already section 10).
+- Self-approval is allowed: one operator, no roles yet (already section 10).
+- If 13a's decision is to accept the OIDC gap, it belongs in section 10 with the
+  rest, stated plainly rather than left in a commit message.
+
+### 13d. Dropped, so nobody rebuilds it
+
+A **signed webhook receiver** (`POST /api/webhooks/mock-platform`, HMAC over the
+raw body) and a **mock lab platform app** were both built, then dropped on the
+owner's decision: not worth adding to a local-only prototype. PR #35 carried the
+receiver and was closed. The branches still exist if it is ever wanted, but
+nothing in the code, docs or tests refers to them.
