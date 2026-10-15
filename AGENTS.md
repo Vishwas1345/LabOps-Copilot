@@ -409,8 +409,8 @@ Key behaviours worth knowing (details in `ARCHITECTURE.md`):
   one poller per API process; heartbeat re-checks the session; web relays the
   stream (`app/api/events/stream/route.ts`) and `LiveRefresh` refreshes pages.
 
-Latest verified numbers (after #32): API unit 665, integration 218
-(twice on a fresh DB); web 123 tests; coverage api 98.4%, web 92.5%; fresh
+Latest verified numbers (after Google sign-in): API unit 675, integration 232
+(twice on a fresh DB); web 139 tests; coverage api 98.5%, web 93.2%; fresh
 clone, compose smoke and the browser journey green on a fresh stack.
 
 ## 8a. Phase 10 (PR #16): merged
