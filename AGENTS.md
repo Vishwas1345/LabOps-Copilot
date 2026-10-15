@@ -145,7 +145,9 @@ steps:**.
 2. Branch from `main`: `feat/LOC-<story>-<slug>` (fixes: `fix/<slug>`).
    Move the Jira story to In Progress.
 3. Implement; **one commit per subtask**, Conventional Commits, imperative
-   lowercase subject, body explaining why. Never commit to `main`.
+   lowercase subject, body explaining why. **The owner allows direct pushes to
+   `main`** (changed 2026-10-15), so a branch and a PR are no longer required;
+   use whichever is proportionate to the change.
 4. Every behaviour ships with tests, including the negative case. **Mutation-
    check each safety test**: break the guard, confirm a test fails, restore
    (keep a backup copy; verify with `diff`/`git status` that it is restored).
@@ -165,8 +167,10 @@ steps:**.
    the routine; update the PR body ("Self-review fixes"); `gh pr ready`.
 9. Jira: subtasks Done, story In Testing, a comment with PR link,
    deviations, verification numbers.
-10. **The owner merges** (`gh pr merge N --rebase`, never `--delete-branch`;
-    branches are kept). Then pull `main`, move the story to Done.
+10. **The owner merges, or it goes straight to `main`.** With a PR:
+    `gh pr merge N --rebase`, never `--delete-branch` (branches are kept). For a
+small change the owner allows a direct push instead. Then pull `main` and
+    move the story to Done.
 
 ## 4. Non-negotiable rules (condensed from CLAUDE.md)
 
