@@ -3,7 +3,7 @@ import { buildApp } from '../../../../src/app.js';
 import { signedInCookie } from '../../../fixtures/session.fixture.js';
 import { loadConfig } from '../../../../src/platform/config/env.js';
 import { prisma } from '../../../../src/db.js';
-import { executeJobKey } from '../../../../src/modules/recovery/approve.js';
+import { executeJobKey } from '../../../../src/modules/recovery/services/approve.js';
 import { failedIncident, removeFixtures, untilBlocked } from '../../../fixtures/incident.fixture.js';
 
 const app = await buildApp({ config: { ...loadConfig(), DEMO_ENABLED: false } });

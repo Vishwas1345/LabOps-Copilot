@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { incomingEvent } from '../../../../src/modules/events/schema.js';
+import { incomingEvent } from '../../../../src/modules/events/schemas.js';
 
 const failed = {
   providerEventId: 'evt-1',

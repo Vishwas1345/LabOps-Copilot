@@ -15,8 +15,8 @@ import { logger } from '../../platform/observability/logger.js';
 import { currentTraceparent, withSpan } from '../../platform/observability/tracing.js';
 import { correlationWindow } from './correlation-window.js';
 import { normalise } from './normalise.js';
-import type { EventsQuery, IncomingEvent } from './schema.js';
-import { incomingEvent } from './schema.js';
+import type { EventsQuery, IncomingEvent } from './schemas.js';
+import { incomingEvent } from './schemas.js';
 
 export interface IngestResult {
   eventId: string;

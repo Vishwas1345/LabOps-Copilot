@@ -16,7 +16,7 @@ import { investigateJobKey, requestInvestigation } from '../../../../src/modules
 import { createSimulatedLabs } from '../../../../src/modules/labs/service.js';
 import { createTrainingEvent } from '../../../../src/modules/labs/simulator.js';
 import { createLogger } from '../../../../src/platform/observability/logger.js';
-import { approveAction, executeJobKey } from '../../../../src/modules/recovery/approve.js';
+import { approveAction, executeJobKey } from '../../../../src/modules/recovery/services/approve.js';
 import { createExecuteJob } from '../../../../src/modules/recovery/jobs/execute.job.js';
 
 const log = createLogger(undefined, 'silent');
