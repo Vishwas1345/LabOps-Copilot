@@ -170,3 +170,22 @@ describe('reconcileJobs', () => {
     expect(await getQueue('correlate').getJob(row.jobKey)).toBeUndefined();
   });
 });
+
+describe('re-arming', () => {
+  // Negative (#27): a re-arm that lands before the run starts is covered by
+  // that run, so the row must settle without waiting for the reconciler.
+  it('settles a row re-armed before its run started', async () => {
+    startWorker(async () => 'done');
+    const key = `test-${randomUUID()}`;
+    const first = await prisma.$transaction((tx) => recordJob(tx, 'correlate', key, { n: 1 }, undefined));
+    await dispatchJob(first);
+    const second = await prisma.$transaction((tx) => recordJob(tx, 'correlate', key, { n: 2 }, undefined));
+    // Collapses into the job still waiting out its dispatch delay.
+    await dispatchJob(second);
+    expect(second.generation).toBe(first.generation + 1);
+
+    const row = await rowWhen(first.id, (status) => status === 'succeeded', 10_000);
+
+    expect(row.status).toBe('succeeded');
+  });
+});
