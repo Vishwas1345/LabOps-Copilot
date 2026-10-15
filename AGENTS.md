@@ -192,8 +192,8 @@ the verification event. It passes on a fresh stack and on a re-run.
   `REDIS_URL=redis://localhost:6380`.
 - **Windows is the dev box; there is no Git Bash.** The only `bash.exe` is the
   WSL launcher, which has neither this project's Node nor Docker context, so
-  `scripts/*.sh` cannot be run as written. `scripts/compose-smoke.ps1` is the
-  PowerShell equivalent and has never been executed. A native
+  `scripts/*.sh` cannot be run as written; CI's compose smoke job runs
+  `compose-smoke.sh` on every PR, so rely on that there. A native
   `clean-db-check` was run by hand instead: create the throwaway database with
   `docker compose exec -T postgres psql`, export `TEST_DATABASE_URL` to it, run
   the suite twice, confirm `_prisma_migrations` exists there (that is the proof
@@ -263,9 +263,8 @@ the verification event. It passes on a fresh stack and on a re-run.
 
 ## 7. What is built (phase by phase)
 
-All phases through 12 are merged to `main`, including Phase 11 (PR #19). Phase 13
-is built on branch `feat/LOC-18-integration-settings`, open as draft PR #21 and
-**not merged**. Jira: story for Phase N is `LOC-(5+N)`.
+All phases through 13 are merged to `main` (Phase 13 is PR #21). Jira: story
+for Phase N is `LOC-(5+N)`.
 
 | Phase | Jira | PR | What |
 |---|---|---|---|
@@ -279,7 +278,7 @@ is built on branch `feat/LOC-18-integration-settings`, open as draft PR #21 and
 | 12 | LOC-17 | #15 | Dashboard (run **before** 10 and 11 by agreement): BFF login, overview, incidents, incident detail with approve/reject, audit; Zod-parsed responses |
 | 10 | LOC-15 | #16 | Live updates over SSE (see section 8) |
 | 11 | LOC-16 | #19 | Real LLM provider, opt-in: Gemini over plain `fetch`, Zod → Gemini schema transform, bounded retry, token usage in `modelMetadata`, opt-in live test |
-| 13 | LOC-18 | **#21 draft** | Integration settings and secrets, adapter-gated: AES-256-GCM credential sealing, `ProviderAdapter`, a CloudLabs adapter claiming no capabilities, four settings routes, settings page (see section 8b) |
+| 13 | LOC-18 | #21 | Integration settings and secrets, adapter-gated: AES-256-GCM credential sealing, `ProviderAdapter`, a CloudLabs adapter claiming no capabilities, four settings routes, settings page (see section 8b) |
 
 Key behaviours worth knowing (details in `ARCHITECTURE.md`):
 
@@ -317,7 +316,7 @@ streams piled up; propagating `ReadableStream.cancel` upstream did not help
 (64 s). A closed tab still lingers about a minute, once per tab, which is
 acceptable.
 
-## 8. Phase 11 (PR #19): merged, with four items still open
+## 8. Phase 11 (PR #19): merged
 
 Merged to `main`. Five commits plus a self-review fix.
 
@@ -348,25 +347,12 @@ files); coverage 98.5% api / 99.3% web; migrate deploy clean; `prisma:drift`
 clean; typecheck on every branch commit; audit gate 6 known / 6 baselined; live
 run `verdict=VALID`, 731 input and 272 output tokens.
 
-**Still unverified — do these before calling Phase 11 closed:**
-
-1. **Compose smoke (section 5 step 7).** Never run. Windows has no Git Bash
-   here; `scripts/compose-smoke.ps1` was written as the equivalent and has
-   **never been executed**, so treat it as untested until it passes once.
-2. **Fresh clone (section 5 step 5).** Never run on this branch.
-3. **Jira LOC-16 was never moved at all** — no `jira` CLI and no
-   `JIRA_API_TOKEN` / `JIRA_EMAIL` in this environment. It should be In
-   Progress, then Done. Do it by hand.
-4. **The live CI job has never run.** `.github/workflows/llm-live.yml` needs the
-   `GEMINI_API_KEY` repository secret; dispatch it once manually to confirm.
-5. **Rotate the Gemini key.** It was pasted into a chat transcript in plaintext.
-   It is git-ignored and was never committed, but treat it as exposed.
-
-**One local-DB caveat.** The `TRUNCATED_OUTPUT` migration was applied by hand
-during the fix, and Prisma's own record of it in the dev database had to be
-corrected after an aborted `migrate dev`. The migration **file** is correct and
-applies cleanly to a fresh database, which is what CI and the compose `migrate`
-service use — but that path was never re-verified after the edit.
+**Closed by issue #20.** The compose smoke, a fresh clone and fresh-database
+migrations (including `TRUNCATED_OUTPUT`) passed on macOS on the PR #21 branch,
+which contains all of Phase 11; CI's compose smoke job passed on #19 and #21.
+LOC-16 is Done. **Still open, owner's side:** rotate the Gemini key (it was
+pasted into a chat transcript), add it as the `GEMINI_API_KEY` repository
+secret, and dispatch `llm-live.yml` once.
 
 **Model availability is a live risk, not a code defect.** The free tier is
 throttled: `gemini-flash-latest`, `gemini-3.5-flash` and `gemini-3.8-flash`
@@ -380,10 +366,7 @@ variable, so the worker defaults to `fixture`; the smoke test and CI therefore
 cannot call a network provider. Verified by reading `docker-compose.yml`, not
 assumed.
 
-## 8b. Phase 13 (PR #21): built, not merged, awaiting review
-
-Branch `feat/LOC-18-integration-settings`, **draft PR #21**. Six commits:
-secrets, adapter boundary, API, settings page, docs, and a self-review fix.
+## 8b. Phase 13 (PR #21): merged
 
 **Built.** `secrets/crypto.ts` seals credentials with AES-256-GCM
 (`iv | tag | ciphertext`, random IV per seal) under `CREDENTIALS_KEY`.
@@ -426,39 +409,29 @@ integration (22 files); web 89 (11 files), 99.33% coverage; audit gate 6 known
 / 6 baselined. Probe test confirmed no surface leaks the credential — response
 list, test response, database ciphertext and audit metadata all clean.
 
-**Not verified, and not attempted:**
-
-1. **Compose smoke (section 5 step 7) and the fresh clone (step 5).** Deferred
-   to issue #20. `scripts/compose-smoke.ps1` still has **never been executed**.
-2. **Jira LOC-18 was never moved to In Progress** — no CLI, no credentials in
-   this environment. Do it by hand.
-3. The branch has **not** been typechecked on every commit or through a compose
-   smoke run; PR #21's CI has only run the api and web pipelines.
-
-**After it merges:** Jira LOC-18 to Done, pull `main`, and start Phase 14.
+**Review fixes before merge (`17e65e5`, `410bcb6`).** `tenantId` was accepted
+and dropped (now refused); the route param is Zod-validated; every response
+passes its strict schema; an unreadable stored credential is audited as
+`credentialUnreadable`. Verified on macOS: integration twice on a fresh
+database, fresh clone, and compose smoke fresh and on a re-run. LOC-18 is Done.
 
 ## 9. What is left, in order
 
-Phases 12, 10 and 11 are done. The agreed order is **13, 14, 15**, each under
-the plan-first loop above; read the phase in `PLAN.md` and the matching
+Phases 10 to 13 are done. Remaining: **14, then 15**, each under the
+plan-first loop above; read the phase in `PLAN.md` and the matching
 `.claude/skills/*` recipe first.
 
-1. **Phase 13: integration settings and secrets, adapter-gated (LOC-18;
-   LOC-71..74).** Built on `feat/LOC-18-integration-settings`, draft PR #21,
-   **awaiting owner review — see section 8b.** After it merges: Jira LOC-18 to
-   Done, pull `main`, and start Phase 14.
-2. **Phase 14: E2E tests and metrics (LOC-19; LOC-75, LOC-76).** Playwright
-   journey in CI against compose (seeded scenario, fixture LLM), including the
-   negative cases visible in the UI (permission incident stays separate, a
-   blocked action shows its rule) and the click-through nobody has done yet in
-   a real browser. OTel metrics from real runs only. Also a good place to add
-   an alert/metric for long-running transactions (they delay live updates).
-3. **Phase 15: dependency graph (optional) and delivery (LOC-20;
-   LOC-77..79).** React Flow graph; deployment target and release pipeline
-   (the `deploy` input exists in CI but nothing sets it); README walkthrough
-   with real screenshots and real numbers. Fix the deployment-related known
-   gaps here (trustProxy for the login limit; forwarding client IP from the
-   web server).
+1. **Phase 14: E2E tests and metrics (LOC-19; LOC-75, LOC-76).** In progress
+   on `feat/LOC-19-e2e-metrics`. Owner decision: metrics are derived from
+   committed Postgres rows (`GET /api/metrics`), not an OTel metrics SDK, so
+   they count both processes, survive restarts and cannot disagree with the
+   audit trail. Playwright journey in CI against compose, fixture LLM.
+2. **Phase 15: delivery (LOC-20; LOC-77..79).** The dependency graph is
+   **dropped** (owner decision). Deployment target and release pipeline (the
+   `deploy` input exists in CI but nothing sets it); README walkthrough with
+   real screenshots and real numbers. Fix the deployment-related known gaps
+   here (trustProxy for the login limit; forwarding client IP from the web
+   server).
 
 ## 10. Known gaps (recorded in INFRA / PLAN; do not rediscover them)
 
