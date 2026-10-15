@@ -36,7 +36,7 @@ export async function runJob(
   handlers: JobHandlers,
   log: pino.Logger,
 ): Promise<unknown> {
-  const { jobExecutionId, generation } = job.data;
+  const { jobExecutionId } = job.data;
   const row = await prisma.jobExecution.update({
     where: { id: jobExecutionId },
     data: { status: 'running', attempts: { increment: 1 }, startedAt: new Date() },
@@ -55,9 +55,11 @@ export async function runJob(
         return handler.handle(row.payload, jobLog.child({ traceId: span.spanContext().traceId }));
       }),
     );
-    // Succeeded only if no newer work re-armed the row while we ran.
+    // Succeeded only if no newer work re-armed the row while we ran. Compared
+    // with the generation read at start, not the message's: a re-arm before
+    // the run began is covered by this run (#27).
     await prisma.jobExecution.updateMany({
-      where: { id: row.id, generation },
+      where: { id: row.id, generation: row.generation },
       data: { status: 'succeeded', finishedAt: new Date(), errorSummary: null },
     });
     return result;
