@@ -89,6 +89,7 @@ labs, failures and incidents every run.
 
 1. **Run demo scenario** on the overview. The tiles, the failure timeline and
    the labs donut fill in live; the burst is one tall bar on the timeline.
+   Light and [dark](docs/images/dashboard-dark.png) themes follow the system.
 2. **Incidents.** Deterministic correlation forms one 12-lab
    `PROVISION_TIMEOUT on image-registry` incident and keeps the 7 unrelated
    failures as separate single-lab incidents. The redelivered event is stored
