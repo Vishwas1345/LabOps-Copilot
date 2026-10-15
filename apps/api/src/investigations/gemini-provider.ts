@@ -42,7 +42,7 @@ interface GeminiResponse {
   usageMetadata?: GeminiUsageMetadata;
 }
 
-/** 429 and 503 are the free tier under load. Everything else is permanent. */
+/** Throttling (429) and server-side faults are worth a retry; other errors are not. */
 function isTransient(status: number): boolean {
   return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 }
@@ -124,7 +124,7 @@ export function createGeminiProvider(options: GeminiProviderOptions): LlmProvide
           continue;
         }
 
-        if (response.status === 429 || isTransient(response.status)) {
+        if (isTransient(response.status)) {
           lastError = new Error(`gemini responded ${response.status}`);
           continue;
         }
@@ -139,9 +139,6 @@ export function createGeminiProvider(options: GeminiProviderOptions): LlmProvide
         const blockReason = body.promptFeedback?.blockReason;
         if (blockReason) throw new ProviderRefusalError();
 
-        // Recorded even on success: STOP is unremarkable, but MAX_TOKENS means
-        // the answer was cut off, and a later rejection has to be attributable
-        // to that rather than blamed on the model.
         const finishReason = body.candidates?.[0]?.finishReason;
         if (finishReason && REFUSAL_REASONS.has(finishReason)) {
           throw new ProviderRefusalError();
@@ -150,6 +147,8 @@ export function createGeminiProvider(options: GeminiProviderOptions): LlmProvide
         const text = body.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
         const usage = body.usageMetadata;
 
+        // finishReason is returned even on success: MAX_TOKENS marks a cut-off
+        // answer, so a later rejection is attributed to the limit, not the model.
         return {
           raw: stripCodeFence(text),
           finishReason,
