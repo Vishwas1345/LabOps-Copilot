@@ -145,4 +145,25 @@ describe('LiveRefresh', () => {
     expect(source.closed).toBe(true);
   });
 
+  // Negative: work committed between the server render and the stream opening
+  // must still reach the page, so the first ready triggers one read.
+  it('reads the page once when the stream becomes ready', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('EventSource', FakeEventSource);
+    const { createRoot } = await import('react-dom/client');
+    const { act } = await import('react');
+    const { LiveRefresh } = await import('./live-refresh');
+    const root = createRoot(document.createElement('div'));
+
+    await act(async () => root.render(<LiveRefresh />));
+    const [source] = FakeEventSource.opened;
+    expect(refresh).not.toHaveBeenCalled();
+    await act(async () => {
+      source.listeners.ready();
+      vi.advanceTimersByTime(400);
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.unmount());
+  });
 });
