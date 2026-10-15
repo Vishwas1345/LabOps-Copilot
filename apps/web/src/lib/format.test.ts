@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  summariseStates,
   formatDuration,
   formatConfidence,
   formatDateTime,
@@ -49,6 +50,17 @@ describe('formatDuration', () => {
     [90_000, '1.5 min'],
   ])('%s -> %s', (ms, text) => {
     expect(formatDuration(ms)).toBe(text);
+  });
+});
+
+describe('summariseStates', () => {
+  it('counts lab states, largest first', () => {
+    expect(summariseStates({ a: 'failed', b: 'ready', c: 'failed' })).toBe('2 failed, 1 ready');
+  });
+
+  it('shows a dash when no state was recorded', () => {
+    expect(summariseStates(undefined)).toBe('—');
+    expect(summariseStates({})).toBe('—');
   });
 });
 

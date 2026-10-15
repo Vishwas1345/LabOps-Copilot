@@ -90,6 +90,7 @@ export const investigationSchema = z.object({
   summary: z.string().nullable(),
   candidateCause: z.string().nullable(),
   evidenceFor: z.array(z.string()),
+  evidenceAgainst: z.array(z.string()),
   missingEvidence: z.array(z.string()),
   diagnosticChecks: z.array(z.string()),
   confidence: z.number().nullable(),

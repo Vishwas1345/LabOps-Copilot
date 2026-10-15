@@ -26,6 +26,17 @@ export function formatDuration(ms: number | null): string {
   return `${(ms / 60_000).toFixed(1)} min`;
 }
 
+/** Lab states by count, largest first: { a: 'failed', b: 'ready' } -> "1 failed, 1 ready". */
+export function summariseStates(states: Record<string, string> | undefined): string {
+  const counts = new Map<string, number>();
+  for (const state of Object.values(states ?? {})) counts.set(state, (counts.get(state) ?? 0) + 1);
+  if (counts.size === 0) return '—';
+  return [...counts]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([state, count]) => `${count} ${state}`)
+    .join(', ');
+}
+
 /** Enum or audit action to words: "awaiting_approval", "recovery.verified". */
 export function humanise(value: string): string {
   return value.replace(/[_.]/g, ' ').toLowerCase();
