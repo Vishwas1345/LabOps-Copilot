@@ -11,6 +11,7 @@ import {
   formatScore,
   humanise,
   noticeFor,
+  summariseStates,
 } from '@/lib/format';
 import { isId } from '@/lib/queries';
 import type { Investigation, PolicyDecision, RecoveryAction } from '@/lib/schemas';
@@ -34,7 +35,29 @@ function Decisions({ decisions }: { decisions: PolicyDecision[] }) {
   );
 }
 
-function InvestigationCard({ investigation }: { investigation: Investigation }) {
+function EvidenceList({ title, ids, messages }: { title: string; ids: string[]; messages: Map<string, string> }) {
+  if (ids.length === 0) return null;
+  return (
+    <div>
+      <p className="font-medium">{title}</p>
+      <ul className="list-disc pl-5">
+        {ids.map((id) => (
+          <li key={id}>{messages.get(id) ?? id}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// Evidence is cited by event id; the page shows the event it names, from the
+// incident's own evidence, so a citation cannot point outside the incident.
+function InvestigationCard({
+  investigation,
+  messages,
+}: {
+  investigation: Investigation;
+  messages: Map<string, string>;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -58,11 +81,23 @@ function InvestigationCard({ investigation }: { investigation: Investigation }) 
         )}
         {investigation.candidateCause && <p>Likely cause: {investigation.candidateCause}</p>}
         <p>Confidence: {formatConfidence(investigation.confidence)}</p>
+        <EvidenceList title="Evidence for" ids={investigation.evidenceFor} messages={messages} />
+        <EvidenceList title="Evidence against" ids={investigation.evidenceAgainst} messages={messages} />
         {investigation.missingEvidence.length > 0 && (
           <div>
             <p className="font-medium">Missing evidence</p>
             <ul className="list-disc pl-5">
               {investigation.missingEvidence.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {investigation.diagnosticChecks.length > 0 && (
+          <div>
+            <p className="font-medium">Checks worth running</p>
+            <ul className="list-disc pl-5">
+              {investigation.diagnosticChecks.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
@@ -100,6 +135,11 @@ function ActionCard({ incidentId, action }: { incidentId: string; action: Recove
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
+        {action.targetIds.length > 0 && (
+          <p className="text-xs">
+            Targets: <span className="font-mono">{action.targetIds.join(', ')}</span>
+          </p>
+        )}
         {action.blockedAt && (
           <Alert variant="destructive">Blocked by policy at the {humanise(action.blockedAt)} step.</Alert>
         )}
@@ -117,6 +157,9 @@ function ActionCard({ incidentId, action }: { incidentId: string; action: Recove
           <div>
             <p className="mb-1 font-medium">
               Verification: {verification.passed ? 'passed, every lab ready' : 'failed'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Before: {summariseStates(action.result?.before)} · After: {summariseStates(verification.after)}
             </p>
             {verification.notReady && verification.notReady.length > 0 && (
               <p className="text-xs text-muted-foreground">Not ready: {verification.notReady.length} lab(s)</p>
@@ -214,7 +257,12 @@ export default async function IncidentPage({
         </CardContent>
       </Card>
 
-      {latest && <InvestigationCard investigation={latest} />}
+      {latest && (
+        <InvestigationCard
+          investigation={latest}
+          messages={new Map(incident.events.map((event) => [event.id, `${event.errorCategory}: ${event.message}`]))}
+        />
+      )}
       {actions.map((action) => (
         <ActionCard key={action.id} incidentId={incident.id} action={action} />
       ))}
