@@ -1,12 +1,9 @@
 # LabOps Copilot — Implementation Plan
 
-**Status:** Approved. Phases 0–13 and 12 done (LOC-5 to LOC-16, LOC-17, LOC-18):
-the workflow runs end to end in a browser, with live updates, an opt-in real
-model, and integration settings that report honestly that no live connector has
-been verified. Next is Phase 14.
-
-**Remaining (2):** 14 end-to-end tests and metrics (LOC-19, in progress); 15
-delivery (LOC-20). The dependency graph is dropped by owner decision.
+**Status:** Complete. Phases 0–15 are done (LOC-5 to LOC-20): the workflow runs
+end to end in a browser and in CI, with live updates, an opt-in real model,
+honest integration settings, measured metrics, and one incident as one trace.
+Local-only by decision; the dependency graph was dropped by owner decision.
 
 **Order changed after Phase 9:** the dashboard (Phase 12) ran before live
 updates (10) and the real LLM (11), so the proven workflow became visible and
@@ -499,7 +496,8 @@ Phase 13 deviations, settled by building it:
 
 ### Phase 15 — Delivery
 
-**Files:** deploy config if a free target exists; README walkthrough with real screenshots and real numbers (from `/api/metrics` on a real run). The React Flow dependency graph was dropped by owner decision: it was optional, and correlation is already explained per lab on the incident page.
+**Delivered:** `Incident.traceparent`, joined by the investigation and the approval, so one incident is one trace (`recovery/incident-trace.int.test.ts`); the service name on every span; `compose.tracing.yml` (opt-in Jaeger); the README walkthrough with real screenshots and real numbers from `/api/metrics`; the unused CI `deploy` path removed.
+**Decisions (owner):** local-only, no hosted instance (a public deploy adds attack surface and makes the proxy-IP gaps live, for nothing a reviewer can check); the React Flow dependency graph dropped (optional, and correlation is explained per lab on the incident page).
 **Done when:** a reviewer can start the stack from the README, run the scenario, and follow one incident through logs and a trace.
 
 ---
@@ -536,5 +534,5 @@ Phase 13 deviations, settled by building it:
 | 2 | **LLM provider not chosen.** | Decide before Phase 11. Phases 0–10 do not depend on it (fixture provider). |
 | 3 | **Correlation window boundaries.** A burst that straddles two time buckets could split into two incidents. | Correlate against the current and previous bucket; anchor the window key on the earliest event. Covered by a dedicated test in Phase 5. |
 | 4 | **Auth depth.** Session auth for seeded operators covers the spec's "simple operator role". | RBAC only if time remains after Phase 15. |
-| 5 | **Deployment target** undecided. | Choose in Phase 15; it does not shape earlier phases. |
+| 5 | **Deployment target.** | Decided in Phase 15: local-only, no hosted instance. |
 | 6 | **Scope creep from the "nice to have" items** (React Flow, Grafana, RBAC). | Keep them in Phase 15 or later; none is in the §21 success criteria. |
