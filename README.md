@@ -633,20 +633,26 @@ done.
 
 ## Before production
 
-Known and deliberate. Each is recorded in `docs/infra/INFRA.md`.
+Known and deliberate. `docs/GAPS.md` is the full list; this is what is left
+after deploying the stack in `docs/infra/INFRA.md` section 7.
 
-- **Behind a proxy, the login rate limit needs trusted client IPs.** Today it
-  keys on the socket address, and dashboard sign-ins all arrive from the web
-  server, so the 5-a-minute limit is effectively shared. Forward the client IP
-  from the web server and set `trustProxy` to the real hops only.
+- **Access control is one shared operator password** until Google sign-in with
+  an exact-email allow-list is configured (`AGENTS.md` section 13a). That is the
+  real gate on a public deployment.
+- **One host is one point of failure.** Postgres, Redis, the API, the worker and
+  the proxy all run on the same VM. Backups are on that same disk, so there is
+  no off-host copy and no failover.
+- **No uptime monitoring and no alerting.** Nothing pings the site, and nothing
+  tells an operator an incident was created while they were away.
+- **Event ingestion is still not rate limited** (`POST /api/events`); sign-in and
+  investigations are.
 - **API request logs carry no trace id** until HTTP spans are added; worker logs
   do.
 - **Nothing alerts on a long open transaction.** The metric exists; the alert
   does not.
-- **No live lab platform connector.** Built only after the API contract,
-  credentials and a sandbox are confirmed (`ARCHITECTURE.md` section 13).
-- **Not hosted.** Local-only by decision; the intended production shape is in
-  `ARCHITECTURE.md` section 16.
+- **No live lab platform connector.** Deliberate: nothing about a real provider's
+  API has been verified, so none is invented (`ARCHITECTURE.md` section 13). The
+  whole dataset is simulated and recovery repairs nothing.
 
 ---
 

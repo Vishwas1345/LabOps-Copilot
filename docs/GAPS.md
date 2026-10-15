@@ -85,21 +85,25 @@ platform. The *action* would not.
   proves only that the client repeated a value, not that this browser started
   the flow. PKCE still protects against an interposer, which is a different
   attack. A proper fix is server-side state in Redis.
-- **`trustProxy` is off.** Behind a load balancer the client IP is read wrongly,
-  which both defeats the rate limit's per-client intent and corrupts logs.
+- **`trustProxy` is set in production** (`TRUST_PROXY_HOPS=1`, matching the one
+  Caddy hop), so the client IP behind the proxy is correct and the rate limits
+  are per-client. It is unset locally, which is right: nothing proxies there.
 
 ## 3. Cost and abuse
 
-- **The AI investigation endpoint is not rate limited.** `POST
-  /api/incidents/:id/investigate` queues a model call, and neither that route
-  nor event ingestion carries a limit. With a real model provider configured,
-  that is an unbounded spend path for any signed-in operator, and a DoS path.
-  Sign-in is the only rate-limited surface.
+- **Investigations are rate limited, at ten a minute per client.** Redis-backed
+  and failing closed, in the namespace `investigation-limit`. Reading results
+  is deliberately unmetered, so paging back through findings is never punished
+  for having investigated something. Sign-in keeps its own, stricter limit.
+- **Event ingestion is still not rate limited.** `POST /api/events` accepts
+  anything a signed-in operator sends, capped at 16 KB per body.
 - **No alerting or notification of any kind.** No email, no chat integration, no
   webhook outbound. An incident created at 2am is visible only to whoever opens
   the dashboard. `/api/metrics` reports a long open transaction if someone looks.
-- **No backup or restore story for Postgres.** Migrations are additive and tested
-  from empty; recovery from data loss is undefined.
+- **Backups exist but are only as good as the last verified one.** `scripts/backup.sh`
+  dumps before every deploy and prunes to the seven newest; `scripts/restore.sh`
+  proves a dump into a scratch database. There is no second copy off the host,
+  so losing the VM loses everything in it.
 
 ## 4. Data handling
 
@@ -158,14 +162,24 @@ platform. The *action* would not.
 
 ## 8. Scope and deployment
 
-- **Local-only by decision.** There is no deployment pipeline, no hosted
-  instance, no container image publishing. CI has no release path.
-- **No HTTPS anywhere in the local stack.** Compose sets
-  `SESSION_COOKIE_SECURE=false` because it serves plain http on localhost, which
-  is correct for development and would be wrong anywhere else.
-- **Secrets live in environment files.** `.env` files are git-ignored and
-  `.env.example` holds placeholders only, but a secret in the environment is
-  readable by anything that can read the process.
+- **Deployed to a single VM.** One host runs Postgres, Redis, the API, the
+  worker, the web server and the reverse proxy. It is a single point of failure:
+  a restart takes everything down, and losing the disk takes the audit trail
+  with it. `docker-compose.prod.yml` caps each service's memory and logs, which
+  limits how far one component can damage the others, but there is no second
+  host and no failover.
+- **No CI deploy path.** Deploying is `git pull && ./scripts/deploy.sh` over
+  SSH by hand. There is no image registry, no image publishing and no automated
+  rollout, which is deliberate: a registry would add a credential surface for
+  something that is ultimately a six-service restart.
+- **A production boot refuses unsafe configuration.** `APP_ENV=production`
+  makes the API fail at startup if the session cookie is not Secure, if no proxy
+  hop count is given, or if demo routes are enabled. A Secure cookie over plain
+  http is never sent, so that combination means nobody can sign in at all.
+- **Secrets live in one environment file on the host**, `.env.production`, mode
+  600 and git-ignored. A secret in the environment is readable by anything that
+  can read the process, and rotating `CREDENTIALS_KEY` means re-sealing every
+  stored credential.
 - **Branch protection on `main` is off.**
 - **No incident list "likely cause" column.** The detail page shows the AI
   diagnosis; the list does not, because it would need an upward import or a
