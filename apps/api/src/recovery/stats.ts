@@ -27,7 +27,7 @@ export async function recoveryStats(since: Date): Promise<RecoveryStats> {
         SELECT EXTRACT(EPOCH FROM ("verificationResult"->>'checkedAt')::timestamptz
                  - ("approvedAt" AT TIME ZONE 'UTC'))::float8 * 1000 AS ms
         FROM "RecoveryAction"
-        WHERE "createdAt" >= ${since}
+        WHERE "createdAt" >= (${since} AT TIME ZONE 'UTC')
           AND "approvedAt" IS NOT NULL
           AND "verificationResult" ? 'checkedAt'
       ) verified`),

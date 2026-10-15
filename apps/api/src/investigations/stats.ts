@@ -29,7 +29,7 @@ export async function investigationStats(since: Date): Promise<InvestigationStat
       FROM (
         SELECT ("modelMetadata"->>'latencyMs')::float8 AS ms
         FROM "Investigation"
-        WHERE "createdAt" >= ${since}
+        WHERE "createdAt" >= (${since} AT TIME ZONE 'UTC')
       ) calls`),
   ]);
   return {
