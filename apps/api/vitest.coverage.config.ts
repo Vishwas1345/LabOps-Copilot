@@ -8,9 +8,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     env: integrationEnv(),
-    globalSetup: ['./vitest.integration.setup.ts'],
-    include: ['src/**/*.test.ts'],
-    exclude: ['**/node_modules/**', '**/dist/**', 'src/**/*.live.test.ts'],
+    globalSetup: ['./vitest.integration.setup'],
+    include: ['test/unit/**/*.test.ts', 'test/integration/**/*.int.test.ts'],
+    exclude: ['**/node_modules/**', '**/dist/**'],
     // Specs share one database, so files run one at a time.
     fileParallelism: false,
     coverage: unitConfig.test?.coverage,

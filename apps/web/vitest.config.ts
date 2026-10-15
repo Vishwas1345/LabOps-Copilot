@@ -8,7 +8,7 @@ export default defineConfig({
   esbuild: { jsx: 'automatic' },
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    include: ['test/unit/**/*.test.ts', 'test/unit/**/*.test.tsx'],
     exclude: ['**/node_modules/**', '**/.next/**'],
     coverage: {
       provider: 'v8',
@@ -16,8 +16,6 @@ export default defineConfig({
       reportsDirectory: 'coverage',
       include: ['src/**/*.{ts,tsx}'],
       exclude: [
-        'src/**/*.test.ts',
-        'src/**/*.test.tsx',
         'src/next-env.d.ts',
         // Next.js generates these; not our code to cover.
         'src/app/**/*.d.ts',

@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/**/*.live.test.ts'],
+    include: ['test/live/**/*.live.test.ts'],
     // No coverage thresholds here. A run that needs a network model and a
     // provider that throttles must not be able to fail the quality gate.
     testTimeout: 120_000,

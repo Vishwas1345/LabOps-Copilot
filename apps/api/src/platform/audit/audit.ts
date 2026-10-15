@@ -1,0 +1,121 @@
+import type { ActorType, Prisma } from '@prisma/client';
+import { prisma } from '../../db.js';
+import { redactSecrets } from '../observability/redact.js';
+
+// The only path into AuditEntry. Writes take the caller's transaction so a
+// change and its entry commit together; a DB trigger makes the table append-only.
+
+export interface Actor {
+  type: ActorType;
+  id: string;
+}
+
+export interface AuditEntryInput {
+  actor: Actor;
+  /** Dotted verb, e.g. `lab.transition`. */
+  action: string;
+  targetType: string;
+  targetId: string;
+  outcome: string;
+  correlationId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export async function writeAudit(
+  tx: Prisma.TransactionClient,
+  entry: AuditEntryInput,
+): Promise<void> {
+  await tx.auditEntry.create({
+    data: {
+      actorType: entry.actor.type,
+      actorId: entry.actor.id,
+      action: entry.action,
+      targetType: entry.targetType,
+      targetId: entry.targetId,
+      outcome: entry.outcome,
+      correlationId: entry.correlationId,
+      // Audit rows live forever, so secret-named keys never get stored.
+      metadata: entry.metadata
+        ? (redactSecrets(entry.metadata) as Prisma.InputJsonObject)
+        : undefined,
+    },
+  });
+}
+
+export interface AuditEntryView {
+  /** Insertion order (a sequence is assigned at insert, not at commit); a
+   *  string because it is a bigint. */
+  seq: string;
+  actorType: ActorType;
+  actorId: string;
+  action: string;
+  outcome: string;
+  metadata: unknown;
+  createdAt: string;
+}
+
+// Bounded: one target's history is small, and an unbounded read is a
+// footgun on an append-only table that only grows.
+const MAX_TARGET_ENTRIES = 500;
+
+type AuditRow = Pick<
+  Prisma.AuditEntryGetPayload<Record<string, never>>,
+  'seq' | 'actorType' | 'actorId' | 'action' | 'outcome' | 'metadata' | 'createdAt'
+>;
+
+/**
+ * An incident's history: entries that target it, and entries that name it in
+ * metadata.incidentId (investigation through verification), by the same rule
+ * the live stream uses (feed.ts). Both branches are indexed.
+ */
+export async function listIncidentAudit(incidentId: string): Promise<AuditEntryView[]> {
+  const rows = await prisma.$queryRaw<AuditRow[]>`
+    SELECT seq, "actorType", "actorId", action, outcome, metadata, "createdAt"
+    FROM "AuditEntry"
+    WHERE ("targetType" = 'incident' AND "targetId" = ${incidentId})
+       OR metadata->>'incidentId' = ${incidentId}
+    ORDER BY seq
+    LIMIT ${MAX_TARGET_ENTRIES}`;
+  return rows.map((row) => ({
+    seq: row.seq.toString(),
+    actorType: row.actorType,
+    actorId: row.actorId,
+    action: row.action,
+    outcome: row.outcome,
+    metadata: row.metadata,
+    createdAt: row.createdAt.toISOString(),
+  }));
+}
+
+export interface AuditFeedEntry extends AuditEntryView {
+  targetType: string;
+  targetId: string;
+}
+
+/** Every entry, newest first; `cursor` is the last seq of the previous page. */
+export async function listAudit(query: {
+  cursor?: string;
+  limit: number;
+}): Promise<{ items: AuditFeedEntry[]; nextCursor: string | null }> {
+  const rows = await prisma.auditEntry.findMany({
+    where: query.cursor ? { seq: { lt: BigInt(query.cursor) } } : undefined,
+    orderBy: { seq: 'desc' },
+    take: query.limit + 1,
+  });
+  const hasMore = rows.length > query.limit;
+  const page = hasMore ? rows.slice(0, query.limit) : rows;
+  return {
+    items: page.map((row) => ({
+      seq: row.seq.toString(),
+      actorType: row.actorType,
+      actorId: row.actorId,
+      action: row.action,
+      targetType: row.targetType,
+      targetId: row.targetId,
+      outcome: row.outcome,
+      metadata: row.metadata,
+      createdAt: row.createdAt.toISOString(),
+    })),
+    nextCursor: hasMore ? page[page.length - 1].seq.toString() : null,
+  };
+}

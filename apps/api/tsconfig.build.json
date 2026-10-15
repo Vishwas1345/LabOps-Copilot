@@ -1,0 +1,9 @@
+{
+  // The build compiles the app only; tests and test configs never reach dist.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src"]
+}

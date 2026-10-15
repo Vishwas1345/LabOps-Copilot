@@ -1,8 +1,8 @@
 import { buildApp } from './app.js';
-import { loadConfig } from './config/env.js';
+import { loadConfig } from './platform/config/env.js';
 import { prisma } from './db.js';
-import { logger } from './observability/logger.js';
-import { initTracing } from './observability/tracing.js';
+import { logger } from './platform/observability/logger.js';
+import { initTracing } from './platform/observability/tracing.js';
 
 async function main() {
   // Throws ConfigError before anything binds; the catch below logs and exits.
