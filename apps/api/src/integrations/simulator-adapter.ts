@@ -1,9 +1,5 @@
-// The simulator adapter. Always available, and the one the demo runs against.
-//
-// It reports the capabilities a simulated provider genuinely has, so the
-// settings page has something real to render in simulator mode - and so the
-// difference between "can do this" and "cannot" is visible in the UI rather
-// than only in a test.
+// The simulator adapter, which the demo runs against. It reports what a
+// simulated provider genuinely has, so "can" and "cannot" both show in the UI.
 
 import type {
   ConnectionConfig,
