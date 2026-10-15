@@ -11,6 +11,7 @@ import { CORRELATION_WINDOW_MS, correlatePayload } from '../events/correlation-w
 import type { StoredFailure } from '../events/service.js';
 import { listFailuresBetween } from '../events/service.js';
 import { dependencyKindsOf, labTypesOf } from '../labs/service.js';
+import { currentTraceparent } from '../observability/tracing.js';
 import type { NewCluster, ScoredMember } from './clustering.js';
 import { clusterFailures } from './clustering.js';
 import type { FailureEvent } from './scoring.js';
@@ -199,6 +200,7 @@ async function createIncident(tx: Prisma.TransactionClient, cluster: NewCluster)
       windowKey: `anchor:${anchor.id}`,
       anchorEventId: anchor.id,
       confidenceScore: strengthOf(members.map((m) => m.score.score)),
+      traceparent: currentTraceparent(),
       correlationReason: {
         summary,
         anchorEventId: anchor.id,

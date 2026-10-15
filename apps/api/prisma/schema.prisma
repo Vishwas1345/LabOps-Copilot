@@ -203,6 +203,9 @@ model Incident {
   // Correlation strength, not certainty; null for a single-lab incident.
   confidenceScore   Float?
   correlationReason Json
+  // The trace the incident was born in. Later steps (investigation, approval)
+  // join it, so one incident is one trace across minutes and processes.
+  traceparent       String?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   resolvedAt        DateTime?

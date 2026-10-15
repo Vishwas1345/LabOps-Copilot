@@ -6,7 +6,7 @@ import type { Prisma, RecoveryActionStatus } from '@prisma/client';
 import type { Actor } from '../audit/audit.js';
 import { writeAudit } from '../audit/audit.js';
 import { prisma } from '../db.js';
-import { transitionIncident } from '../incidents/service.js';
+import { incidentTraceparent, transitionIncident } from '../incidents/service.js';
 import { dispatchJob, jobIdForKey, recordJob } from '../jobs/record.js';
 import { logger } from '../observability/logger.js';
 import { currentTraceparent } from '../observability/tracing.js';
@@ -109,7 +109,8 @@ export async function approveAction(recoveryActionId: string, actor: Actor): Pro
       'execute',
       executeJobKey(action.id),
       { recoveryActionId: action.id },
-      currentTraceparent(),
+      // The execute job joins the incident's trace, not this request's.
+      (await incidentTraceparent(tx, action.incidentId)) ?? currentTraceparent(),
     );
     await writeAudit(tx, {
       actor,
