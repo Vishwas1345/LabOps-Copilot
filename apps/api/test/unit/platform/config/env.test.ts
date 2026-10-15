@@ -221,3 +221,32 @@ describe('Google sign-in config', () => {
     expect(() => loadConfig({ ...VALID, ...GOOGLE, ...change })).toThrow(ConfigError);
   });
 });
+
+describe('webhook secret config', () => {
+  const SECRET = 'a-webhook-secret-long-enough-to-be-accepted';
+
+  it('accepts a secret of adequate length', () => {
+    expect(loadConfig({ ...VALID, WEBHOOK_SECRET: SECRET }).WEBHOOK_SECRET).toBe(SECRET);
+  });
+
+  // Compose forwards an empty string for a variable the root .env leaves out,
+  // and an empty secret must mean the receiver is switched off, not weakly set.
+  it('treats an empty value as unset', () => {
+    expect(loadConfig({ ...VALID, WEBHOOK_SECRET: '' }).WEBHOOK_SECRET).toBeUndefined();
+    expect(loadConfig({ ...VALID }).WEBHOOK_SECRET).toBeUndefined();
+  });
+
+  // Negative: a short secret is guessable, so it fails at startup rather than
+  // leaving a signed endpoint protected by something trivial.
+  it.each([
+    ['one character', 'a'],
+    ['31 characters', 'a'.repeat(31)],
+    ['whitespace only', ' '.repeat(40)],
+  ])('refuses a secret that is %s', (_label, secret) => {
+    expect(() => loadConfig({ ...VALID, WEBHOOK_SECRET: secret })).toThrow(ConfigError);
+  });
+
+  it('accepts exactly 32 characters', () => {
+    expect(loadConfig({ ...VALID, WEBHOOK_SECRET: 'a'.repeat(32) }).WEBHOOK_SECRET).toBeDefined();
+  });
+});

@@ -66,6 +66,9 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
       GOOGLE_ALLOWED_EMAILS: ${GOOGLE_ALLOWED_EMAILS:-}
+      # Shared secret for the demo lab-platform webhook; empty means the
+      # receiver answers 404 and no unauthenticated surface is exposed.
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
     ports:
       - "4000:4000"
     depends_on:

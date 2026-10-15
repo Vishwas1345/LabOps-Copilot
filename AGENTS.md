@@ -67,7 +67,7 @@ apps/api/src/
   index.ts  worker.ts  app.ts  db.ts  seed-operator.ts   entrypoints: start here
   platform/   config http auth audit observability secrets jobs events-stream
   modules/    labs events incidents investigations policies recovery
-              integrations metrics demo
+              integrations metrics demo webhooks
 apps/api/test/   unit/  integration/  live/  fixtures/      (mirrors src/)
 apps/web/src/    app/ (Next.js pages)  components/  lib/
 apps/web/test/   unit/ (Vitest)  e2e/journey.spec.ts (Playwright)
@@ -196,7 +196,11 @@ steps:**.
   Never imply that any existing platform lacks a capability.
 - **Deny by default:** every API route needs a session unless it sets
   `config: { public: true }`; a test requests every registered route
-  anonymously. Human audit actors come from `actorOf(request)`.
+  anonymously. Human audit actors come from `actorOf(request)`. The one public
+  data entry point, `POST /api/webhooks/mock-platform`, authenticates by HMAC
+  over the **raw** bytes, forces `source: 'provider'` rather than reading it,
+  answers one generic 401 for every signature failure, and exists only while
+  `DEMO_ENABLED` and `WEBHOOK_SECRET` are both set.
 - **The browser talks only to the web server (BFF).** It holds the session in
   its own httpOnly cookie and forwards it to the API over `API_INTERNAL_URL`.
   CORS credentials stay off.
@@ -345,6 +349,16 @@ the verification event. It passes on a fresh stack and on a re-run.
 - **Raw SQL with a JS `Date`:** Prisma binds it as `timestamptz`, while the
   columns are UTC `timestamp`. Compare with `(${since} AT TIME ZONE 'UTC')`, or
   a non-UTC session shifts the window (#22). Typed Prisma queries are fine.
+- **A signature must cover the bytes, not the parsed object.** The webhook route
+  owns a scoped `addContentTypeParser('application/json', { parseAs: 'string' })`
+  because the MAC covers what was actually sent. Under a mutation that swapped it
+  for `JSON.stringify(request.body)`, a "body changed" test still passed and only
+  the whitespace-only test failed: re-serialising normalises formatting away, so
+  without that second test the guard is untested.
+- **`prisma:drift` compares the *dev* database to `schema.prisma`.** It fails
+  after a pull until `npm run db:migrate` has been run against the dev database,
+  even when the branch changed no schema. The integration suite migrates
+  `labops_test` itself, so it is unaffected and will be green either way.
 - **A test that cannot fail is worse than none.** Twice a test passed with its
   fix removed: one asserted a figure the bug never touched, the other read a
   KPI tile's caption instead of its value (`p[2]` instead of `p[1]`). Always
@@ -409,9 +423,11 @@ Key behaviours worth knowing (details in `ARCHITECTURE.md`):
   one poller per API process; heartbeat re-checks the session; web relays the
   stream (`app/api/events/stream/route.ts`) and `LiveRefresh` refreshes pages.
 
-Latest verified numbers (after Google sign-in): API unit 675, integration 232
-(twice on a fresh DB); web 139 tests; coverage api 98.5%, web 93.2%; fresh
-clone, compose smoke and the browser journey green on a fresh stack.
+Latest verified numbers (after the signed webhook receiver): API unit 710,
+integration 257 (twice in a row on the test database); web 139 tests; coverage
+api 98.58%, web 93.22%; `prisma:drift` clean. **Not yet re-run for this change:**
+the fresh clone, the compose smoke and the browser journey, which were green
+before it.
 
 ## 8a. Phase 10 (PR #16): merged
 

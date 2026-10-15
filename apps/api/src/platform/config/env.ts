@@ -70,7 +70,14 @@ const envSchema = z
     // Shared secret for signed provider webhooks. Absent means the endpoint is
     // not mounted at all, so an unconfigured deploy exposes no unauthenticated
     // surface. Never logged, never returned, never echoed in an error.
-    WEBHOOK_SECRET: unsetIfEmpty(z.string().min(32).max(256)),
+    WEBHOOK_SECRET: unsetIfEmpty(
+      z
+        .string()
+        .min(32, 'must be at least 32 characters')
+        .max(256)
+        // A run of spaces passes a length check while being trivially guessable.
+        .refine((value) => value.trim().length > 0, 'must not be only whitespace'),
+    ),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),

@@ -516,6 +516,7 @@ envelope.
 | `GET` | `/api/auth/me` | The signed-in operator |
 | `GET` | `/api/labs`, `/api/labs/summary`, `/api/labs/:id`, `/api/labs/:id/events` | Labs, counts by state, one lab, its events |
 | `POST` | `/api/events` | Ingest an event: validated, redacted, deduplicated; 201 new, 200 duplicate |
+| `POST` | `/api/webhooks/mock-platform` | Signed event delivery from the demo lab platform: HMAC over the raw body, rate limited; 404 unless `DEMO_ENABLED` and `WEBHOOK_SECRET` are both set (public) |
 | `GET` | `/api/incidents`, `/api/incidents/:id` | Incidents with filters; one incident with each lab's reason and score |
 | `GET` | `/api/incidents/:id/audit` | The incident's full history, including steps that name it |
 | `POST` | `/api/incidents/:id/investigate` | Queue an AI investigation; 202, or 200 with the active one |

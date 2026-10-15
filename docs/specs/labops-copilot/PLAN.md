@@ -516,6 +516,33 @@ Phase 13 deviations, settled by building it:
 **Decisions (owner):** local-only, no hosted instance (a public deploy adds attack surface and makes the proxy-IP gaps live, for nothing a reviewer can check); the React Flow dependency graph dropped (optional, and correlation is explained per lab on the incident page).
 **Done when:** a reviewer can start the stack from the README, run the scenario, and follow one incident through logs and a trace.
 
+### Post-Phase — Signed webhook receiver
+
+Not a phase: an addition, recorded here so the plan and the code do not drift.
+
+**Delivered:** `modules/webhooks/` — an HMAC-SHA256 signature scheme over the
+raw request bytes and a bound timestamp, and `POST /api/webhooks/mock-platform`,
+mounted only while `DEMO_ENABLED` is set and answering 404 without a
+`WEBHOOK_SECRET`. `source` is forced to `provider`; every failure returns one
+generic 401 and audits the reason.
+
+**Deviations from the plan.** The plan deferred provider webhooks as speculative
+(Phase 13's gate). What is built is narrower and does not reopen that gate: it
+accepts events only from a provider whose contract we own, it never claims a
+capability on the lab platform adapter, and it cannot execute anything. The
+route needs a scoped `addContentTypeParser` to keep the request bytes before
+parsing, because the signature covers them; `fastify-raw-body` would have done
+it globally, and the toolchain can do it in a few lines.
+
+Two things were found while testing rather than designed: a 40-space secret
+passed a length check, so the schema now refuses whitespace-only; and the
+"body changed" test passed under a mutation that broke raw-byte signing while
+the whitespace-only test caught it, which is the evidence that the second test
+is the one worth keeping.
+
+**Done when:** a signed delivery becomes an incident, and an unsigned, replayed,
+stale, or tampered one does not.
+
 ---
 
 ## 4. Cross-cutting

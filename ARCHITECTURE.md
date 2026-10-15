@@ -204,6 +204,8 @@ apps/api/
                         the gate is closed), connection settings
       metrics/          GET /api/metrics: combines each module's stats.ts
       demo/             flag-gated scenario trigger (DEMO_ENABLED)
+      webhooks/         signature.ts (HMAC over raw bytes) + the flag-gated
+                         receiver for the demo lab platform
 
   test/                 every test, never next to source; mirrors src/
     unit/               pure logic, no database (npm test)
@@ -934,6 +936,46 @@ its audit entry records `credentialUnreadable`, so tampering or a rotated key is
 never silent. Every integrations response passes its strict schema before it is
 sent; a field added to a view by mistake fails the request with a 500.
 
+### The signed webhook receiver
+
+The gate above governs **live** provider code, and it still does: nothing here
+changes what the lab platform adapter claims. The receiver is a separate surface
+for a provider whose contract we own, and it is mounted only while `DEMO_ENABLED`
+is set, exactly as long as `/api/demo` exists.
+
+```
+POST /api/webhooks/mock-platform          public, rate limited, 16 KB
+X-Labops-Signature: t=<unix seconds>,v1=<hex>
+```
+
+The signature is `HMAC-SHA256(secret, "${timestampSeconds}.${rawBody}")`. Two
+details are the scheme rather than an implementation choice:
+
+- **The timestamp is inside the MAC.** Re-stamping a captured delivery changes
+  the signed payload, so it fails verification rather than extending its life.
+- **The raw bytes are signed, not the parsed object.** A body that means the same
+  thing but is spelled differently is a different body. Getting this right is why
+  the route owns a scoped `addContentTypeParser` that keeps the request bytes
+  before parsing; the rest of the API is untouched by it.
+
+Verification checks the MAC *before* trusting the skew window, because the
+timestamp only means something once the signature proves we sent it. Every
+failure returns one generic `401 SIGNATURE_INVALID`, so the response is not an
+oracle telling a caller which check it failed; the reason goes to the audit trail
+and nowhere else. The skew window (5 minutes) plus the existing unique
+`deduplicationKey` are the two replay defences, and they are independent.
+
+`source` is **forced** to `provider` rather than read from the body, so a
+provider cannot label its own events `simulated`. The rest of the payload stays
+strict, so an unexpected field is still a 400, and the event then enters the same
+`ingestEvent` path as a simulated one — correlation, investigation and recovery
+are identical either way.
+
+With no `WEBHOOK_SECRET` configured the route answers 404, so an unconfigured or
+non-demo deploy exposes no unauthenticated surface at all. The secret is validated
+at startup (at least 32 characters, not only whitespace) and never logged,
+returned, or written to the audit trail.
+
 ---
 
 ## 14. Security model
@@ -1083,6 +1125,7 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Operator dashboard: shell, dark mode, KPI tiles, charts, incidents, incident detail, audit, settings | Done (Phase 12, revamped after 14) | — |
 | Live updates: committed-audit SSE stream, gap-free replay, web relay, live refresh | Done (Phase 10) | — |
 | Integrations (adapter, settings, sealed secrets) | Done (Phase 13) | A live connector once the gate opens (§13) |
+| Signed webhook receiver for the demo lab platform | Done | Secret rotation without downtime (multiple accepted `v1` values) |
 | Measured metrics (`/api/metrics`, `/api/metrics/series`) | Done (Phase 14) | — |
 | React Flow dependency graph | Dropped (owner decision) | — |
 

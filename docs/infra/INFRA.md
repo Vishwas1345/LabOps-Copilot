@@ -103,7 +103,8 @@ reach another project's instance.
 | `GOOGLE_ALLOWED_EMAILS` | api | unset | Comma-separated exact emails, 1 to 100; no domain matching |
 | `SEED_OPERATOR_USERNAME` | migrate (seed) | `operator` | Operator the seed creates or resets |
 | `SEED_OPERATOR_PASSWORD` | migrate (seed) | unset: seeds nobody | 12+ characters; root `.env` for compose, a masked random value in CI; never committed |
-| `DEMO_ENABLED` | api | `false` (`true` in compose and `.env.example`) | Registers `/api/demo/*`; when off the routes do not exist (404) |
+| `DEMO_ENABLED` | api | `false` (`true` in compose and `.env.example`) | Registers `/api/demo/*` and `/api/webhooks/*`; when off the routes do not exist (404) |
+| `WEBHOOK_SECRET` | api | unset | Shared secret for `POST /api/webhooks/mock-platform`. 32+ characters, not only whitespace; empty counts as unset, and the receiver then answers 404. Never logged, returned or audited |
 | `REDIS_URL` | api, worker | required; `redis://redis:6379` in compose | BullMQ transport |
 | `QUEUE_PREFIX` | api, worker | `labops` | Namespaces queue keys; test runs use a unique `labops-test-*` prefix and clean it up |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | api, worker | unset | When set, spans export over OTLP/HTTP; unset, spans exist but are not exported |
