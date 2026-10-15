@@ -46,8 +46,9 @@ describe('ui primitives', () => {
 
     expect(html).toContain('role="alert"');
     // tailwind-merge: the caller's px-9 replaces the size's px-3.
-    expect(html).toContain('px-9');
-    expect(html).not.toContain('px-3');
+    const button = /<button class="([^"]*)"/.exec(html)?.[1] ?? '';
+    expect(button).toContain('px-9');
+    expect(button).not.toContain('px-3');
   });
 });
 
@@ -56,7 +57,7 @@ describe('StatusBadge', () => {
     const html = renderToStaticMarkup(<StatusBadge status="manual_review" />);
 
     expect(html).toContain('manual review');
-    expect(html).toContain('bg-destructive');
+    expect(html).toContain('bg-danger-bg');
   });
 });
 
@@ -143,4 +144,5 @@ describe('LiveRefresh', () => {
     await act(async () => root.unmount());
     expect(source.closed).toBe(true);
   });
+
 });

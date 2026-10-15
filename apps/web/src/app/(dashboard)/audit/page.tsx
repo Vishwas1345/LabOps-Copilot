@@ -1,4 +1,9 @@
+import { ChevronRight, ScrollText } from 'lucide-react';
 import Link from 'next/link';
+import { EmptyState } from '@/components/empty-state';
+import { PageHeader } from '@/components/page-header';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { apiGet } from '@/lib/api';
 import { formatDateTime, humanise } from '@/lib/format';
@@ -10,49 +15,61 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
   const { data: entries, nextCursor } = await apiGet(`/api/audit?limit=50${query}`, auditFeedSchema);
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Append-only: every state change, decision and sign-in, newest first.
-      </p>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>When</TableHead>
-            <TableHead>Action</TableHead>
-            <TableHead>Outcome</TableHead>
-            <TableHead>Actor</TableHead>
-            <TableHead>Target</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {entries.map((entry) => (
-            <TableRow key={entry.seq}>
-              <TableCell className="whitespace-nowrap">{formatDateTime(entry.createdAt)}</TableCell>
-              <TableCell>{humanise(entry.action)}</TableCell>
-              <TableCell>{entry.outcome}</TableCell>
-              <TableCell>
-                {entry.actorType} · <span className="font-mono text-xs">{entry.actorId}</span>
-              </TableCell>
-              <TableCell>
-                {entry.targetType === 'incident' ? (
-                  <Link href={`/incidents/${entry.targetId}`} className="font-mono text-xs hover:underline">
-                    {entry.targetId}
-                  </Link>
-                ) : (
-                  <span className="font-mono text-xs">
-                    {entry.targetType}:{entry.targetId}
-                  </span>
-                )}
-              </TableCell>
+    <>
+      <PageHeader
+        title="Audit trail"
+        description="Append-only: every state change, decision and sign-in, newest first."
+      />
+      {entries.length === 0 ? (
+        <div className="rounded-xl border bg-card shadow-sm">
+          <EmptyState icon={ScrollText} title="Nothing recorded yet" />
+        </div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>When</TableHead>
+              <TableHead>Action</TableHead>
+              <TableHead>Outcome</TableHead>
+              <TableHead>Actor</TableHead>
+              <TableHead>Target</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      {nextCursor && (
-        <Link href={`/audit?cursor=${nextCursor}`} className="text-sm hover:underline">
-          Older entries
-        </Link>
+          </TableHeader>
+          <TableBody>
+            {entries.map((entry) => (
+              <TableRow key={entry.seq}>
+                <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(entry.createdAt)}</TableCell>
+                <TableCell className="font-medium">{humanise(entry.action)}</TableCell>
+                <TableCell>{entry.outcome}</TableCell>
+                <TableCell>
+                  <Badge variant="neutral">{entry.actorType}</Badge>{' '}
+                  <span className="font-mono text-xs text-muted-foreground">{entry.actorId}</span>
+                </TableCell>
+                <TableCell>
+                  {entry.targetType === 'incident' ? (
+                    <Link href={`/incidents/${entry.targetId}`} className="font-mono text-xs hover:underline">
+                      {entry.targetId}
+                    </Link>
+                  ) : (
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {entry.targetType}:{entry.targetId}
+                    </span>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       )}
-    </div>
+      {nextCursor && (
+        <div className="flex justify-end">
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/audit?cursor=${nextCursor}`}>
+              Older entries <ChevronRight className="size-3.5" />
+            </Link>
+          </Button>
+        </div>
+      )}
+    </>
   );
 }
