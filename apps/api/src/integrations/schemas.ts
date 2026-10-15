@@ -1,9 +1,6 @@
-// Boundaries for the integrations API.
-//
-// The response schemas are the important half. A response cannot accidentally
-// echo a credential because a credential is not a field on the view type at
-// all - there is no `credentials` key to serialise, and every response is
-// parsed through these before it leaves the process.
+// Boundaries for the integrations API. A view has no credential field, and
+// the routes send every response through these strict schemas, so a credential
+// added to a view by mistake fails the request instead of leaving the process.
 
 import { z } from 'zod';
 
@@ -14,10 +11,19 @@ const credential = z.string().min(1).max(2000);
 export const saveConnectionBody = z
   .object({
     displayName: z.string().trim().min(1).max(100),
-    tenantId: z.string().trim().min(1).max(200).optional(),
     credential,
   })
   .strict();
+
+const integrationState = z.enum([
+  'not_configured',
+  'connecting',
+  'connected',
+  'error',
+  'needs_attention',
+]);
+
+export const providerParams = z.object({ provider: z.string().min(1).max(64) }).strict();
 
 export type SaveConnectionBody = z.infer<typeof saveConnectionBody>;
 
@@ -29,7 +35,7 @@ export const connectionView = z
   .object({
     provider: z.string(),
     displayName: z.string(),
-    state: z.enum(['not_configured', 'connecting', 'connected', 'error', 'needs_attention']),
+    state: integrationState,
     hasCredential: z.boolean(),
     supportedEventTypes: z.array(z.string()).nullable(),
     capabilities: z.object({
@@ -53,12 +59,14 @@ export const connectionResponse = z.object({ data: connectionView }).strict();
 
 export const connectionTestResponse = z
   .object({
-    data: z.object({
-      provider: z.string(),
-      ok: z.boolean(),
-      detail: z.string(),
-      eventTypes: z.array(z.string()).optional(),
-      state: z.string(),
-    }),
+    data: z
+      .object({
+        provider: z.string(),
+        ok: z.boolean(),
+        detail: z.string(),
+        eventTypes: z.array(z.string()).optional(),
+        state: integrationState,
+      })
+      .strict(),
   })
   .strict();

@@ -1,13 +1,6 @@
-// Integration settings. Owns the IntegrationConnection table.
-//
-// Two rules run through everything here:
-//   - a credential is sealed on the way in and opened only inside an adapter's
-//     testConnection, never selected into a view or a log
-//   - the state is derived from what the adapter reported, so a connection that
-//     verified nothing cannot read as connected
-//
-// The credentials key arrives as an argument rather than from process.env,
-// matching how the rest of the app takes its configuration.
+// Integration settings; owns IntegrationConnection. A credential is sealed on
+// the way in and opened only for an adapter's testConnection, and the state is
+// derived from what the adapter reported, never chosen.
 
 import type { Prisma } from '@prisma/client';
 import type { Actor } from '../audit/audit.js';
@@ -110,16 +103,12 @@ export async function saveConnection(
   try {
     sealed = sealSecret(body.credential, parseCredentialsKey(deps.credentialsKey));
   } catch (error) {
-    // Named, never echoed: the failing value would be the credential itself.
     if (error instanceof SecretUnavailableError) throw new CredentialsKeyMissingError();
     throw error;
   }
 
   const state = stateFor(adapter.capabilities);
-
-  // Prisma types Bytes as Uint8Array<ArrayBuffer>; node's crypto returns a
-  // Buffer. Converted at the boundary rather than cast, so a wrong type here is
-  // a compile error instead of a runtime surprise.
+  // Prisma types Bytes as Uint8Array<ArrayBuffer>, not Buffer: copy, not cast.
   const sealedBytes = new Uint8Array(sealed);
 
   const row = await prisma.$transaction(async (tx) => {
@@ -185,14 +174,8 @@ export async function deleteConnection(
   return unconfiguredView(adapter);
 }
 
-/**
- * The state a failed test should leave behind.
- *
- * `error` means "retrying might work". An adapter with nothing reachable cannot
- * succeed later, because the integration gate is closed until Spektra supplies
- * documentation - so it stays `not_configured` rather than claiming a transient
- * fault that will never clear.
- */
+// `error` means retrying might work. An adapter with nothing reachable never
+// can, so it stays not_configured instead of claiming a fault that will clear.
 function stateAfterFailedTest(adapter: ProviderAdapter, row: Row | null): IntegrationState {
   if (!adapter.capabilities.reachable) return stateFor(adapter.capabilities);
   // A capable provider with nothing stored was never configured to fail.
@@ -208,11 +191,7 @@ export interface TestOutcome {
   state: IntegrationState;
 }
 
-/**
- * Runs the adapter's own probe and records the result. The credential is opened
- * here and nowhere else; the adapter's detail lands in the audit, never the
- * secret.
- */
+/** Runs the adapter's probe and records the result, never the credential. */
 export async function testConnection(
   deps: IntegrationDeps,
   provider: string,
@@ -222,6 +201,7 @@ export async function testConnection(
   const row = await prisma.integrationConnection.findUnique({ where: { provider } });
 
   let credential: string | undefined;
+  let credentialUnreadable = false;
   if (row?.encryptedCredentials) {
     try {
       credential = openSecret(
@@ -229,9 +209,9 @@ export async function testConnection(
         parseCredentialsKey(deps.credentialsKey),
       );
     } catch {
-      // An unreadable credential is not a reason to fail the probe: the adapter
-      // is what decides, and it will say so in its own detail.
-      credential = undefined;
+      // A wrong key or altered bytes: the probe runs without a credential,
+      // and the audit records that it happened, so tampering is not silent.
+      credentialUnreadable = true;
     }
   }
 
@@ -246,10 +226,8 @@ export async function testConnection(
         where: { id: row.id },
         data: {
           state,
-          // Cleared on failure as well as set on success. Leaving previously
-          // confirmed event types in place would have the UI offering
-          // subscriptions the provider no longer confirms, which is the exact
-          // failure this module exists to prevent.
+          // Cleared on failure too: stale types would have the UI offering
+          // subscriptions the provider no longer confirms.
           supportedEventTypes: result.ok ? (result.eventTypes ?? []) : [],
           ...(result.ok ? { lastSuccessfulTestAt: new Date() } : {}),
         },
@@ -262,7 +240,12 @@ export async function testConnection(
       targetType: TARGET_TYPE,
       targetId: row?.id ?? provider,
       outcome: result.ok ? 'success' : 'failure',
-      metadata: { provider, state, eventTypes: result.eventTypes?.length ?? 0 },
+      metadata: {
+        provider,
+        state,
+        eventTypes: result.eventTypes?.length ?? 0,
+        ...(credentialUnreadable ? { credentialUnreadable } : {}),
+      },
     });
   });
 
