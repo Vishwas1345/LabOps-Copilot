@@ -28,6 +28,10 @@ per-phase notes as history).
   demonstration anyone can watch end to end: Google sign-in has never been run
   against a real Google client, and no scenario yet drives correlation,
   investigation, policy, approval and verified recovery in one pass.
+- **`docs/GAPS.md` is the honesty file.** It states plainly what the project does
+  not do, starting with the two that matter: it connects to no external lab
+  platform, and recovery repairs nothing. Read it before describing this
+  project's capabilities to anyone.
 - **No phase is planned.** Anything new starts with the plan-first loop in
   section 3.
 
