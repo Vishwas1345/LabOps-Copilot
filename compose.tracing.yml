@@ -1,0 +1,21 @@
+# Opt-in trace viewer. The default stack exports nothing; this override adds
+# Jaeger and points the api and the worker at it:
+#   docker compose -f docker-compose.yml -f compose.tracing.yml up --build
+# Then open http://localhost:16686 and search for service labops-worker.
+services:
+  jaeger:
+    image: jaegertracing/jaeger:2.10.0
+    ports:
+      - "16686:16686"
+
+  api:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    depends_on:
+      - jaeger
+
+  worker:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    depends_on:
+      - jaeger
