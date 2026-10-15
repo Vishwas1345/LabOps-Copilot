@@ -103,7 +103,9 @@ reach another project's instance.
 | `GOOGLE_ALLOWED_EMAILS` | api | unset | Comma-separated exact emails, 1 to 100; no domain matching |
 | `SEED_OPERATOR_USERNAME` | migrate (seed) | `operator` | Operator the seed creates or resets |
 | `SEED_OPERATOR_PASSWORD` | migrate (seed) | unset: seeds nobody | 12+ characters; root `.env` for compose, a masked random value in CI; never committed |
-| `DEMO_ENABLED` | api | `false` (`true` in compose and `.env.example`) | Registers `/api/demo/*`; when off the routes do not exist (404) |
+| `DEMO_ENABLED` | api | `false` (`true` in the development compose and `.env.example`) | Registers `/api/demo/*`; when off the routes do not exist (404). `APP_ENV=production` refuses to start if this is true |
+| `TRUST_PROXY_HOPS` | api, worker | unset | Trusted reverse-proxy hops, 0-10. Set to 1 behind Caddy. Unset locally, which is correct: nothing proxies there |
+| `APP_ENV` | api, worker | `development` | `production` enables the startup refusals: Secure cookie required, proxy hops required, demo routes must be off |
 | `REDIS_URL` | api, worker | required; `redis://redis:6379` in compose | BullMQ transport |
 | `QUEUE_PREFIX` | api, worker | `labops` | Namespaces queue keys; test runs use a unique `labops-test-*` prefix and clean it up |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | api, worker | unset | When set, spans export over OTLP/HTTP; unset, spans exist but are not exported |
@@ -230,14 +232,55 @@ excludes server components, which only E2E can reach.
 
 ## 7. Deployment
 
-**Local-only, by decision (Phase 15).** The project runs with one
-`docker compose up --build`; there is no hosted instance. A public deploy would
-add a sign-in page and a demo route to defend, and turn the two proxy-IP gaps
-above into live ones, for no gain in what a reviewer can check. CI still builds
-both images on every change (the compose smoke job). The intended production shape
-(`ARCHITECTURE.md §16`): the same containers, managed Postgres and Redis, TLS at
-the edge, secrets from the platform's secret store, OTel export to a collector,
-demo endpoints disabled, and an app database role limited to its own schema.
+**A single VM, deployed by hand.** `docker-compose.prod.yml` is a standalone
+file, not an overlay on the development one, and the reason is recorded in its
+header: compose merges sequences, so an overlay inherited the development file's
+`ports:` on postgres, redis and web and published the database to the internet
+while claiming it was private. Verified by reading back the rendered config —
+only `proxy` publishes a port.
+
+| Piece | What it does |
+|---|---|
+| `proxy` (Caddy) | The only published ports (80, 443). Issues and renews the certificate. Sets real client addresses. Disables response buffering on `/api/events/stream`, because a stream sending one event at a time would otherwise sit in the buffer indefinitely |
+| `api`, `worker`, `web` | Built from the existing Dockerfiles, reachable from the compose network only |
+| `postgres`, `redis` | No ports. Persistent volume for the database, in-memory for Redis (every key is a queue entry or a rate-limit counter, and both rebuild from Postgres) |
+| `migrate` | One-shot, `restart: "no"` so a broken migration cannot loop and hold up every dependent service |
+
+**`APP_ENV=production` changes what the API accepts.** It refuses to boot if
+`SESSION_COOKIE_SECURE` is not true (a Secure cookie over http is never sent,
+so nobody could sign in), if `TRUST_PROXY_HOPS` is unset (the rate limits key on
+the client IP, and behind Caddy that must be the real one), or if `DEMO_ENABLED`
+is true. Set by compose, not by `.env.production`, so a deploy cannot contradict
+its own production checks.
+
+**Deploying**, over SSH on the host:
+
+```bash
+git pull && ./scripts/deploy.sh          # backup, build, migrate, up, health-check
+./scripts/deploy.sh --no-build           # roll out existing images
+```
+
+`deploy.sh` backs up before it builds and applies migrations before the new
+containers start. That order is safe only because every migration so far is
+additive; a migration that drops or renames a column needs expand-contract
+instead. Roll back by checking out the previous sha and re-running it.
+
+**Backups.** `scripts/backup.sh` writes a plain `pg_dump` to `./backups/` before
+every deploy and keeps the seven newest, so a long-lived host cannot fill its own
+disk. `scripts/restore.sh <dump>` proves a dump by restoring it into a scratch
+database and counting rows, never into `labops` itself. **Run it once before you
+need it:** an untested backup is not a backup. There is no off-host copy, so
+losing the VM loses everything on it.
+
+**Secrets.** `.env.production` on the host, mode 600, git-ignored along with
+`backups/`. `.env.production.example` is placeholders only and is committed.
+CI still builds both images on every change; there is no image registry and no
+automated rollout, deliberately.
+
+**Still not done for a public deployment:** no second host or failover, no
+off-host backup, no uptime monitoring, and access control is a single shared
+operator password until Google sign-in with an allow-list is configured
+(`AGENTS.md` §13a). `docs/GAPS.md` §8 has the full list.
 
 ---
 
