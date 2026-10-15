@@ -18,6 +18,7 @@ import { createTrainingEvent } from '../labs/simulator.js';
 import { createLogger } from '../observability/logger.js';
 import { approveAction, executeJobKey } from '../recovery/approve.js';
 import { createExecuteJob } from '../recovery/execute.job.js';
+import type { FailureSeries } from '../events/stats.js';
 import type { Metrics } from './service.js';
 import { collectMetrics } from './service.js';
 
@@ -41,6 +42,11 @@ const readMetrics = async (query = ''): Promise<{ status: number; body: string; 
   return { status: response.statusCode, body: response.body, data: response.json().data };
 };
 
+const readSeries = async (query = ''): Promise<{ status: number; series: FailureSeries }> => {
+  const response = await app.inject({ method: 'GET', url: `/api/metrics/series${query}`, headers: { cookie } });
+  return { status: response.statusCode, series: response.json().data?.failures };
+};
+
 async function runStoredJob(jobKey: string, handle: (payload: unknown) => Promise<unknown>) {
   const row = await prisma.jobExecution.findUniqueOrThrow({ where: { jobKey } });
   return handle(row.payload);
@@ -49,6 +55,7 @@ async function runStoredJob(jobKey: string, handle: (payload: unknown) => Promis
 describe('GET /api/metrics', () => {
   it('counts a real run, from ingest to verified recovery', async () => {
     const before = await readMetrics();
+    const seriesBefore = (await readSeries()).series;
 
     await prisma.$transaction((tx) => createSimulatedLabs(tx, scenario));
     for (const event of scenario.events) await ingestEvent(event, OPERATOR);
@@ -92,6 +99,28 @@ describe('GET /api/metrics', () => {
     expect(data.recovery.approvalToVerified.p50Ms).toBeGreaterThanOrEqual(0);
     expect(data.queues.map((queue) => queue.queue)).toEqual(['correlate', 'investigate', 'execute']);
 
+    // The timeline gains exactly this run's failures, each logical one once,
+    // and its buckets add up to its totals.
+    const { status: seriesStatus, series } = await readSeries();
+    expect(seriesStatus).toBe(200);
+    const failed = new Map<string, number>();
+    for (const event of new Map(scenario.events.map((e) => [e.providerEventId, e])).values()) {
+      if (event.type === 'provision_failed') {
+        failed.set(event.errorCategory!, (failed.get(event.errorCategory!) ?? 0) + 1);
+      }
+    }
+    for (const [category, count] of failed) {
+      const key = category as keyof FailureSeries['totals'];
+      expect(series.totals[key] - seriesBefore.totals[key]).toBe(count);
+    }
+    const bucketSum = series.buckets.reduce(
+      (sum, bucket) => sum + Object.values(bucket.counts).reduce((a, b) => a + b, 0),
+      0,
+    );
+    expect(bucketSum).toBe(Object.values(series.totals).reduce((a, b) => a + b, 0));
+    expect(series.buckets.length).toBeLessThanOrEqual(61);
+    expect(data.incidents.byStatusNow.resolved).toBeGreaterThan(before.data.incidents.byStatusNow.resolved);
+
     // Aggregates only: no lab, incident or event detail leaves this endpoint.
     for (const id of [burst.id, ...labIds.slice(0, 5)]) expect(after.body).not.toContain(id);
     expect(after.body).not.toContain(scenario.events[0].message);
@@ -102,10 +131,8 @@ describe('GET /api/metrics', () => {
     const data = await collectMetrics(1, new Date('2999-01-01T00:00:00.000Z'));
 
     expect(data.events.received).toBe(0);
-    expect(data.incidents).toEqual({
-      created: 0,
-      timeToIdentify: { samples: 0, p50Ms: null, p95Ms: null },
-    });
+    expect(data.incidents.created).toBe(0);
+    expect(data.incidents.timeToIdentify).toEqual({ samples: 0, p50Ms: null, p95Ms: null });
     expect(Object.values(data.recovery.byStatus).every((count) => count === 0)).toBe(true);
     expect(data.recovery.approvalToVerified.p50Ms).toBeNull();
     expect(data.investigations.latency.p50Ms).toBeNull();
@@ -134,14 +161,25 @@ describe('GET /api/metrics', () => {
   });
 
   it('refuses an anonymous request', async () => {
-    const response = await app.inject({ method: 'GET', url: '/api/metrics' });
-    expect(response.statusCode).toBe(401);
+    for (const url of ['/api/metrics', '/api/metrics/series']) {
+      expect((await app.inject({ method: 'GET', url })).statusCode).toBe(401);
+    }
+  });
+
+  // Negative: an empty window is an empty timeline, not an error or a zero bucket.
+  it('returns an empty timeline when nothing failed in the window', async () => {
+    const { failureSeries } = await import('../events/stats.js');
+    const series = await failureSeries(new Date('2999-01-01T00:00:00.000Z'));
+    expect(series.bucketMs).toBeNull();
+    expect(series.buckets).toEqual([]);
+    expect(Object.values(series.totals).every((count) => count === 0)).toBe(true);
   });
 
   it.each(['?hours=0', '?hours=169', '?hours=abc', '?since=2020'])(
     'refuses an out-of-range window: %s',
     async (query) => {
       expect((await readMetrics(query)).status).toBe(400);
+      expect((await readSeries(query)).status).toBe(400);
     },
   );
 });
