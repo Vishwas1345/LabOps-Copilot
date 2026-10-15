@@ -102,6 +102,18 @@ const analyse = async (failures: EvidenceFailure[]) => {
     });
   });
 
+  // The fixture plays an overconfident model here on purpose (#24): policy,
+  // not the fixture, is what must stop this retry.
+  it('recommends a retry for a permission failure, as a wrong model might', async () => {
+    const parsed = parseOutput(await analyse([failure(1, { category: 'PERMISSION_DENIED', dependency: null })]));
+
+    expect(parsed.ok && parsed.output).toMatchObject({
+      outcome: 'diagnosis',
+      recommendedAction: 'RETRY_PROVISIONING',
+      targetLabIds: ['lab-1'],
+    });
+  });
+
   it('answers insufficient evidence for unrelated failures', async () => {
     const parsed = parseOutput(
       await analyse([failure(1), failure(2, { category: 'PERMISSION_DENIED', dependency: null })]),

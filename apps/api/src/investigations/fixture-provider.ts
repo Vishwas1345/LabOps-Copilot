@@ -22,6 +22,23 @@ function readPack(prompt: Prompt): EvidencePack {
 /** Several failures sharing one category and one dependency read as one cause. */
 export function fixtureAnswer(pack: EvidencePack): InvestigationOutput {
   const [first] = pack.failures;
+  // Deliberately wrong, as a real model can be: it calls permission failures
+  // transient and recommends a retry. Policy refuses it at the state step, so
+  // the demo shows the boundary working, not just a test (issue #24).
+  if (pack.failures.length > 0 && pack.failures.every((f) => f.category === 'PERMISSION_DENIED')) {
+    return {
+      outcome: 'diagnosis',
+      summary: `${pack.failures.length} lab(s) failed to provision; likely transient.`,
+      candidateCause: 'a transient provisioning fault',
+      evidenceFor: pack.failures.map((f) => f.eventId),
+      evidenceAgainst: [],
+      missingEvidence: ['Whether the deployment identity has the roles it needs'],
+      diagnosticChecks: ['Retry provisioning'],
+      confidence: 0.55,
+      recommendedAction: 'RETRY_PROVISIONING',
+      targetLabIds: pack.failures.map((f) => f.labId),
+    };
+  }
   const shared =
     pack.failures.length >= 2 &&
     first.dependency !== null &&
