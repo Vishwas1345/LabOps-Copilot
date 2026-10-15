@@ -97,7 +97,8 @@ npm run lint                 # ESLint across both workspaces
 npm run lint:fix             # ESLint with autofix
 npm run typecheck            # tsc --noEmit across both workspaces
 npm run test                 # Vitest unit tests, both workspaces
-npm run test:integration -w @labops/api   # own DB (TEST_DATABASE_URL), auto-migrated; needs db:up
+npm run test:integration -w @labops/api   # own DB (TEST_DATABASE_URL), auto-migrated; needs db:up (postgres + redis)
+npm run test:e2e -w @labops/web           # Playwright journey; needs a fresh compose stack
 npm run coverage             # Vitest with v8 coverage + thresholds
 ```
 
@@ -114,14 +115,16 @@ quality gate — see `.github/workflows/`.
 Vitest coverage thresholds are set at 70% for lines, functions, branches and
 statements. In the api, `npm run coverage` counts unit **and** integration specs
 together (`vitest.coverage.config.ts`, needs a migrated database), so code that
-talks to PostgreSQL is measured rather than excluded. Only process bootstrap
-(`src/index.ts`, `src/worker.ts`) is excluded. The web config excludes server
-components, which only the E2E suite can reach. Every exclusion carries a
+talks to PostgreSQL is measured rather than excluded. Only the process
+entrypoints (`src/index.ts`, `src/worker.ts`, `src/seed-operator.ts`) are
+excluded. The web config excludes `src/app/**/*.tsx` (pages and route
+components), which the Playwright journey covers. Every exclusion carries a
 comment saying why.
 Adding exclusions to make a number look better is the same as disabling a test.
 
-Environment: `apps/api/.env` (copy from `apps/api/.env.example`) and
-`apps/web/.env`. Never commit a real secret. `.env` is git-ignored.
+Environment: `apps/api/.env` (copy from `apps/api/.env.example`); the web app
+needs none for local work (it defaults to `http://localhost:4000`). Never commit
+a real secret. `.env` is git-ignored.
 
 ---
 
@@ -131,18 +134,19 @@ Environment: `apps/api/.env` (copy from `apps/api/.env.example`) and
 
 Backend modules live under `apps/api/src/<domain>/`:
 `labs`, `events`, `integrations`, `incidents`, `investigations`, `policies`,
-`approvals`, `jobs`, `recovery`, `audit`, `secrets`, `observability`,
-`events-stream`, `config`, `auth`.
+`jobs`, `recovery` (proposals, approval, expiry, execution), `audit`, `secrets`,
+`observability`, `events-stream`, `metrics`, `demo`, `config`, `http`, `auth`.
 
-Cross-cutting and dependency-free: `audit`, `observability`, `config`, `auth`.
+Cross-cutting (used by the domains, never importing them): `audit`,
+`observability`, `config`, `http`, `auth`.
 Every route needs a signed-in operator unless it sets `config: { public: true }`;
 human actions take their audit actor from `actorOf(request)`, never the body.
 
 ### Dependency direction — strictly downward only
 
 ```
-recovery → policies → approvals → incidents → events → labs
-audit, observability, config  (depend on nothing above them)
+investigations → recovery → {policies, incidents} → events → labs
+audit, observability, config, http, auth  (import no domain module)
 ```
 
 `investigations` sits above `recovery` (a diagnosis is proposed in the same
@@ -151,7 +155,7 @@ the facts it judges.
 
 A module must never import *upward*. Never import across a sibling domain
 directly — go through the lower module's public interface. Circular imports are
-a bug; add an `import/no-cycle` ESLint rule when linting is configured.
+a bug; ESLint's `import/no-cycle` rule fails the build on one.
 
 ### Boundaries that must not be crossed
 
@@ -324,7 +328,8 @@ Bad: a ten-line block explaining Postgres isolation levels above an `update`.
 ### Errors and logging
 
 - One consistent API error envelope. Never return a raw stack trace.
-- Use Pino with child loggers carrying `correlationId`, `traceId`, `incidentId`.
+- Use Pino child loggers: job lines carry the job, queue and `traceId`, and
+  incident lines add `incidentId`.
 - Never log tokens, credentials or full unredacted payloads.
 - Never use `console.log` in backend source.
 
@@ -372,8 +377,9 @@ provider.
 - Emit an OpenTelemetry span for each stage: `event.ingest`,
   `incident.correlate`, `investigation.queue`, `investigation.llm`,
   `recovery.policy_check`, `recovery.execute`, `recovery.verify`.
-- Propagate trace context into BullMQ job payloads so one incident resolves to
-  one trace across processes and minutes.
+- Propagate trace context through the job row's `traceparent` (and
+  `Incident.traceparent` for later steps) so one incident resolves to one trace
+  across processes, operator actions and minutes.
 - Log with correlation context. Metrics must come from real runs — **never
   fabricate or hardcode a performance number.**
 

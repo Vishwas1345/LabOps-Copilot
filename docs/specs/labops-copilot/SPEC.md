@@ -68,11 +68,11 @@ step completes. Every simulated lab, event and screen is visibly labelled
 *simulated*.
 
 **Empty state.** Before any scenario runs: zero labs and no incidents, with a
-prompt to run a demo scenario (in demo mode) or connect a data source.
+prompt to run the demo scenario. Where demo mode is off, the prompt says so.
 
 **Errors.**
-- An incoming event that is malformed is rejected and recorded; nothing else
-  changes.
+- An incoming event that is malformed is rejected with a clear error and
+  logged; nothing is stored and nothing else changes.
 - If the AI analyst times out, returns nonsense, or refuses, the investigation is
   marked failed, the incident stays exactly as it was, and the engineer can try
   again.
@@ -85,8 +85,9 @@ prompt to run a demo scenario (in demo mode) or connect a data source.
 **Permissions.**
 - Only a signed-in operator can investigate, approve or reject; the operator's
   identity is recorded on every decision.
-- Integration settings are for administrators. Stored credentials are never
-  shown again to anyone, including administrators — only whether they are set.
+- Integration settings are for signed-in operators (there is one operator
+  role). Stored credentials are never shown again to anyone — only whether they
+  are set.
 - Demo controls exist only in local and demo environments.
 
 ## Rules & edge cases
