@@ -3,16 +3,19 @@
 // Any failed or malformed API response on a page lands here: an error state
 // the operator can retry, never a crashed page or half-rendered data.
 
-import { Alert } from '@/components/ui/alert';
+import { TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function DashboardError({ reset }: { error: Error; reset: () => void }) {
   return (
-    <Alert variant="destructive" className="space-y-3">
-      <p>The API returned something this page could not use, or could not be reached.</p>
+    <div role="alert" className="flex flex-col items-center gap-3 rounded-xl border border-danger-border bg-danger-bg px-6 py-10 text-center">
+      <TriangleAlert className="size-6 text-danger" />
+      <p className="text-sm font-medium text-danger">
+        The API returned something this page could not use, or could not be reached.
+      </p>
       <Button variant="outline" size="sm" onClick={reset}>
         Try again
       </Button>
-    </Alert>
+    </div>
   );
 }

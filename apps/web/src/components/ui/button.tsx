@@ -12,13 +12,14 @@ const buttonVariants = cva(
       variant: {
         default: 'bg-primary text-primary-foreground hover:bg-primary/90',
         destructive: 'bg-destructive text-white hover:bg-destructive/90',
-        outline: 'border border-input bg-background hover:bg-accent',
+        outline: 'border border-input bg-card shadow-sm hover:bg-accent',
         ghost: 'hover:bg-accent',
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {
         default: 'h-9 px-4 py-2',
         sm: 'h-8 px-3 text-xs',
+        icon: 'size-8',
       },
     },
     defaultVariants: { variant: 'default', size: 'default' },

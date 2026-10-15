@@ -36,7 +36,7 @@ describe('formatters', () => {
 
   it('gives unknown statuses a neutral badge', () => {
     expect(statusVariant('resolved')).toBe('success');
-    expect(statusVariant('manual_review')).toBe('destructive');
+    expect(statusVariant('manual_review')).toBe('danger');
     expect(statusVariant('something_new')).toBe('outline');
   });
 });

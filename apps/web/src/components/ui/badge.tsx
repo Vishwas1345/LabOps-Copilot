@@ -1,20 +1,21 @@
-// shadcn/ui Badge.
+// shadcn/ui Badge, with status variants drawn from the theme's status tokens.
 import type { VariantProps } from 'class-variance-authority';
 import { cva } from 'class-variance-authority';
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 
 const badgeVariants = cva(
-  'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap',
+  'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap',
   {
     variants: {
       variant: {
         default: 'border-transparent bg-primary text-primary-foreground',
-        secondary: 'border-transparent bg-secondary text-secondary-foreground',
-        destructive: 'border-transparent bg-destructive text-white',
+        neutral: 'border-border bg-muted text-muted-foreground',
         outline: 'text-foreground',
-        warning: 'border-amber-300 bg-amber-50 text-amber-900',
-        success: 'border-emerald-300 bg-emerald-50 text-emerald-900',
+        success: 'border-success-border bg-success-bg text-success',
+        warning: 'border-warning-border bg-warning-bg text-warning',
+        danger: 'border-danger-border bg-danger-bg text-danger',
+        info: 'border-info-border bg-info-bg text-info',
       },
     },
     defaultVariants: { variant: 'default' },

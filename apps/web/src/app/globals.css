@@ -1,37 +1,90 @@
 @import 'tailwindcss';
 
-/* shadcn/ui's neutral theme as CSS variables, mapped to Tailwind colours. */
+/* Design tokens. Each colour is written once with light-dark(): the page
+   follows the system theme, and a .light or .dark class on <html> (from the
+   theme cookie) pins it. No component needs a dark: variant. */
 @theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
+  --color-secondary: var(--muted);
   --color-secondary-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--muted);
   --color-accent-foreground: var(--foreground);
-  --color-destructive: var(--destructive);
+  --color-destructive: var(--danger);
   --color-border: var(--border);
   --color-input: var(--border);
   --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+
+  /* Status families: text, a pale fill and a border, so a pill or chip reads
+     the same in both themes. */
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-success-border: var(--success-border);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-warning-border: var(--warning-border);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-border: var(--danger-border);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-info-border: var(--info-border);
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  color-scheme: light dark;
+
+  --background: light-dark(oklch(0.985 0 0), oklch(0.15 0.004 265));
+  --foreground: light-dark(oklch(0.18 0.005 265), oklch(0.96 0.003 265));
+  --card: light-dark(oklch(1 0 0), oklch(0.19 0.005 265));
+  --muted: light-dark(oklch(0.965 0.002 265), oklch(0.24 0.006 265));
+  --muted-foreground: light-dark(oklch(0.52 0.01 265), oklch(0.7 0.01 265));
+  --border: light-dark(oklch(0.91 0.003 265), oklch(0.29 0.006 265));
+  --primary: light-dark(oklch(0.2 0.006 265), oklch(0.95 0.003 265));
+  --primary-foreground: light-dark(oklch(0.985 0 0), oklch(0.19 0.006 265));
+  --ring: light-dark(oklch(0.6 0.01 265), oklch(0.55 0.01 265));
+  --sidebar: light-dark(oklch(0.97 0.002 265), oklch(0.17 0.005 265));
+
+  --success: light-dark(oklch(0.5 0.13 155), oklch(0.78 0.14 155));
+  --success-bg: light-dark(oklch(0.97 0.03 155), oklch(0.26 0.05 155));
+  --success-border: light-dark(oklch(0.86 0.08 155), oklch(0.4 0.08 155));
+  --warning: light-dark(oklch(0.52 0.12 70), oklch(0.82 0.13 80));
+  --warning-bg: light-dark(oklch(0.975 0.035 85), oklch(0.27 0.05 75));
+  --warning-border: light-dark(oklch(0.86 0.09 85), oklch(0.42 0.08 75));
+  --danger: light-dark(oklch(0.55 0.2 27), oklch(0.72 0.17 25));
+  --danger-bg: light-dark(oklch(0.97 0.025 25), oklch(0.27 0.06 25));
+  --danger-border: light-dark(oklch(0.86 0.08 25), oklch(0.42 0.1 25));
+  --info: light-dark(oklch(0.52 0.15 255), oklch(0.76 0.12 250));
+  --info-bg: light-dark(oklch(0.97 0.025 250), oklch(0.26 0.05 255));
+  --info-border: light-dark(oklch(0.86 0.07 250), oklch(0.42 0.09 255));
+}
+
+:root.light {
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+}
+
+/* Tailwind v4 borders default to currentColor; every border here is the
+   theme's border token unless a class says otherwise. */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
 }
 
 body {

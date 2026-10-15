@@ -1,5 +1,7 @@
+import { FlaskConical, Play } from 'lucide-react';
 import Link from 'next/link';
 import type { z } from 'zod';
+import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,105 +36,113 @@ export default async function OverviewPage({
 
   if (totalLabs === 0) {
     return (
-      <Card>
-        <CardHeader>
+      <>
+        <PageHeader title="Overview" description="Simulated lab operations, end to end." />
+        <Card className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+          <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <FlaskConical className="size-5" />
+          </span>
           <CardTitle>No labs yet</CardTitle>
-          <CardDescription>
+          <CardDescription className="max-w-md text-sm">
             Run the simulated training-event scenario: 40 labs, a burst of 12 timeouts on one
             dependency, and a few unrelated failures.
           </CardDescription>
-        </CardHeader>
-        <CardContent>
           {demo === 'unavailable' && (
-            <p className="mb-3 text-sm text-destructive">The demo scenario is not enabled on this API.</p>
+            <p className="text-sm text-danger">The demo scenario is not enabled on this API.</p>
           )}
           <form action={runDemoScenario}>
-            <Button type="submit">Run demo scenario</Button>
+            <Button type="submit">
+              <Play className="size-4" />
+              Run demo scenario
+            </Button>
           </form>
-        </CardContent>
-      </Card>
+        </Card>
+      </>
     );
   }
 
   return (
-    <div className="grid gap-6 md:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle>Labs</CardTitle>
-          <CardDescription>{totalLabs} simulated labs by state</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-5 gap-2 text-center">
-          {LAB_ORDER.map((status) => (
-            <div key={status}>
-              <div className="text-2xl font-semibold">{labs[status] ?? 0}</div>
-              <div className="text-xs text-muted-foreground">{status}</div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+    <>
+      <PageHeader title="Overview" description="Simulated lab operations, end to end." />
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Labs</CardTitle>
+            <CardDescription>{totalLabs} simulated labs by state</CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-5 gap-2 text-center">
+            {LAB_ORDER.map((status) => (
+              <div key={status}>
+                <div className="text-2xl font-semibold">{labs[status] ?? 0}</div>
+                <div className="text-xs text-muted-foreground">{status}</div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Job queues</CardTitle>
-          <CardDescription>From the Postgres mirror of every queued job</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-1 text-sm">
-          {jobs.length === 0 && <p className="text-muted-foreground">No jobs yet.</p>}
-          {jobs.map((row) => (
-            <div key={`${row.queue}-${row.status}`} className="flex justify-between">
-              <span>
-                {row.queue} · {row.status}
-              </span>
-              <span className="font-medium">{row.count}</span>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Job queues</CardTitle>
+            <CardDescription>From the Postgres mirror of every queued job</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            {jobs.length === 0 && <p className="text-muted-foreground">No jobs yet.</p>}
+            {jobs.map((row) => (
+              <div key={`${row.queue}-${row.status}`} className="flex justify-between">
+                <span>
+                  {row.queue} · {row.status}
+                </span>
+                <span className="font-medium">{row.count}</span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent incidents</CardTitle>
-          <CardDescription>
-            The {incidents.length} newest.{' '}
-            <Link href="/incidents?status=open" className="hover:underline">
-              All open incidents
-            </Link>
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          {incidents.length === 0 && <p className="text-muted-foreground">No incidents yet.</p>}
-          {incidents.map((incident) => (
-            <Link key={incident.id} href={`/incidents/${incident.id}`} className="flex items-center justify-between gap-2 hover:underline">
-              <span className="truncate">{incident.title}</span>
-              <StatusBadge status={incident.status} />
-            </Link>
-          ))}
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent incidents</CardTitle>
+            <CardDescription>
+              The {incidents.length} newest.{' '}
+              <Link href="/incidents?status=open" className="hover:underline">
+                All open incidents
+              </Link>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {incidents.length === 0 && <p className="text-muted-foreground">No incidents yet.</p>}
+            {incidents.map((incident) => (
+              <Link key={incident.id} href={`/incidents/${incident.id}`} className="flex items-center justify-between gap-2 hover:underline">
+                <span className="truncate">{incident.title}</span>
+                <StatusBadge status={incident.status} />
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
 
-      <MetricsCard metrics={metrics} />
+        <MetricsCard metrics={metrics} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent activity</CardTitle>
-          <CardDescription>
-            <Link href="/audit" className="hover:underline">
-              Full audit trail
-            </Link>
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-1 text-sm">
-          {activity.map((entry) => (
-            <div key={entry.seq} className="flex justify-between gap-2">
-              <span className="truncate">
-                {humanise(entry.action)} · {entry.outcome}
-              </span>
-              <span className="shrink-0 text-xs text-muted-foreground">{formatDateTime(entry.createdAt)}</span>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent activity</CardTitle>
+            <CardDescription>
+              <Link href="/audit" className="hover:underline">
+                Full audit trail
+              </Link>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            {activity.map((entry) => (
+              <div key={entry.seq} className="flex justify-between gap-2">
+                <span className="truncate">
+                  {humanise(entry.action)} · {entry.outcome}
+                </span>
+                <span className="shrink-0 text-xs text-muted-foreground">{formatDateTime(entry.createdAt)}</span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    </>
   );
 }
 

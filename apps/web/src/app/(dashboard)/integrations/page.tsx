@@ -1,7 +1,11 @@
+import { Check, Minus, PlugZap, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
+import { PageHeader } from '@/components/page-header';
+import type { BadgeVariant } from '@/components/ui/badge';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { apiGet } from '@/lib/api';
+import { formatDateTime } from '@/lib/format';
 import { integrationsSchema } from '@/lib/schemas';
 import type { IntegrationConnection } from '@/lib/schemas';
 
@@ -15,12 +19,12 @@ const STATE_LABEL: Record<string, string> = {
   needs_attention: 'Needs attention',
 };
 
-const STATE_VARIANT: Record<string, 'default' | 'secondary' | 'destructive'> = {
-  not_configured: 'secondary',
-  connecting: 'default',
-  connected: 'default',
-  error: 'destructive',
-  needs_attention: 'destructive',
+const STATE_VARIANT: Record<string, BadgeVariant> = {
+  not_configured: 'neutral',
+  connecting: 'info',
+  connected: 'success',
+  error: 'danger',
+  needs_attention: 'warning',
 };
 
 const CAPABILITY_LABEL: Record<keyof IntegrationConnection['capabilities'], string> = {
@@ -36,24 +40,22 @@ export default async function IntegrationsPage() {
   const { data: connections } = await apiGet('/api/integrations', integrationsSchema);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Integration settings</h1>
-        <p className="text-sm text-muted-foreground">
-          Each provider reports only the capabilities it has actually verified. Nothing here is
-          inferred from a product&apos;s public description.
-        </p>
+    <>
+      <PageHeader
+        title="Integration settings"
+        description="Each provider reports only the capabilities it has actually verified. Nothing here is inferred from a product's public description."
+      />
+      <div className="grid gap-4 lg:grid-cols-2">
+        {connections.map((connection) => (
+          <ProviderCard key={connection.provider} connection={connection} />
+        ))}
       </div>
-
-      {connections.map((connection) => (
-        <ProviderCard key={connection.provider} connection={connection} />
-      ))}
-
-      <p className="text-sm text-muted-foreground">
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <ShieldAlert className="size-4 shrink-0" />
         Recovery against a live provider stays disabled. Connecting a data source never enables
         execution against real infrastructure.
       </p>
-    </div>
+    </>
   );
 }
 
@@ -65,22 +67,27 @@ function ProviderCard({ connection }: { connection: IntegrationConnection }) {
   ][];
 
   return (
-    <Card className="p-4">
+    <Card className="p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="font-medium">{connection.displayName}</h2>
-          <p className="text-xs text-muted-foreground">
-            {connection.provider}
-            {connection.hasCredential ? ' · credential stored' : ' · no credential stored'}
-          </p>
+        <div className="flex items-center gap-3">
+          <span className="flex size-9 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <PlugZap className="size-4" />
+          </span>
+          <div>
+            <h2 className="font-semibold">{connection.displayName}</h2>
+            <p className="text-xs text-muted-foreground">
+              {connection.provider}
+              {connection.hasCredential ? ' · credential stored' : ' · no credential stored'}
+            </p>
+          </div>
         </div>
-        <Badge variant={STATE_VARIANT[connection.state] ?? 'secondary'}>
+        <Badge variant={STATE_VARIANT[connection.state] ?? 'neutral'}>
           {STATE_LABEL[connection.state] ?? connection.state}
         </Badge>
       </div>
 
       {verifiedNothing && (
-        <p className="mt-3 rounded border border-border bg-muted px-3 py-2 text-sm">
+        <p className="mt-4 rounded-lg border bg-muted px-3 py-2 text-sm">
           No capabilities are claimed. The API contract, credentials and sandbox access have not
           been confirmed, so this connection cannot do anything yet. That is the honest state, not
           a stub.
@@ -91,7 +98,8 @@ function ProviderCard({ connection }: { connection: IntegrationConnection }) {
         {capabilities.map(([key, enabled]) => (
           <div key={key} className="flex items-center justify-between text-sm">
             <dt className="text-muted-foreground">{CAPABILITY_LABEL[key]}</dt>
-            <dd className={enabled ? 'text-foreground' : 'text-muted-foreground'}>
+            <dd className={`flex items-center gap-1 ${enabled ? 'text-success' : 'text-muted-foreground'}`}>
+              {enabled ? <Check className="size-3.5" /> : <Minus className="size-3.5" />}
               {enabled ? 'available' : 'unavailable'}
             </dd>
           </div>
@@ -107,7 +115,7 @@ function ProviderCard({ connection }: { connection: IntegrationConnection }) {
 
       {connection.lastSuccessfulTestAt && (
         <p className="mt-2 text-sm text-muted-foreground">
-          Last successful test {connection.lastSuccessfulTestAt}
+          Last successful test {formatDateTime(connection.lastSuccessfulTestAt)}
         </p>
       )}
 

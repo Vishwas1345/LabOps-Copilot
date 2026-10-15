@@ -42,24 +42,29 @@ export function humanise(value: string): string {
   return value.replace(/[_.]/g, ' ').toLowerCase();
 }
 
+// Amber means a human should look, blue means the system is working on it,
+// green is a good end, red is a failure or a refusal.
 const STATUS_VARIANT: Record<string, BadgeVariant> = {
   open: 'warning',
-  investigating: 'secondary',
+  investigating: 'info',
   awaiting_approval: 'warning',
-  recovering: 'secondary',
+  recovering: 'info',
   resolved: 'success',
-  manual_review: 'destructive',
-  high: 'destructive',
+  manual_review: 'danger',
+  high: 'danger',
   medium: 'warning',
-  low: 'secondary',
+  low: 'neutral',
+  running: 'info',
+  pending: 'info',
+  approved: 'info',
   succeeded: 'success',
   completed: 'success',
-  failed: 'destructive',
-  error: 'destructive',
-  blocked: 'destructive',
-  rejected_by_policy: 'destructive',
-  expired: 'outline',
-  rejected: 'outline',
+  failed: 'danger',
+  error: 'danger',
+  blocked: 'danger',
+  rejected_by_policy: 'danger',
+  expired: 'neutral',
+  rejected: 'neutral',
 };
 
 export function statusVariant(status: string): BadgeVariant {
