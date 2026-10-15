@@ -170,8 +170,8 @@ Three workflows in `.github/workflows/`. Triggered on pushes and pull requests t
 | Workflow | Role |
 |---|---|
 | `changes.yml` | The only entry point. Uses `dorny/paths-filter` to decide which service changed, then calls only the matching pipeline. Root manifests and the ESLint config fan out to both. Also runs the **compose smoke and e2e** job whenever api or web changed: build the images, run `scripts/compose-smoke.sh`, then reset the stack (`down -v`, `up`) and run the Playwright journey (`npm run test:e2e -w @labops/web`); screenshots are uploaded only on failure, never traces, which hold cookies. |
-| `api.yml` | build (`tsc` + `prisma validate`), lint and unit tests in parallel; then integration tests (real Postgres + Redis) and coverage; then the quality gate; then the image (only when `deploy` is set) |
-| `web.yml` | build, lint and unit tests in parallel; then coverage; then the quality gate; then the image (only when `deploy` is set) |
+| `api.yml` | build (`tsc` + `prisma validate`), lint and unit tests in parallel; then integration tests (real Postgres + Redis) and coverage; then the quality gate. Images are built by the compose smoke job on every change |
+| `web.yml` | build, lint and unit tests in parallel; then coverage; then the quality gate. Images are built by the compose smoke job on every change |
 
 **Quality gate** (each pipeline, `if: always()` so it runs even after a failure):
 1. Fails unless every upstream job succeeded.
@@ -213,7 +213,6 @@ excludes server components, which only E2E can reach.
 
 | Gap | Fix | Phase |
 |---|---|---|
-| Nothing sets the `deploy` input, so images are never built in CI | Add a release trigger once a deployment target exists | 15 |
 | A transaction left open on the database holds back every live update until it finishes (the stream reads below the oldest running transaction) | Keep transactions short (they are). `oldestOpenTransactionMs` in `/api/metrics` now shows it; nothing alerts on it yet | 15 |
 | Dashboard logins all reach the API from the web server's IP, so the per-IP login limit is effectively global (5/min) | Forward the client IP from the web server and trust it only from that host, once the API is no longer reachable directly | 15 |
 | Login rate limit keys on the socket IP (`trustProxy` off) | Behind a load balancer every client would share one IP, so set `trustProxy` to the real proxy hops only (a blanket `true` lets clients spoof `X-Forwarded-For`) | 15 |
@@ -224,7 +223,11 @@ excludes server components, which only E2E can reach.
 
 ## 7. Deployment
 
-No deployment target is chosen yet (Phase 15). The intended production shape
+**Local-only, by decision (Phase 15).** The project runs with one
+`docker compose up --build`; there is no hosted instance. A public deploy would
+add a sign-in page and a demo route to defend, and turn the two proxy-IP gaps
+above into live ones, for no gain in what a reviewer can check. CI still builds
+both images on every change (the compose smoke job). The intended production shape
 (`ARCHITECTURE.md §16`): the same containers, managed Postgres and Redis, TLS at
 the edge, secrets from the platform's secret store, OTel export to a collector,
 demo endpoints disabled, and an app database role limited to its own schema.
@@ -236,5 +239,5 @@ demo endpoints disabled, and an app database role limited to its own schema.
 | Signal | Today | Planned |
 |---|---|---|
 | Logs | Pino JSON to stdout; Fastify shares the instance; key-name redaction as a safety net; job logs carry `jobId` and `traceId`; correlation logs carry `incidentId` | `traceId` on API request logs needs HTTP spans (later) |
-| Traces | `event.ingest` (api) and `incident.correlate` (worker) in one trace via `traceparent` in the job row | Remaining lifecycle spans as each stage lands |
+| Traces | All seven lifecycle spans; one incident is one trace across the api and the worker (`Incident.traceparent`, joined by the investigation and the approval). Opt-in viewer: `docker compose -f docker-compose.yml -f compose.tracing.yml up --build`, then Jaeger on `:16686` | `traceId` on API request logs needs HTTP spans |
 | Metrics | `GET /api/metrics` and `GET /api/metrics/series` (failure timeline), shown as the overview's KPI tiles and charts; derived from committed rows over a window (1 h, 24 h or 7 d in the UI; max 168 h); see `ARCHITECTURE.md` section 12 | Indexes or a rollup table on the windowed columns if volume grows |

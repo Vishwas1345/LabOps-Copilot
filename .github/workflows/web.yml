@@ -2,7 +2,7 @@ name: web
 
 # Frontend pipeline. Invoked by changes.yml, never triggered directly.
 #
-# Jobs: build, lint, test, coverage, quality-gate, image.
+# Jobs: build, lint, test, coverage, quality-gate.
 #
 # Every command runs from the repository root with an explicit -w workspace
 # flag. There is deliberately no `defaults.run.working-directory` here: a
@@ -11,16 +11,10 @@ name: web
 # (eslint, typescript, vitest) uninstalled.
 #
 # No integration-test job: the frontend owns no database or queue. The
-# end-to-end journey is Playwright's job and is not wired up yet - adding it
-# before any E2E spec exists would only produce a green run that tested nothing.
+# end-to-end journey runs in changes.yml against the built compose stack.
 
 on:
   workflow_call:
-    inputs:
-      deploy:
-        description: Build the container image. Only set by the release pipeline.
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -167,20 +161,3 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  image:
-    name: build image
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: [quality-gate]
-    if: inputs.deploy
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build the web image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/web/Dockerfile
-          push: false
-          tags: labops-web:${{ github.sha }}
