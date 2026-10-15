@@ -5,6 +5,7 @@ import type { Span } from '@opentelemetry/api';
 import { context, propagation, SpanStatusCode, trace } from '@opentelemetry/api';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import type { SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
@@ -23,7 +24,12 @@ export function initTracing(options: {
       new BatchSpanProcessor(new OTLPTraceExporter({ url: `${options.otlpEndpoint}/v1/traces` })),
     );
   }
-  const provider = new NodeTracerProvider({ spanProcessors: processors });
+  // Without a resource every span is "unknown_service": the api and the
+  // worker would be indistinguishable in a trace viewer.
+  const provider = new NodeTracerProvider({
+    resource: resourceFromAttributes({ 'service.name': options.serviceName }),
+    spanProcessors: processors,
+  });
   provider.register({ propagator: new W3CTraceContextPropagator() });
   return provider;
 }
