@@ -16,11 +16,11 @@ two apart is what makes this system explainable and testable.
 ## Where things go
 
 ```
-apps/api/src/incidents/
+apps/api/src/modules/incidents/
   scoring.ts       signal extraction, weight table and pair scoring
   clustering.ts    candidate generation + agglomeration
-  correlate.job.ts the correlate job: loads the window, clusters, creates
-                   incidents and their audit entries
+  jobs/correlate.job.ts  the correlate job: loads the window, clusters,
+                         creates incidents and their audit entries
   service.ts       incident reads, transitions, scope locking
 ```
 

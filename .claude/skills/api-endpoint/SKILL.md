@@ -13,7 +13,7 @@ rules) first. Confirm which module owns the data being exposed.
 ## Where things go
 
 ```
-apps/api/src/<domain>/
+apps/api/src/modules/<feature>/
   routes.ts     HTTP surface only — validation, auth, delegate to service
   service.ts    business logic, transactions, audit writes
   schemas.ts    Zod schemas for body / params / query (events/ uses schema.ts)

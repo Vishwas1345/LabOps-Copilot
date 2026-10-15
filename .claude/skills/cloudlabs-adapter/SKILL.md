@@ -18,13 +18,14 @@ and its connection reads `not_configured`.
 ## Where things go
 
 ```
-apps/api/src/integrations/
-  adapter.ts            ProviderAdapter, capabilities, stateFor (state is derived)
-  simulator-adapter.ts  simulator adapter (always available)
-  cloudlabs-adapter.ts  CloudLabs adapter: verified methods only (none yet)
+apps/api/src/modules/integrations/
+  adapters/
+    adapter.ts            ProviderAdapter, capabilities, stateFor (state is derived)
+    simulator-adapter.ts  simulator adapter (always available)
+    cloudlabs-adapter.ts  CloudLabs adapter: verified methods only (none yet)
   service.ts            connections: seal, list, test, delete; audit
   routes.ts, schemas.ts the settings endpoints and their strict schemas
-apps/api/src/secrets/crypto.ts   AES-256-GCM sealing with CREDENTIALS_KEY
+apps/api/src/platform/secrets/crypto.ts   AES-256-GCM sealing with CREDENTIALS_KEY
 
 Not built, because the contract is unverified: a webhook receiver, sync jobs
 and delivery records.

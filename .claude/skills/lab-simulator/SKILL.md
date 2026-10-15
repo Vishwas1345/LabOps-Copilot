@@ -14,7 +14,7 @@ demonstrable without touching real cloud resources.
 ## Where things go
 
 ```
-apps/api/src/labs/
+apps/api/src/modules/labs/
   simulator.ts     scenario generation, failure injection
   transitions.ts   legal Lab status transitions
   service.ts       lab reads and lifecycle

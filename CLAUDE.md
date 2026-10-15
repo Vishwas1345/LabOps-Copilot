@@ -132,13 +132,18 @@ a real secret. `.env` is git-ignored.
 
 ### Module layout
 
-Backend modules live under `apps/api/src/<domain>/`:
-`labs`, `events`, `integrations`, `incidents`, `investigations`, `policies`,
-`jobs`, `recovery` (proposals, approval, expiry, execution), `audit`, `secrets`,
-`observability`, `events-stream`, `metrics`, `demo`, `config`, `http`, `auth`.
+Backend code lives under `apps/api/src/`: entrypoints at the top, cross-cutting
+plumbing in `platform/`, business features in `modules/<feature>/`. A feature
+module keeps the same shape: `routes.ts` (HTTP only), `schemas.ts` (request
+validation), `service.ts` or `services/` (logic), `jobs/` (background jobs).
+Tests never sit next to source: `apps/api/test/{unit,integration,live,fixtures}`
+and `apps/web/test/{unit,e2e}`, each mirroring `src/`.
 
-Cross-cutting (used by the domains, never importing them): `audit`,
-`observability`, `config`, `http`, `auth`.
+- `platform/`: `config`, `http`, `auth`, `audit`, `observability`, `secrets`,
+  `jobs`, `events-stream`. Used by the features, never importing them.
+- `modules/`: `labs`, `events`, `incidents`, `investigations`, `policies`,
+  `recovery` (proposals, approval, expiry, execution), `integrations`,
+  `metrics`, `demo`.
 Every route needs a signed-in operator unless it sets `config: { public: true }`;
 human actions take their audit actor from `actorOf(request)`, never the body.
 
@@ -172,7 +177,8 @@ a bug; ESLint's `import/no-cycle` rule fails the build on one.
 
 ### Adding a module
 
-Create the directory, keep it dependency-clean, own its tables, expose a service
+Create `apps/api/src/modules/<feature>/` in the standard shape, put its tests under
+`apps/api/test/`, keep it dependency-clean, own its tables, expose a service
 interface, and register it in `ARCHITECTURE.md §4`.
 
 ---

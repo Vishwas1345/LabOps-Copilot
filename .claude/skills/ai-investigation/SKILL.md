@@ -14,15 +14,16 @@ proposal engine, never an execution authority.**
 ## Where things go
 
 ```
-apps/api/src/investigations/
-  provider.ts          LlmProvider interface, callProvider (timeout, never throws)
-  fixture-provider.ts  the deterministic default provider
-  gemini-provider.ts   the opt-in real provider (plain fetch)
-  gemini-schema.ts     Zod -> Gemini responseSchema transform
+apps/api/src/modules/investigations/
+  providers/
+    provider.ts          LlmProvider interface, callProvider (timeout, never throws)
+    fixture-provider.ts  the deterministic default provider
+    gemini-provider.ts   the opt-in real provider (plain fetch)
+    gemini-schema.ts     Zod -> Gemini responseSchema transform
   evidence.ts          server-side evidence assembly, bounds and redaction
   prompt.ts            fixed system policy + delimited data block
   output-schema.ts     the strict Zod output schema and parseOutput
-  investigate.job.ts   the job: call, validate, record, propose
+  jobs/investigate.job.ts  the job: call, validate, record, propose
   service.ts           requesting and reading investigations
 ```
 

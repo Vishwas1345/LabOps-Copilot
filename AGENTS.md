@@ -87,12 +87,12 @@ steps:**.
    If a mutation is not caught, write a test that forces it (we repeatedly
    found "race" tests that never actually overlapped; force overlap with a
    held row lock plus `pg_stat_activity` wait polling, see
-   `apps/api/src/recovery/incident.fixture.ts` `untilBlocked`).
+   `apps/api/test/fixtures/incident.fixture.ts` `untilBlocked`).
 5. Update docs in the same PR: `PLAN.md` status line + a "Phase N deviations"
    paragraph, `ARCHITECTURE.md`, `README.md`, `INFRA.md`.
 6. Run the full verification routine (section 5).
 7. **Adversarial self-review** of the whole diff before calling it ready:
-   prove each suspect with a throwaway probe test (`src/probe.int.test.ts`,
+   prove each suspect with a throwaway probe test (`test/integration/probe.int.test.ts`,
    deleted afterwards). Open the PR as a **draft**, report findings with
    proposed fixes, and **wait for "go"** before fixing. Every phase so far had
    at least one real finding this way.
@@ -113,7 +113,7 @@ steps:**.
   damages state.
 - **Actions** are a closed allow-list (`RETRY_PROVISIONING`,
   `RECHECK_DEPENDENCY`, `RERUN_VALIDATION`, `ESCALATE_MANUAL`). Adding one means
-  the enum (`labs/actions.ts` + DB enum), `policies/actions.ts`, and the
+  the enum (`modules/labs/actions.ts` + DB enum), `modules/policies/actions.ts`, and the
   `ARCHITECTURE.md §10` table **in the same change** (a test enforces the sync).
   No generic "run this" path, ever. No action accepts parameters.
 - **Policy order is fixed**: structural, target, state, concurrency, rate
@@ -129,7 +129,7 @@ steps:**.
   (failed logins record the resolved operator id or `unknown`, never the
   typed username).
 - **Secrets:** never logged, never returned, never in a prompt or URL;
-  redaction at the boundary (`observability/redact.ts`); `.env` files are
+  redaction at the boundary (`platform/observability/redact.ts`); `.env` files are
   git-ignored; `.env.example` holds placeholders only.
 - **Modules own their tables** and expose functions; dependency direction is
   downward: `investigations -> recovery -> policies(pure, imports only labs)`,
@@ -295,7 +295,7 @@ Key behaviours worth knowing (details in `ARCHITECTURE.md`):
   hooks (runner's last attempt and the reconciler) settle domain state.
 - Execute job: tx1 re-runs policy 3-7 (own row excluded from concurrency) and
   marks running; simulated retry runs outside any tx (one outcome table,
-  `labs/recovery-simulator.ts`); tx2 compare-and-sets on `running`, moves only
+  `modules/labs/recovery-simulator.ts`); tx2 compare-and-sets on `running`, moves only
   labs still `recovering` (event evidence wins), verifies every incident lab.
 - Live feed (Phase 10): `AuditEntry.txid` (`xid8`, DB-set); the stream reads
   rows below `pg_snapshot_xmin` (oldest running transaction) so delivery is
@@ -372,9 +372,9 @@ assumed.
 
 ## 8c. Phase 13 (PR #21): merged
 
-**Built.** `secrets/crypto.ts` seals credentials with AES-256-GCM
+**Built.** `platform/secrets/crypto.ts` seals credentials with AES-256-GCM
 (`iv | tag | ciphertext`, random IV per seal) under `CREDENTIALS_KEY`.
-`integrations/adapter.ts` defines the boundary; `cloudlabs-adapter.ts` reports
+`modules/integrations/adapters/adapter.ts` defines the boundary; `cloudlabs-adapter.ts` reports
 `NO_CAPABILITIES` and makes no network call; `simulator-adapter.ts` reports what
 the simulator genuinely has. Four routes: `GET /api/integrations`, and
 `PUT`/`POST .../test`/`DELETE` for a provider. A settings page renders only what

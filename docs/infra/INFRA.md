@@ -107,7 +107,7 @@ reach another project's instance.
 | `SESSION_COOKIE_SECURE` | web | `true` (`false` in compose) | The web origin's session cookie only over https; off only for local http |
 | `API_INTERNAL_URL` | web | falls back to `NEXT_PUBLIC_API_URL` | API URL for server-side rendering |
 
-The api parses and validates its variables at startup (`apps/api/src/config/env.ts`),
+The api parses and validates its variables at startup (`apps/api/src/platform/config/env.ts`),
 so the process fails fast on bad configuration, and the error names the variable
 without echoing its value. `.env` is git-ignored; `.env.example` holds
 placeholders only.
