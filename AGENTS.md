@@ -415,23 +415,12 @@ passes its strict schema; an unreadable stored credential is audited as
 `credentialUnreadable`. Verified on macOS: integration twice on a fresh
 database, fresh clone, and compose smoke fresh and on a re-run. LOC-18 is Done.
 
-## 9. What is left, in order
+## 9. What is left
 
-Phases 10 to 13 are done. Remaining: **14, then 15**, each under the
-plan-first loop above; read the phase in `PLAN.md` and the matching
-`.claude/skills/*` recipe first.
-
-1. **Phase 14: E2E tests and metrics (LOC-19; LOC-75, LOC-76).** In progress
-   on `feat/LOC-19-e2e-metrics`. Owner decision: metrics are derived from
-   committed Postgres rows (`GET /api/metrics`), not an OTel metrics SDK, so
-   they count both processes, survive restarts and cannot disagree with the
-   audit trail. Playwright journey in CI against compose, fixture LLM.
-2. **Phase 15: delivery (LOC-20; LOC-77..79).** The dependency graph is
-   **dropped** (owner decision). Deployment target and release pipeline (the
-   `deploy` input exists in CI but nothing sets it); README walkthrough with
-   real screenshots and real numbers. Fix the deployment-related known gaps
-   here (trustProxy for the login limit; forwarding client IP from the web
-   server).
+All phases (0 to 15) are done; `docs/specs/labops-copilot/PLAN.md` records
+each. Open, owner's side only: rotate the Gemini key, add the `GEMINI_API_KEY`
+repository secret and dispatch `llm-live.yml` once (issue #20); branch
+protection on `main`. Anything new follows the plan-first loop above.
 
 ## 10. Known gaps (recorded in INFRA / PLAN; do not rediscover them)
 

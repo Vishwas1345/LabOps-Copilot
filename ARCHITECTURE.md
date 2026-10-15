@@ -1019,20 +1019,20 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Fastify app, CORS, `/health` | Done | — |
 | Zod config validation, error envelope, body limit | Done (Phase 0) | — |
 | Prisma migrations, drift check | Done (Phase 0) | — |
-| `Lab`, `Dependency`, `LabDependency` with status enums | Done (Phase 1) | Remaining models per §6 (Phases 3–13) |
+| `Lab`, `Dependency`, `LabDependency` with status enums | Done (Phase 1) | — |
 | Append-only `AuditEntry` (DB trigger), `writeAudit` | Done (Phase 1) | — |
 | Guarded `transitionLab` (compare-and-set + audit in one transaction) | Done (Phase 1) | — |
 | `GET /api/labs` (paginated), `GET /api/labs/:id` | Done (Phase 1) | — |
-| Compose: postgres, redis, migrate, api, web | Done, verified end to end | Worker service (Phase 4) |
-| Pino with shared Fastify instance and key-name redaction | Done | Child-logger context (Phase 4) |
-| Vitest unit + integration suites, CI gates | Done | Playwright (Phase 14) |
-| CI: change detection, build, lint, tests, coverage, quality gate | Done | Release and deploy (Phase 15) |
-| Deterministic simulator (`labs/simulator.ts`), `training-event` scenario | Done (Phase 2) | Event emission (Phase 3) |
+| Compose: postgres, redis, migrate, api, worker, web; opt-in Jaeger override | Done, verified end to end | — |
+| Pino with shared Fastify instance and key-name redaction | Done | Trace id on API request logs (needs HTTP spans) |
+| Vitest unit + integration suites, Playwright journey, CI gates | Done (Phase 14) | — |
+| CI: change detection, build, lint, tests, coverage, quality gate, compose smoke + e2e | Done | No release pipeline: local-only by decision (Phase 15) |
+| Deterministic simulator (`labs/simulator.ts`), `training-event` scenario | Done (Phase 2) | — |
 | Demo scenario endpoint, flag-gated and idempotent | Done (Phase 2) | — |
-| Event ingestion: validation, redaction at entry, DB dedup, lab transitions | Done (Phase 3) | Trace ids (Phase 4) |
+| Event ingestion: validation, redaction at entry, DB dedup, lab transitions | Done (Phase 3) | — |
 | `POST /api/events`, `GET /api/labs/:id/events` | Done (Phase 3) | — |
 | Worker process, BullMQ queue, outbox job rows, reconciler | Done (Phase 4) | — |
-| OTel tracing: `event.ingest` → `incident.correlate` in one trace | Done (Phase 4) | Remaining spans per stage |
+| OTel tracing: all seven lifecycle spans; one incident is one trace (`Incident.traceparent`) | Done (Phases 4, 15) | — |
 | `GET /api/jobs/:id` | Done (Phase 4) | — |
 | Correlation engine: scoring, anchor clustering, correlate job, `Incident`/`IncidentLab` | Done (Phase 5) | Sequence and transition signals once labs have event history |
 | `GET /api/incidents`, `/:id`, `/:id/audit` | Done (Phase 5) | — |
@@ -1041,10 +1041,11 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Real LLM provider (Gemini over `fetch`), schema transform, bounded retry, token usage in `modelMetadata` | Done (Phase 11) | Other providers via `LLM_BASE_URL` |
 | Policy engine, allow-list, recovery proposals (automatic and operator) | Done (Phase 8) | — |
 | Approval, execution with revalidation, verification, expiry sweep | Done (Phase 9) | Four-eyes approval with roles (stretch) |
-| Operator dashboard: login, overview, incidents, incident detail with approval, audit | Done (Phase 12) | Browser tests (Phase 14) |
+| Operator dashboard: shell, dark mode, KPI tiles, charts, incidents, incident detail, audit, settings | Done (Phase 12, revamped after 14) | — |
 | Live updates: committed-audit SSE stream, gap-free replay, web relay, live refresh | Done (Phase 10) | — |
-| React Flow dependency graph | Not started | Phase 15 |
-| Integrations (adapter, settings, secrets) | Not started | Phase 13 |
+| Integrations (adapter, settings, sealed secrets) | Done (Phase 13) | A live connector once the gate opens (§13) |
+| Measured metrics (`/api/metrics`, `/api/metrics/series`) | Done (Phase 14) | — |
+| React Flow dependency graph | Dropped (owner decision) | — |
 
 Build order follows the spec's phases: vertical slice first — simulator →
 events → correlation → investigation → recovery → verification — so a working

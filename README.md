@@ -20,11 +20,24 @@ approval before a background worker executes and verifies it.
 > **All lab infrastructure in this repository is simulated.** The MVP does not
 > touch real cloud resources and makes no live CloudLabs connection.
 
+![The overview dashboard after the demo scenario](docs/images/dashboard.png)
+
+**Quick start** (Docker only):
+
+```bash
+echo "SEED_OPERATOR_PASSWORD=$(openssl rand -hex 16)" >> .env
+docker compose up --build
+```
+
+Open `http://localhost:3000`, sign in as `operator` with that password, and
+click **Run demo scenario**. Then follow [the walkthrough](#walkthrough-one-incident-end-to-end).
+
 ---
 
 ## Contents
 
 - [Why this exists](#why-this-exists)
+- [Walkthrough: one incident, end to end](#walkthrough-one-incident-end-to-end)
 - [How it works](#how-it-works)
 - [The safety model](#the-safety-model)
 - [Tech stack](#tech-stack)
@@ -33,10 +46,10 @@ approval before a background worker executes and verifies it.
 - [Environment variables](#environment-variables)
 - [Project structure](#project-structure)
 - [API overview](#api-overview)
-- [Demo scenario](#demo-scenario)
 - [Testing](#testing)
 - [Observability](#observability)
 - [Roadmap](#roadmap)
+- [Before production](#before-production)
 - [Non-goals](#non-goals)
 
 ---
@@ -64,6 +77,78 @@ The negative cases matter as much as the happy path: unrelated failures must
 *not* merge, unsafe actions must be blocked, stale approvals must be
 revalidated, a failed recovery must never resolve an incident, and a malformed
 model response must be rejected without corrupting state.
+
+---
+
+## Walkthrough: one incident, end to end
+
+The seeded **training-event** scenario: 40 simulated labs, a burst of 12
+provisioning timeouts on one shared image registry, scattered permission and
+network failures, and one redelivered event. The same seed gives the same
+labs, failures and incidents every run.
+
+1. **Run demo scenario** on the overview. The tiles, the failure timeline and
+   the labs donut fill in live; the burst is one tall bar on the timeline.
+2. **Incidents.** Deterministic correlation forms one 12-lab
+   `PROVISION_TIMEOUT on image-registry` incident and keeps the 7 unrelated
+   failures as separate single-lab incidents. The redelivered event is stored
+   once.
+3. **Open the 12-lab incident.** Each lab shows why it was included and its
+   correlation strength; the timeline on the right is the incident's audit
+   history.
+
+   ![The resolved burst incident](docs/images/incident.png)
+
+4. **Investigate.** The AI analyst (a deterministic fixture by default; Gemini
+   is opt-in) returns a likely cause, the evidence for it, what is missing and
+   its confidence, and recommends `RETRY_PROVISIONING` on the 12 labs.
+5. **Policy, then a human.** The seven policy steps pass, so the action waits
+   for approval with its targets and expiry. **Approve** it: the worker
+   re-checks policy, retries, then verifies by re-reading every lab. The
+   incident resolves only because verification passed, and the page updates
+   without a reload.
+6. **The refusal.** Open a `PERMISSION_DENIED` incident and **Investigate**. The
+   fixture plays an overconfident model and recommends a retry; policy blocks
+   it at the state step and says why. Nothing is offered for approval.
+
+   ![A retry blocked by policy](docs/images/policy-blocked.png)
+
+7. **The audit trail** records every step, with who or what did it and when.
+
+### Follow it through a trace and the logs
+
+Start the stack with the opt-in trace viewer instead:
+
+```bash
+docker compose -f docker-compose.yml -f compose.tracing.yml up --build
+```
+
+Run the walkthrough, then open Jaeger at `http://localhost:16686` and search
+for service `labops-worker`. The resolved incident is **one trace**: all seven
+lifecycle spans, across the api and the worker, including the investigation
+and approval that operators triggered minutes later from new requests.
+
+![One incident as one trace in Jaeger](docs/images/trace.png)
+
+Every worker log line for the incident carries that trace id and the incident
+id, so one search follows it through the logs:
+
+```bash
+docker compose logs worker | grep <traceId>
+```
+
+### Numbers from a real run
+
+From one run of the scenario on an Apple M4 laptop (Docker, fixture model),
+read from `GET /api/metrics`. Nothing here is estimated.
+
+| Figure | p50 | Note |
+|---|---|---|
+| First event to incident | 2.14 s | About 2 s is the deliberate dispatch delay that lets a burst collapse into one correlation run |
+| Correlation run | 9 ms | 8 runs, one per window |
+| Investigation job | 30 ms | Fixture model; a real model adds its own latency |
+| Recovery execution | 56 ms | Revalidate, retry, verify |
+| Approval to verified | 2.09 s | The same 2 s dispatch delay, then the run |
 
 ---
 
@@ -216,8 +301,8 @@ npm install
 npm run db:up
 ```
 
-This starts PostgreSQL on `localhost:5432`. Redis is added to the compose file
-when the job queue lands.
+This starts PostgreSQL on `localhost:5432` and Redis on `localhost:6379` (set
+`REDIS_HOST_PORT` in a root `.env` if another project holds that port).
 
 ### 3. Configure the environment
 
@@ -249,7 +334,7 @@ To create one after editing `schema.prisma`, run
 npm run dev
 ```
 
-This starts the API on `http://localhost:4000` and the web app on
+This starts the API on `http://localhost:4000`, the worker, and the web app on
 `http://localhost:3000` via `concurrently`.
 
 Verify:
@@ -266,7 +351,7 @@ curl http://localhost:4000/health
 }
 ```
 
-The home page renders live API and database status.
+The sign-in page shows the API and database status.
 
 ### Docker Compose
 
@@ -347,8 +432,11 @@ labops-copilot/
 │   │   ├── prisma/schema.prisma Data model
 │   │   └── src/                 Application source
 │   └── web/                     Next.js operator dashboard
+│       └── e2e/                 Playwright operator journey
+├── docs/                        Spec, plan, acceptance map, infra notes, images
 ├── ARCHITECTURE.md              System architecture and trade-offs
-├── docker-compose.yml           Local infrastructure
+├── docker-compose.yml           The full stack
+├── compose.tracing.yml          Opt-in Jaeger trace viewer
 └── package.json                 npm workspaces + root scripts
 ```
 
@@ -369,6 +457,7 @@ labops-copilot/
 | `npm run test` | Vitest unit tests, both workspaces |
 | `npm run test:integration -w @labops/api` | API integration tests against their own PostgreSQL database (`TEST_DATABASE_URL`), migrated automatically |
 | `npm run coverage` | Vitest with v8 coverage and 70% thresholds |
+| `npm run test:e2e -w @labops/web` | Playwright journey against a running, freshly reset compose stack |
 
 ### Checks before you commit
 
@@ -382,141 +471,100 @@ CI runs the same three, plus coverage and a quality gate.
 
 ## API overview
 
-Illustrative surface. Implemented endpoints are marked ✅.
+Every route needs a signed-in operator except health, sign-in and the demo
+trigger. Request bodies, params and queries are Zod-validated; errors share one
+envelope.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/health` | Service and database status (public) ✅ |
-| `POST` | `/api/auth/login` | Sign in; sets the session cookie; rate limited (public) ✅ |
-| `POST` | `/api/auth/logout` | Revoke the session ✅ |
-| `GET` | `/api/auth/me` | The signed-in operator ✅ |
-| `GET` | `/api/labs` | List labs; `status` filter, cursor pagination (`limit` 1–100) ✅ |
-| `GET` | `/api/labs/:id` | Lab with its dependency ids ✅ |
-| `GET` | `/api/labs/:id/events` | The lab's events, newest first, paginated ✅ |
-| `POST` | `/api/events` | Ingest an event: validated, redacted, deduplicated; 201 new, 200 duplicate ✅ |
-| `GET` | `/api/incidents` | List incidents; `status`/`severity` filters, cursor pagination ✅ |
-| `GET` | `/api/incidents/:id` | Incident, each lab with its reason and score, and the events ✅ |
-| `POST` | `/api/incidents/:id/investigate` | Queue an AI investigation (fixture provider); 202, or 200 with the active one ✅ |
-| `GET` | `/api/incidents/:id/investigations` | Investigation results, newest first ✅ |
-| `POST` | `/api/incidents/:id/recovery-proposals` | Propose an action; policy records allowed or blocked, with the step and reason ✅ |
-| `GET` | `/api/incidents/:id/recovery-actions` | Proposals with their policy decisions ✅ |
-| `POST` | `/api/recovery-actions/:id/approve` | Approve; 202 with the execute job, which revalidates, acts and verifies ✅ |
-| `POST` | `/api/recovery-actions/:id/reject` | Reject; the incident returns to open ✅ |
-| `GET` | `/api/jobs/:id` | Background job state, from the Postgres mirror ✅ |
-| `GET` | `/api/incidents/:id/audit` | Incident audit history, in commit order ✅ |
-| `GET` | `/api/events/stream` | Live updates (SSE): committed audit entries, resumable with `Last-Event-ID` ✅ |
-| `GET` | `/api/integrations` | Configured integrations and status |
-| `POST` | `/api/integrations/cloudlabs/test` | Test connection settings, never returns secrets |
-| `PUT` | `/api/integrations/cloudlabs` | Create/update connection configuration |
-| `DELETE` | `/api/integrations/cloudlabs` | Disconnect and revoke stored credentials |
-| `POST` | `/api/integrations/cloudlabs/sync` | Trigger a manual sync, if supported |
-| `POST` | `/api/integrations/cloudlabs/webhooks` | Receive verified webhook deliveries |
-| `GET` | `/api/integrations/cloudlabs/deliveries` | Recent redacted delivery outcomes |
-| `GET` | `/api/integrations` | Configured integrations and their reported capabilities ✅ |
-| `PUT` | `/api/integrations/cloudlabs` | Store a sealed credential; the response never echoes it ✅ |
-| `POST` | `/api/integrations/cloudlabs/test` | Run the adapter's own probe ✅ |
-| `DELETE` | `/api/integrations/cloudlabs` | Disconnect and remove the stored credential ✅ |
-| `POST` | `/api/demo/scenarios/:name` | Create a seeded scenario's labs and ingest its events (`training-event`); idempotent per seed; only when `DEMO_ENABLED` ✅ |
+| `GET` | `/health` | Service and database status (public) |
+| `POST` | `/api/auth/login` | Sign in; sets the session cookie; rate limited (public) |
+| `POST` | `/api/auth/logout` | Revoke the session |
+| `GET` | `/api/auth/me` | The signed-in operator |
+| `GET` | `/api/labs`, `/api/labs/summary`, `/api/labs/:id`, `/api/labs/:id/events` | Labs, counts by state, one lab, its events |
+| `POST` | `/api/events` | Ingest an event: validated, redacted, deduplicated; 201 new, 200 duplicate |
+| `GET` | `/api/incidents`, `/api/incidents/:id` | Incidents with filters; one incident with each lab's reason and score |
+| `GET` | `/api/incidents/:id/audit` | The incident's full history, including steps that name it |
+| `POST` | `/api/incidents/:id/investigate` | Queue an AI investigation; 202, or 200 with the active one |
+| `GET` | `/api/incidents/:id/investigations` | Investigation results, newest first |
+| `POST` | `/api/incidents/:id/recovery-proposals` | Propose an action; policy records allowed or blocked, with the step and reason |
+| `GET` | `/api/incidents/:id/recovery-actions` | Proposals with their policy decisions and verification |
+| `POST` | `/api/recovery-actions/:id/approve`, `.../reject` | Approve (202 with the execute job) or reject |
+| `GET` | `/api/jobs/summary`, `/api/jobs/:id` | Background job state, from the Postgres mirror |
+| `GET` | `/api/audit` | The audit trail, newest first, paginated |
+| `GET` | `/api/events/stream` | Live updates (SSE): committed audit entries, resumable with `Last-Event-ID` |
+| `GET` | `/api/metrics`, `/api/metrics/series` | Measured metrics and the failure timeline over a window (`hours`, max 168) |
+| `GET` | `/api/integrations` | Integrations and the capabilities each has verified |
+| `PUT` / `DELETE` | `/api/integrations/:provider` | Store a sealed credential (never echoed), or remove it |
+| `POST` | `/api/integrations/:provider/test` | Run the adapter's own probe |
+| `POST` | `/api/demo/scenarios/:name` | Run a seeded scenario; idempotent per seed; only when `DEMO_ENABLED` |
 
-All request bodies are validated. A consistent error envelope is used
-throughout. Demo endpoints are disabled outside local and demo environments.
-
----
-
-## Demo scenario
-
-The intended walkthrough, built on a fixed seed so it is reproducible every
-time:
-
-1. Create 20–50 simulated labs.
-2. Trigger a scenario containing a cluster of failures sharing one simulated
-   dependency, a few unrelated permission failures, and a duplicate event.
-3. Show that the shared failures correlate into one incident *with rationale*,
-   while the unrelated permission failures stay separate.
-4. Open the incident and inspect the correlation explanation, affected labs and
-   evidence.
-5. Run the AI investigation; review the hypothesis, supporting evidence,
-   missing evidence and stated uncertainty.
-6. Approve one permitted recovery action — it executes in the worker and
-   verifies successfully.
-7. Attempt a second action that fails a precondition — it is blocked, and the
-   audit trail records which rule stopped it.
-8. Confirm the audit history records every transition, with the SSE stream
-   showing live updates throughout.
-
-This is scripted in `apps/api` under the demo scenario module as it is built.
+Sync, webhook and delivery endpoints for CloudLabs are **not built on purpose**:
+their contract is unverified (`ARCHITECTURE.md` section 13).
 
 ---
 
 ## Testing
 
-Test layers, each mirroring an architectural boundary so a failure points
-directly at a boundary. Unit and integration suites exist today; the scopes
-below grow phase by phase (see `docs/specs/labops-copilot/PLAN.md`), and
-Playwright arrives in Phase 14:
+Test layers mirror architectural boundaries, so a failure points at one:
 
 | Layer | Scope |
 |---|---|
-| Unit | Normalisation, dedup, correlation scoring, state transitions, policy decisions, retry and idempotency handling, AI output schema validation |
-| Integration | Ingestion into PostgreSQL, ingestion triggering a BullMQ job, worker failure and retry, approval and policy enforcement, recovery execution and verification, audit entry creation |
-| E2E (Playwright) | The full operator journey above |
-| Contract | Provider capability reporting, LLM output schema, webhook normalisation |
+| Unit (Vitest) | Normalisation, dedup, correlation scoring, transitions, policy decisions, AI output validation, UI helpers |
+| Integration (Vitest, real Postgres + Redis) | Ingestion, queue and worker retries, correlation, investigation, approval races, execution and verification, audit, metrics, one-incident-one-trace |
+| End to end (Playwright) | The operator journey in a real browser against the built compose stack: grouping, the investigation, a rejection, a double-clicked approval that runs once, live verification with no reload, the policy block, the dashboard and its filter |
 
-Principles: the LLM is mocked in CI so no test depends on a live model; a fixed
-seed produces an identical scenario each run; no test asserts on wall-clock
-timings or generated prose. The negative cases are first-class — unrelated
-failures must not merge, malformed model output must be rejected, disallowed
-actions must be blocked, duplicate approvals must not double-execute, stale
-approvals must be revalidated, and no test output may contain a secret.
+Each SPEC acceptance criterion is mapped to the test that proves it in
+[`docs/specs/labops-copilot/ACCEPTANCE.md`](docs/specs/labops-copilot/ACCEPTANCE.md).
 
----
+No test calls a live model; one opt-in workflow does (`llm-live.yml`). Every
+safety test is mutation-checked: the guard is broken on purpose and the test
+must fail. The negative cases are first-class: unrelated failures must not
+merge, malformed model output must be rejected, disallowed actions must be
+blocked, duplicate approvals must not double-execute, stale approvals must be
+revalidated, a failed recovery must never resolve an incident, and no test
+output may contain a secret.
+
 
 ## Observability
 
-Structured JSON logs via Pino. Fastify shares the same logger instance, and
-every log object passes through a key-name redaction step (any depth, any
-casing) as a safety net behind redaction at the point where data enters. It
-matches secret-shaped key names such as `token`, `apiKey` or `password`; a
-secret logged under an innocuous key or inside a free-text message is not
-caught. OpenTelemetry spans follow the incident
-across process boundaries:
+**Logs:** Pino JSON with a key-name redaction safety net; secrets are removed
+where data enters. Worker lines carry the job, the trace and the incident.
+
+**Traces:** OpenTelemetry spans for every stage, and **one incident is one
+trace** across the api and the worker, even when an operator acts minutes
+later:
 
 ```
 event.ingest → incident.correlate → investigation.queue → investigation.llm
              → recovery.policy_check → recovery.execute → recovery.verify
 ```
 
-Trace context is embedded in job payloads, so a single incident resolves to a
-single trace even though it spans processes and minutes.
+Nothing is exported by default; `compose.tracing.yml` adds Jaeger (see the
+walkthrough).
 
-Metrics: events ingested, candidate incidents created, correlation duration,
-queue depth and job latency, AI success/failure and latency, recovery success
-rate, retry count, time to first incident, and time from approval to verified
-outcome.
+**Metrics:** derived from committed Postgres rows, so they count both
+processes, survive a restart and cannot disagree with the audit trail: events,
+incidents, time to first incident, correlation and job timings, queue depth,
+AI outcomes, recovery outcomes, approval to verified, and the oldest open
+transaction (which delays live updates). Shown on the overview; served by
+`/api/metrics`. Every number comes from a real run.
 
-Demo numbers come from actual runs of this prototype. No performance claims are
-fabricated.
-
----
 
 ## Continuous integration
 
-Three workflows under `.github/workflows/`:
+Workflows under `.github/workflows/`:
 
 | Workflow | Role |
 |---|---|
-| `changes.yml` | Detects whether a commit touched `apps/web`, `apps/api`, or shared root tooling, then dispatches only the matching pipeline |
-| `api.yml` | build, lint, unit tests, integration tests (real Postgres + Redis), coverage, quality gate |
-| `web.yml` | build, lint, unit tests, coverage, quality gate |
+| `changes.yml` | Detects whether a change touched `apps/web`, `apps/api` or shared tooling, dispatches only the matching pipeline, and runs the **compose smoke and e2e** job: build both images, boot the stack, run the smoke script, then reset the stack and run the Playwright journey |
+| `api.yml` | Build, lint, unit tests, integration tests (real Postgres + Redis), coverage, schema drift, quality gate |
+| `web.yml` | Build, lint, unit tests, coverage, quality gate |
+| `llm-live.yml` | Opt-in, manual only: the one job that calls a real model |
 
-A change confined to the frontend never starts the backend pipeline. Changes to
-the root manifests or the ESLint config fan out to both, since shared tooling
-can break either service.
-
-Every service pipeline ends in a quality gate that runs even when an upstream
-job failed (`if: always()`) — a gate that only runs when everything passed can
-never catch anything. The gate performs a secret scan, a dependency audit, and
-a check that the scripts the pipeline depends on still exist.
+Every pipeline ends in a quality gate that runs even when an upstream job
+failed (`if: always()`): a secret scan, a dependency audit, and a check that
+the scripts the pipeline depends on still exist.
 
 ### Dependency audit
 
@@ -535,26 +583,37 @@ build complaining.
 
 ## Roadmap
 
-Built vertically so a working end-to-end workflow exists early. The full
-phase-by-phase plan, with what each phase delivers and how it is verified, is
-`docs/specs/labops-copilot/PLAN.md`.
+Built vertically, one phase at a time; the plan with what each phase delivered
+and how it was verified is `docs/specs/labops-copilot/PLAN.md`. All phases are
+done.
 
-| Phases | Contents | State |
-|---|---|---|
-| 0 | Config validation, error envelope, migrations, integration-test gate | Done |
-| 1–2 | Audit trail, lab model, deterministic simulator, demo scenario | Done |
-| 3 | Event ingestion: validation, redaction, dedup, lab transitions | Done |
-| 4 | Queue, worker process, reconciler, tracing across API and worker | Done |
-| 5 | Deterministic correlation in the worker, incident read APIs | Done |
-| 6 | Operator sign-in: server-side sessions, deny-by-default routes, login rate limit | Done |
-| 7 | AI investigation: bounded evidence, delimited prompt, strict output, fixture provider | Done |
-| 8 | Policy engine: allow-list, seven fixed steps, recorded proposals | Done |
-| 9 | Approval, execution with revalidation, verified resolution. **The full backend workflow runs end to end** | Done |
-| 12 | Operator dashboard: the whole workflow in a browser (built before 10 and 11) | Done |
-| 10 | Live updates over SSE: gap-free, resumable, relayed through the web server | Done |
-| 11 | Real LLM provider (opt-in) | Done |
-| 13 | Integration settings and secrets, adapter-gated | Done (no live connector: the gate is closed) |
-| 13–15 | Integration settings, E2E tests and metrics, delivery | Not started |
+| Phases | Contents |
+|---|---|
+| 0–4 | Config, audit trail, simulator, ingestion, queue and worker |
+| 5–9 | Correlation, sign-in, AI investigation, policy engine, approval to verified resolution |
+| 10–12 | Live updates, the opt-in real model, the operator dashboard |
+| 13 | Integration settings and sealed secrets, adapter-gated (no live connector: the gate is closed) |
+| 14 | Browser journey in CI, measured metrics |
+| 15 | Delivery: one incident as one trace, the opt-in trace viewer, this walkthrough (local-only by decision) |
+
+---
+
+## Before production
+
+Known and deliberate. Each is recorded in `docs/infra/INFRA.md`.
+
+- **Behind a proxy, the login rate limit needs trusted client IPs.** Today it
+  keys on the socket address, and dashboard sign-ins all arrive from the web
+  server, so the 5-a-minute limit is effectively shared. Forward the client IP
+  from the web server and set `trustProxy` to the real hops only.
+- **API request logs carry no trace id** until HTTP spans are added; worker logs
+  do.
+- **Nothing alerts on a long open transaction.** The metric exists; the alert
+  does not.
+- **No live CloudLabs connector.** Built only after the API contract,
+  credentials and a sandbox are confirmed (`ARCHITECTURE.md` section 13).
+- **Not hosted.** Local-only by decision; the intended production shape is in
+  `ARCHITECTURE.md` section 16.
 
 ---
 
