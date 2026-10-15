@@ -51,6 +51,22 @@ const envSchema = z
       .string()
       .refine((value) => Buffer.from(value, 'base64').length === 32, 'must be base64 of exactly 32 bytes')
       .optional(),
+    // Google sign-in: all four or none. The secret stays on the API; the
+    // redirect must be https except on loopback, like the LLM base URL.
+    GOOGLE_CLIENT_ID: unsetIfEmpty(z.string().max(256)),
+    GOOGLE_CLIENT_SECRET: unsetIfEmpty(z.string().max(256)),
+    GOOGLE_REDIRECT_URI: unsetIfEmpty(
+      z
+        .url({ protocol: /^https?$/ })
+        .refine(isSecureProviderUrl, { message: 'must be https, or http on a loopback host' }),
+    ),
+    // Comma-separated exact emails; nobody else may sign in with Google.
+    GOOGLE_ALLOWED_EMAILS: unsetIfEmpty(
+      z
+        .string()
+        .transform((value) => value.split(',').map((email) => email.trim().toLowerCase()).filter(Boolean))
+        .pipe(z.array(z.email()).min(1).max(100)),
+    ),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
@@ -64,6 +80,19 @@ const envSchema = z
         path: ['LLM_API_KEY'],
         message: 'is required when LLM_PROVIDER is gemini',
       });
+    }
+    // Half a Google configuration fails at startup rather than at sign-in.
+    const google = [
+      'GOOGLE_CLIENT_ID',
+      'GOOGLE_CLIENT_SECRET',
+      'GOOGLE_REDIRECT_URI',
+      'GOOGLE_ALLOWED_EMAILS',
+    ] as const;
+    const set = google.filter((key) => config[key] !== undefined);
+    if (set.length > 0 && set.length < google.length) {
+      for (const key of google.filter((k) => config[k] === undefined)) {
+        ctx.addIssue({ code: 'custom', path: [key], message: 'is required when Google sign-in is configured' });
+      }
     }
   });
 

@@ -61,6 +61,11 @@ services:
       DEMO_ENABLED: "true"
       # Served over plain http on localhost, so the cookie cannot be Secure here.
       SESSION_COOKIE_SECURE: "false"
+      # Optional Google sign-in from the root .env; empty means off.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      GOOGLE_ALLOWED_EMAILS: ${GOOGLE_ALLOWED_EMAILS:-}
     ports:
       - "4000:4000"
     depends_on:

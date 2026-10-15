@@ -3,6 +3,7 @@
 import { randomBytes } from 'node:crypto';
 import { writeAudit } from '../audit/audit.js';
 import { prisma } from '../../db.js';
+import type { GoogleFailure, GoogleIdentity } from './google.js';
 import { hashPassword, verifyPassword } from './password.js';
 import type { SessionOperator } from './session.js';
 import { createSession, revokeSession } from './session.js';
@@ -48,6 +49,54 @@ export async function signIn(username: string, password: string): Promise<Signed
   });
 }
 
+/**
+ * Signs in a Google identity that already passed verification and the
+ * allow-list. The operator is found by Google's stable subject id; the first
+ * sign-in links an operator named after the email, creating it without a
+ * password if none exists.
+ */
+export async function signInWithGoogle(identity: GoogleIdentity): Promise<SignedIn> {
+  return prisma.$transaction(async (tx) => {
+    const linked = await tx.operatorIdentity.findUnique({
+      where: { provider_subject: { provider: 'google', subject: identity.subject } },
+      select: { operator: { select: { id: true, username: true } } },
+    });
+    let operator = linked?.operator;
+    if (!operator) {
+      operator =
+        (await tx.operator.findUnique({ where: { username: identity.email }, select: { id: true, username: true } })) ??
+        (await tx.operator.create({ data: { username: identity.email }, select: { id: true, username: true } }));
+      await tx.operatorIdentity.create({
+        data: { provider: 'google', subject: identity.subject, email: identity.email, operatorId: operator.id },
+      });
+    }
+    const session = await createSession(tx, operator.id);
+    await writeAudit(tx, {
+      actor: { type: 'human', id: operator.id },
+      action: 'auth.login',
+      targetType: 'operator',
+      targetId: operator.id,
+      outcome: 'succeeded',
+      metadata: { provider: 'google' },
+    });
+    return { operator, ...session };
+  });
+}
+
+/** A refused Google sign-in: the reason only, never the email (the audit is permanent). */
+export async function auditRejectedGoogleSignIn(reason: GoogleFailure): Promise<void> {
+  await prisma.$transaction((tx) =>
+    writeAudit(tx, {
+      actor: { type: 'human', id: 'anonymous' },
+      action: 'auth.login',
+      targetType: 'operator',
+      targetId: 'unknown',
+      outcome: 'rejected',
+      metadata: { provider: 'google', reason },
+    }),
+  );
+}
+
 export async function signOut(operator: SessionOperator, token: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
     await revokeSession(tx, token);
@@ -75,7 +124,9 @@ export async function seedOperator(
     where: { username },
     select: { passwordHash: true },
   });
-  if (current && (await verifyPassword(password, current.passwordHash))) return 'unchanged';
+  if (current?.passwordHash && (await verifyPassword(password, current.passwordHash))) {
+    return 'unchanged';
+  }
 
   const passwordHash = await hashPassword(password);
   return prisma.$transaction(async (tx) => {

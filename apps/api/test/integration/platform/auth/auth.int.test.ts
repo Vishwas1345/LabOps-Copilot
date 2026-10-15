@@ -60,6 +60,11 @@ describe('route protection', () => {
     'GET /health',
     'HEAD /health',
     'POST /api/auth/login',
+    // Google sign-in happens before there is a session; each verifies its own input.
+    'GET /api/auth/providers',
+    'HEAD /api/auth/providers',
+    'POST /api/auth/google/authorization-url',
+    'POST /api/auth/google',
     'POST /api/demo/scenarios/:name',
     'OPTIONS *',
   ]);
