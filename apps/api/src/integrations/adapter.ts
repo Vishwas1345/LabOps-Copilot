@@ -1,14 +1,6 @@
-// The provider boundary.
-//
-// The point of this interface is not to make CloudLabs pluggable. It is to make
-// the *absence* of a verified integration representable: an adapter reports
-// what it can actually do, and an adapter that has verified nothing reports
-// nothing, so the connection reads not_configured rather than connected.
-//
-// Anything optional here is optional because the capability is unverified. Do
-// not add a method until it is confirmed against official documentation, and do
-// not infer an endpoint, an auth scheme or a webhook contract from the method
-// name. See ARCHITECTURE.md section 13.
+// The provider boundary. Its job is to make an unverified integration
+// representable: an adapter reports only what it can do, so one that verified
+// nothing reads not_configured. Add a method only once it is documented (§13).
 
 /**
  * What an adapter reports it can do. The settings page renders this and nothing
@@ -31,9 +23,7 @@ export interface ProviderCapabilities {
 }
 
 export interface ConnectionConfig {
-  /** Tenant or environment identifier, where the provider has one. */
-  tenantId?: string;
-  /** Sealed credentials, opened only inside testConnection. */
+  /** The opened credential, handed only to testConnection. */
   credentials?: string;
 }
 

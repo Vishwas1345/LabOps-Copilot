@@ -879,6 +879,10 @@ can read the process, and rotating it means re-sealing every stored credential.
 A wrong key and altered ciphertext fail **identically**. Telling them apart is
 precisely what a probe against stored bytes would be testing for, so the error
 message answers neither.
+A test that finds the stored credential unreadable still runs, without it, and
+its audit entry records `credentialUnreadable`, so tampering or a rotated key is
+never silent. Every integrations response passes its strict schema before it is
+sent; a field added to a view by mistake fails the request with a 500.
 
 ---
 

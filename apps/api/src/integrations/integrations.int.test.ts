@@ -258,6 +258,29 @@ describe('PUT /api/integrations/:provider', () => {
   });
 });
 
+describe('PUT /api/integrations/:provider boundaries', () => {
+  // Negative: no verified provider has a tenant, so the field is refused, not
+  // accepted and silently dropped.
+  it('refuses a tenantId rather than discarding it', async () => {
+    const response = await PUT('simulator', {
+      displayName: 'Sim',
+      credential: SECRET,
+      tenantId: 'tenant-1',
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).not.toContain(SECRET);
+    expect(await prisma.integrationConnection.count()).toBe(0);
+  });
+
+  it('refuses an oversized provider name at the boundary', async () => {
+    const response = await PUT('p'.repeat(65), { displayName: 'Sim', credential: SECRET });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: { code: 'VALIDATION_FAILED' } });
+  });
+});
+
 describe('POST /api/integrations/:provider/test', () => {
   it('passes for the simulator and records the event types', async () => {
     const response = await app.inject({
@@ -361,6 +384,40 @@ describe('POST /api/integrations/:provider/test', () => {
     });
     expect(after.supportedEventTypes).toEqual([]);
     expect(after.supportedEventTypes).not.toContain('stale_event_type');
+  });
+});
+
+describe('a stored credential that cannot be opened', () => {
+  const latestTestAudit = async () =>
+    prisma.auditEntry.findFirstOrThrow({
+      where: { action: 'integration.tested' },
+      orderBy: { seq: 'desc' },
+    });
+
+  // Negative: a wrong key or altered bytes must leave a trace, not vanish.
+  it('is recorded in the audit, without the credential', async () => {
+    await PUT('simulator', { displayName: 'Sim', credential: SECRET });
+    await app.inject({ method: 'POST', url: '/api/integrations/simulator/test', ...authed });
+    expect(await latestTestAudit()).not.toHaveProperty('metadata.credentialUnreadable');
+
+    const rekeyed = await buildApp({
+      config: {
+        ...loadConfig(),
+        DEMO_ENABLED: false,
+        CREDENTIALS_KEY: randomBytes(32).toString('base64'),
+      },
+    });
+    const response = await rekeyed.inject({
+      method: 'POST',
+      url: '/api/integrations/simulator/test',
+      ...authed,
+    });
+    await rekeyed.close();
+
+    expect(response.statusCode).toBe(200);
+    const entry = await latestTestAudit();
+    expect(entry.metadata).toMatchObject({ credentialUnreadable: true });
+    expect(JSON.stringify(entry.metadata)).not.toContain(SECRET);
   });
 });
 

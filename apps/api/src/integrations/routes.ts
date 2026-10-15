@@ -5,6 +5,7 @@ import type {
   RawRequestDefaultExpression,
   RawServerDefault,
 } from 'fastify';
+import type { z } from 'zod';
 import { actorOf } from '../auth/guard.js';
 import { AppError } from '../http/errors.js';
 import type { IntegrationDeps } from './service.js';
@@ -16,7 +17,13 @@ import {
   testConnection,
   UnknownProviderError,
 } from './service.js';
-import { saveConnectionBody } from './schemas.js';
+import {
+  connectionListResponse,
+  connectionResponse,
+  connectionTestResponse,
+  providerParams,
+  saveConnectionBody,
+} from './schemas.js';
 
 function mapError(error: unknown): never {
   if (error instanceof UnknownProviderError) {
@@ -29,10 +36,16 @@ function mapError(error: unknown): never {
   throw error;
 }
 
-/**
- * Integration settings. Not public, so the deny-by-default guard applies to
- * every route here: an anonymous request is refused before the handler runs.
- */
+// Every response passes its strict schema, so a field added to a view by
+// mistake (a credential) fails as a 500 instead of being sent. Not a ZodError:
+// that would be reported to the client as a 400 about its own request.
+function checked<T>(schema: z.ZodType<T>, body: unknown): T {
+  const result = schema.safeParse(body);
+  if (!result.success) throw new Error('integration response failed its schema');
+  return result.data;
+}
+
+/** Not public: the deny-by-default guard refuses anonymous requests first. */
 export function registerIntegrationRoutes<Logger extends FastifyBaseLogger>(
   app: FastifyInstance<
     RawServerDefault,
@@ -43,26 +56,26 @@ export function registerIntegrationRoutes<Logger extends FastifyBaseLogger>(
   deps: IntegrationDeps,
 ): void {
   app.get('/api/integrations', async () => {
-    return { data: await listConnections(deps).catch(mapError) };
+    const data = await listConnections(deps).catch(mapError);
+    return checked(connectionListResponse, { data });
   });
 
-  app.put('/api/integrations/:provider', async (request, reply) => {
-    const { provider } = request.params as { provider: string };
+  app.put('/api/integrations/:provider', async (request) => {
+    const { provider } = providerParams.parse(request.params);
     const body = saveConnectionBody.parse(request.body);
-
     const data = await saveConnection(deps, provider, body, actorOf(request)).catch(mapError);
-    return reply.status(200).send({ data });
+    return checked(connectionResponse, { data });
   });
 
   app.post('/api/integrations/:provider/test', async (request) => {
-    const { provider } = request.params as { provider: string };
-
-    return { data: await testConnection(deps, provider, actorOf(request)).catch(mapError) };
+    const { provider } = providerParams.parse(request.params);
+    const data = await testConnection(deps, provider, actorOf(request)).catch(mapError);
+    return checked(connectionTestResponse, { data });
   });
 
   app.delete('/api/integrations/:provider', async (request) => {
-    const { provider } = request.params as { provider: string };
-
-    return { data: await deleteConnection(deps, provider, actorOf(request)).catch(mapError) };
+    const { provider } = providerParams.parse(request.params);
+    const data = await deleteConnection(deps, provider, actorOf(request)).catch(mapError);
+    return checked(connectionResponse, { data });
   });
 }
