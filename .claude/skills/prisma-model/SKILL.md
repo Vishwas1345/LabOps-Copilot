@@ -27,7 +27,7 @@ down here.
    | One effect per logical event | `deduplicationKey String @unique` |
    | One execution per approved action | `idempotencyKey String @unique` |
    | One open incident per window | unique index scoped to open incidents |
-   | Audit is append-only | no update path in app code; restrict the role |
+   | Audit is append-only | no update path in app code; triggers reject `UPDATE`, `DELETE` and `TRUNCATE` |
 
    Prefer a unique index over a "check-then-insert" in application code. Under
    retries and concurrency, application checks lose.

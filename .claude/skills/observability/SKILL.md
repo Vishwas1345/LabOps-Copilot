@@ -14,43 +14,24 @@ skill is mandatory — not optional polish.
 
 ```
 apps/api/src/observability/
-  logger.ts      Pino, redaction, child-logger helpers
-  tracing.ts     OpenTelemetry bootstrap + span helpers
-  metrics.ts     counters and histograms
-  context.ts     correlationId / traceId propagation
+  logger.ts      Pino, the key-name redaction safety net, header paths
+  redact.ts      redactSecrets: walks a log object and masks secret-named keys
+  tracing.ts     OpenTelemetry bootstrap (service.name), withSpan,
+                 currentTraceparent, withTraceparent
+  metrics.ts     shared shapes for DB-derived metrics (DurationSummary, countsFor)
 ```
 
 ## Logs
 
-1. **Redact at the serializer**, not at each call site. A forgotten
-   `logger.info(payload)` must still be unable to emit a token.
+1. **Redact where data enters; the logger is only the net.** `logger.ts` runs
+   every log object through `redactSecrets` (any depth, any casing, secret-named
+   keys) and masks auth and cookie header paths. It cannot catch a secret under
+   an innocuous key or inside a message string, which is why entry-point
+   redaction is the control.
 
-   ```ts
-   export const logger = pino({
-     redact: {
-       paths: [
-         'req.headers.authorization',
-         'req.headers["x-api-key"]',
-         '*.token',
-         '*.credential',
-         '*.password',
-         '*.secret',
-       ],
-       censor: '[redacted]',
-     },
-   });
-   ```
-
-2. **Child loggers carry context.** Every log line in a request or job carries
-   `correlationId`, `traceId` and, where applicable, `incidentId`.
-
-   ```ts
-   const log = logger.child({
-     correlationId,
-     traceId,
-     incidentId,
-   });
-   ```
+2. **Child loggers carry context.** Worker job lines carry `jobId`, `jobKey`,
+   `queue` and `traceId` (`jobs/runner.ts`); handlers add `incidentId` where
+   they know it. Fastify request lines carry the request id.
 
 3. **Never `console.log` in backend source.** Never log a full unredacted
    payload. Error summaries are redacted before they are stored or logged.
@@ -69,10 +50,13 @@ apps/api/src/observability/
    recovery.verify
    ```
 
-2. **Propagate trace context through the queue.** Embed the span context in the
-   BullMQ job payload and extract it in the handler, so one incident resolves to
-   one trace across processes and minutes. Without this, the API trace and the
-   worker trace are unrelated, which defeats the point.
+2. **Propagate trace context through the job row, and rejoin the incident's
+   trace.** `recordJob` stores `currentTraceparent()` on the `JobExecution` row;
+   the runner continues it with `withTraceparent`. Correlation stores the trace
+   an incident is born in on `Incident.traceparent`, and later steps
+   (investigate, approve) start from it, so one incident is one trace even when
+   an operator acts minutes later. The BullMQ message itself carries only
+   `{ jobExecutionId, generation }`.
 
    See the `background-job` skill.
 
@@ -82,19 +66,17 @@ apps/api/src/observability/
 
 ## Metrics
 
-Counters and histograms only for things you can actually measure:
+Metrics are **derived from committed Postgres rows**, not kept in process
+counters: one query counts both the api and the worker, the figures survive a
+restart, and they cannot disagree with the audit trail. Each module that owns a
+table computes its own figures in `<module>/stats.ts`; `metrics/service.ts`
+only combines them for `GET /api/metrics` and `GET /api/metrics/series`.
 
-| Metric | Type |
-|---|---|
-| events ingested | counter |
-| candidate incidents created | counter |
-| correlation duration | histogram |
-| queue depth, job latency | gauge, histogram |
-| AI request success/failure, latency | counter, histogram |
-| recovery success/failure rate | counter |
-| retry count | counter |
-| time from first event to incident identification | histogram |
-| time from approved action to verified outcome | histogram |
+- Durations are percentiles (`percentile_cont`) over the window; one with no
+  samples is `null`, never `0`.
+- Compare a timestamp column with a JS `Date` as `(${since} AT TIME ZONE
+  'UTC')`: Prisma binds a `Date` as `timestamptz` (#22).
+- Never label with ids: the output stays a fixed size.
 
 ## The hard rule
 
@@ -108,9 +90,10 @@ not go in the README, the dashboard or a commit message.
 npm run build -w @labops/api
 ```
 
-Then run the full seeded scenario and confirm:
+Then run the full seeded scenario with `compose.tracing.yml` and confirm in
+Jaeger:
 
-- every one of the seven spans appears for one incident
-- one trace id spans API, queue and worker
-- no log line contains a credential, even when the scenario injects one
+- every one of the seven spans appears in one trace for one incident
+- that trace spans `labops-api` and `labops-worker`
+- no log line contains a credential, even when a test event carries one
 - the metrics emitted are ones you actually computed

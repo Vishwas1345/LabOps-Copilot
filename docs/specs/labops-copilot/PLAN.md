@@ -184,6 +184,7 @@ the code. Where the built name differs, the module is the same:
 | Planned | As built |
 |---|---|
 | `labs/labs.service.ts`, `labs/labs.routes.ts` | `labs/service.ts`, `labs/routes.ts` |
+| `incidents/correlation/{signals,cluster}.ts`, `incidents/incidents.routes.ts` | `incidents/scoring.ts`, `incidents/clustering.ts`, `incidents/routes.ts` |
 | `labs/simulator/{prng,scenarios,engine}.ts`, `demo/demo.routes.ts` | `labs/simulator.ts`, `labs/recovery-simulator.ts`, `demo/routes.ts` |
 | `events/ingest.ts`, `events/events.routes.ts` | `events/service.ts`, `events/routes.ts` |
 | `jobs/enqueue.ts` | `jobs/record.ts` (outbox row and dispatch), `jobs/runner.ts` |

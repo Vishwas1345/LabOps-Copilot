@@ -17,8 +17,7 @@ two apart is what makes this system explainable and testable.
 
 ```
 apps/api/src/incidents/
-  signals.ts       individual signal extractors
-  scoring.ts       weight table and pair scoring
+  scoring.ts       signal extraction, weight table and pair scoring
   clustering.ts    candidate generation + agglomeration
   service.ts       incident lifecycle, persistence
 ```
@@ -33,25 +32,27 @@ apps/api/src/incidents/
    logic:
 
    ```ts
-   const SIGNAL_WEIGHTS = {
-     ERROR_CATEGORY: 0.30,
-     SHARED_DEPENDENCY: 0.30,
-     TEMPORAL_PROXIMITY: 0.20,
-     PRECEDING_SEQUENCE: 0.10,
-     TRANSITION_PATTERN: 0.05,
-     LAB_TYPE_MATCH: 0.05,
+   export const SIGNAL_WEIGHTS = {
+     errorCategory: 0.3,
+     sharedDependency: 0.3,
+     temporalProximity: 0.2,
+     labType: 0.05,
    } as const;
+   export const JOIN_THRESHOLD = 0.7;
    ```
+
+   Preceding-sequence and transition-pattern signals are not built: they need
+   labs with event history.
 
    Every weight needs a rationale recorded next to it. "Why is this 0.30?" must
    have an answer that is not vibes.
 
 3. **Generate candidates with inverted indices, not an O(n²) scan.** Index
-   events by `(normalisedErrorCategory)`, `(dependencyId)` and `(timeBucket)`,
-   then only score pairs that share an index key.
+   events by normalised error category and by dependency id, then only score
+   pairs that share a key: no pair without either can reach the threshold.
 
 4. **Block single-link chaining.** Agglomeration must require the candidate to
-   score above the threshold **against the cluster anchor**, not against any
+   score at or above the threshold **against the cluster anchor**, not against any
    member. Without this, A~B and B~C merge A, B and C into one cluster even
    when A and C are unrelated — and the operator sees one meaningless
    mega-incident.

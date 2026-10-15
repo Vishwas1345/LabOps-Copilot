@@ -16,7 +16,7 @@ rules) first. Confirm which module owns the data being exposed.
 apps/api/src/<domain>/
   routes.ts     HTTP surface only — validation, auth, delegate to service
   service.ts    business logic, transactions, audit writes
-  schemas.ts    Zod schemas for body / params / query
+  schemas.ts    Zod schemas for body / params / query (events/ uses schema.ts)
 ```
 
 Never put query logic in `src/app.ts`. Never import another domain's Prisma
@@ -47,42 +47,31 @@ model — import its service. See `CLAUDE.md §4`.
 ## Handler template
 
 ```ts
-import type { FastifyReply, FastifyRequest } from 'fastify';
-import { z } from 'zod';
-import { audit } from '../audit/audit.js';
-import { prisma } from '../db.js';
-import { enqueueCorrelation } from '../jobs/queues.js';
+// routes.ts: HTTP only. Shape of the real proposal route.
+app.post('/api/incidents/:id/recovery-proposals', async (request, reply) => {
+  const { id } = incidentParams.parse(request.params);
+  const body = proposalBody.parse(request.body);       // .strict() Zod schema
+  const actor = actorOf(request);                       // from the session, never the body
+  const proposal = await prisma
+    .$transaction((tx) => proposeAction(tx, id, body, actor, options))
+    .catch(mapError);                                   // domain errors -> AppError
+  return reply.status(proposal.created ? 201 : 200).send({ data: { ... } });
+});
 
-const Body = z.object({}).strict();
-
-export async function createProposal(
-  request: FastifyRequest<{ Body: unknown }>,
-  reply: FastifyReply,
-) {
-  const body = Body.parse(request.body);
-  const actor = request.actor;
-
-  const action = await prisma.$transaction(async (tx) => {
-    const created = await tx.recoveryAction.create({
-      data: { ...body, status: 'PENDING_APPROVAL' },
-    });
-
-    await audit.write(tx, {
-      actorType: 'HUMAN',
-      actorId: actor.id,
-      action: 'recovery.proposed',
-      targetType: 'RecoveryAction',
-      targetId: created.id,
-      outcome: 'success',
-      correlationId: request.correlationId,
-    });
-
-    return created;
-  });
-
-  return reply.status(201).send({ data: action });
-}
+// service: the state change and its audit entry commit together.
+await writeAudit(tx, {
+  actor,                                                // { type: 'human', id }
+  action: 'recovery.proposed',
+  targetType: 'recovery_action',
+  targetId: action.id,
+  outcome: action.status,                               // e.g. 'awaiting_approval'
+  metadata: { incidentId },
+});
 ```
+
+Long-running work is not done here: the service writes a job row with
+`recordJob(tx, ...)` and the route returns `202` with the job id after
+`dispatchJob`.
 
 ## Rules that get reviewed
 

@@ -33,9 +33,10 @@ happy-path test is incomplete, regardless of how well the happy path works.
 
 ### AI investigation
 
-- Malformed JSON → rejected, investigation `error`, incident untouched
+- Malformed JSON → rejected, investigation `error`, incident back to `open`, nothing from the answer stored
 - Unknown field in output → rejected, not stripped
-- Action outside the enum → dropped, no action created
+- Action outside the enum → the output is rejected (`SCHEMA_REJECTED`), no
+  action created
 - Prompt injection inside event text → inert; does not change the proposed
   action or the schema honoured
 - Model names a lab outside the incident → target discarded
@@ -63,7 +64,7 @@ happy-path test is incomplete, regardless of how well the happy path works.
 
 - A credential submitted through the integration settings endpoint appears in
   **no** response body, **no** log line, **no** AI context
-- Redaction survives a payload the simulator deliberately injects a token into
+- Redaction survives an event a test deliberately puts a token into
 
 ## How to check for secret leakage
 

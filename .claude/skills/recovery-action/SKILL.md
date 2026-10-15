@@ -20,9 +20,12 @@ model-supplied input, stop — that action does not exist and must not be built.
 ## Where things go
 
 ```
-apps/api/src/policies/      allow-list, preconditions, retry limits, cooldown
-apps/api/src/approvals/     approve/reject, expiry, revalidation
-apps/api/src/recovery/      simulated execution + post-action verification
+apps/api/src/labs/actions.ts   the ActionType allow-list enum
+apps/api/src/policies/         pure evaluator: the seven steps, ACTION_POLICIES,
+                               preconditions, retry limits, cooldown
+apps/api/src/recovery/         propose.ts, approve.ts (approve/reject),
+                               expire.ts, execute.job.ts (revalidate, act,
+                               verify)
 ```
 
 ## Procedure
