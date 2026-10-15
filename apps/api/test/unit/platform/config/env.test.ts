@@ -183,3 +183,41 @@ describe('loadConfig', () => {
     }
   });
 });
+
+describe('Google sign-in config', () => {
+  const GOOGLE = {
+    GOOGLE_CLIENT_ID: 'id.apps.googleusercontent.com',
+    GOOGLE_CLIENT_SECRET: 'secret',
+    GOOGLE_REDIRECT_URI: 'http://localhost:3000/auth/google/callback',
+    GOOGLE_ALLOWED_EMAILS: ' Ops@Example.com , lead@example.com ',
+  };
+
+  it('parses the allow-list into trimmed, lowercase emails', () => {
+    expect(loadConfig({ ...VALID, ...GOOGLE }).GOOGLE_ALLOWED_EMAILS).toEqual([
+      'ops@example.com',
+      'lead@example.com',
+    ]);
+  });
+
+  // Compose passes an empty string for a variable the root .env leaves out.
+  it('treats all four empty as Google switched off', () => {
+    const empty = Object.fromEntries(Object.keys(GOOGLE).map((key) => [key, '']));
+    expect(loadConfig({ ...VALID, ...empty }).GOOGLE_CLIENT_ID).toBeUndefined();
+  });
+
+  // Negative: half a configuration would turn Google on without its allow-list
+  // or its secret, so it fails at startup instead.
+  it.each(Object.keys(GOOGLE))('refuses a Google config missing %s', (missing) => {
+    const partial: Record<string, string> = { ...VALID, ...GOOGLE };
+    delete partial[missing];
+    expect(() => loadConfig(partial)).toThrow(ConfigError);
+    expect(() => loadConfig({ ...partial, [missing]: '' })).toThrow(ConfigError);
+  });
+
+  it.each([
+    ['a plain-http redirect off loopback', { GOOGLE_REDIRECT_URI: 'http://labops.example/auth/google/callback' }],
+    ['an allow-list entry that is not an email', { GOOGLE_ALLOWED_EMAILS: 'ops@example.com,not-an-email' }],
+  ])('refuses %s', (_label, change) => {
+    expect(() => loadConfig({ ...VALID, ...GOOGLE, ...change })).toThrow(ConfigError);
+  });
+});

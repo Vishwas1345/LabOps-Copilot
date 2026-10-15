@@ -241,12 +241,30 @@ model IncidentLab {
 // A person who can sign in. Usernames are unique; only a scrypt hash of the
 // password is stored, and no endpoint ever returns it.
 model Operator {
-  id           String            @id @default(cuid())
-  username     String            @unique
-  passwordHash String
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  id           String             @id @default(cuid())
+  username     String             @unique
+  // Null for an operator created through Google: password sign-in can never
+  // reach it.
+  passwordHash String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
   sessions     OperatorSession[]
+  identities   OperatorIdentity[]
+}
+
+// An external sign-in linked to an operator, keyed by the provider's stable
+// subject id, never the email, which can change hands.
+model OperatorIdentity {
+  id         String   @id @default(cuid())
+  provider   String
+  subject    String
+  operatorId String
+  operator   Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  email      String
+  createdAt  DateTime @default(now())
+
+  @@unique([provider, subject])
+  @@index([operatorId])
 }
 
 // A server-side session. The id is the SHA-256 of the cookie's random token,
