@@ -3,7 +3,7 @@
 
 import { createHash } from 'node:crypto';
 import { redactSecrets, redactText } from '../../platform/observability/redact.js';
-import type { IncomingEvent } from './schema.js';
+import type { IncomingEvent } from './schemas.js';
 
 // The provider's own id when it has one; otherwise a hash of what makes the
 // event unique, so an id-less redelivery still collapses to one row.

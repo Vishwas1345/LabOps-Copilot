@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { signedInCookie } from '../../../fixtures/session.fixture.js';
 import { prisma } from '../../../../src/db.js';
-import { approveAction, ApprovalExpiredError } from '../../../../src/modules/recovery/approve.js';
-import { expireStaleApprovals } from '../../../../src/modules/recovery/expire.js';
+import { approveAction, ApprovalExpiredError } from '../../../../src/modules/recovery/services/approve.js';
+import { expireStaleApprovals } from '../../../../src/modules/recovery/services/expire.js';
 import { failedIncident, removeFixtures } from '../../../fixtures/incident.fixture.js';
 
 const { operatorId } = await signedInCookie();

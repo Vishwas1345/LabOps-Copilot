@@ -12,7 +12,7 @@ import { createInvestigateJob } from './modules/investigations/jobs/investigate.
 import { closeQueues } from './platform/jobs/queues.js';
 import { reconcileJobs } from './platform/jobs/reconcile.js';
 import { createExecuteJob } from './modules/recovery/jobs/execute.job.js';
-import { expireStaleApprovals } from './modules/recovery/expire.js';
+import { expireStaleApprovals } from './modules/recovery/services/expire.js';
 import { createWorker } from './platform/jobs/worker.js';
 import { logger } from './platform/observability/logger.js';
 import { initTracing } from './platform/observability/tracing.js';

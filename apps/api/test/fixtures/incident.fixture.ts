@@ -11,7 +11,7 @@ import { correlateWindow } from '../../src/modules/incidents/jobs/correlate.job.
 import type { ActionType } from '../../src/modules/labs/actions.js';
 import type { ErrorCategory } from '../../src/modules/labs/failures.js';
 import { createLogger } from '../../src/platform/observability/logger.js';
-import { proposeAction } from '../../src/modules/recovery/propose.js';
+import { proposeAction } from '../../src/modules/recovery/services/propose.js';
 
 export interface FixtureIncident {
   incidentId: string;

@@ -2,7 +2,7 @@
 // depends on it (approve and execute both check expiry themselves); it moves
 // abandoned proposals out of awaiting_approval so incidents do not sit there.
 
-import { prisma } from '../../db.js';
+import { prisma } from '../../../db.js';
 import type { LockedAction } from './approve.js';
 import { expireAction } from './approve.js';
 

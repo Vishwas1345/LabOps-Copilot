@@ -9,7 +9,7 @@ import { actorOf } from '../../platform/auth/guard.js';
 import { AppError } from '../../platform/http/errors.js';
 import { labParams } from '../labs/schemas.js';
 import { ConcurrentTransitionError, getLab, LabNotFoundError } from '../labs/service.js';
-import { eventsQuery } from './schema.js';
+import { eventsQuery } from './schemas.js';
 import { ingestEvent, listLabEvents, UnknownReferenceError } from './service.js';
 
 // An event is a small JSON document; anything bigger is refused early.

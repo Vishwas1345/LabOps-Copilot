@@ -12,7 +12,7 @@ import { prisma } from '../../../db.js';
 import { transitionIncident } from '../../incidents/service.js';
 import type { IncidentStatus } from '../../incidents/transitions.js';
 import { IllegalIncidentTransitionError } from '../../incidents/transitions.js';
-import { proposeRecommendation } from '../../recovery/propose.js';
+import { proposeRecommendation } from '../../recovery/services/propose.js';
 import type { JobDefinition } from '../../../platform/jobs/runner.js';
 import { assembleEvidence } from '../evidence.js';
 import type { InvestigationOutput } from '../output-schema.js';

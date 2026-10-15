@@ -4,7 +4,7 @@ import { signedInCookie } from '../../../fixtures/session.fixture.js';
 import { prisma } from '../../../../src/db.js';
 import { ingestEvent } from '../../../../src/modules/events/service.js';
 import { createLogger } from '../../../../src/platform/observability/logger.js';
-import { approveAction } from '../../../../src/modules/recovery/approve.js';
+import { approveAction } from '../../../../src/modules/recovery/services/approve.js';
 import { applyAndVerify, createExecuteJob } from '../../../../src/modules/recovery/jobs/execute.job.js';
 import type { FixtureIncident } from '../../../fixtures/incident.fixture.js';
 import { failedIncident, removeFixtures } from '../../../fixtures/incident.fixture.js';

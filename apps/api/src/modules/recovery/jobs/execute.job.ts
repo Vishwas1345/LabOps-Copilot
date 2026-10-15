@@ -19,8 +19,8 @@ import { labStatusesOf, transitionLab } from '../../labs/service.js';
 import type { LabStatus } from '../../labs/transitions.js';
 import { withSpan } from '../../../platform/observability/tracing.js';
 import { EXECUTION_STEPS, evaluatePolicy } from '../../policies/evaluate.js';
-import { lockAction } from '../approve.js';
-import { gatherPolicyFacts } from '../propose.js';
+import { lockAction } from '../services/approve.js';
+import { gatherPolicyFacts } from '../services/propose.js';
 
 const WORKER: Actor = { type: 'worker', id: 'labops-worker' };
 

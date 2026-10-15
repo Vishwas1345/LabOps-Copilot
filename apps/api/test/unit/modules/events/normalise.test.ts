@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { IncomingEvent } from '../../../../src/modules/events/schema.js';
+import type { IncomingEvent } from '../../../../src/modules/events/schemas.js';
 import { deduplicationKey, normalise } from '../../../../src/modules/events/normalise.js';
 
 const base: IncomingEvent = {

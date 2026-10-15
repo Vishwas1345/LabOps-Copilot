@@ -5,16 +5,16 @@
 
 import { createHash } from 'node:crypto';
 import type { Prisma, RecoveryAction } from '@prisma/client';
-import type { Actor } from '../../platform/audit/audit.js';
-import { writeAudit } from '../../platform/audit/audit.js';
-import { lockIncidentScope, transitionIncident } from '../incidents/service.js';
-import type { ActionType } from '../labs/actions.js';
-import type { ErrorCategory } from '../labs/failures.js';
-import { labStatusesOf } from '../labs/service.js';
-import { withSpan } from '../../platform/observability/tracing.js';
-import { ACTION_POLICIES } from '../policies/actions.js';
-import type { PolicyFacts } from '../policies/evaluate.js';
-import { evaluatePolicy, PROPOSAL_STEPS } from '../policies/evaluate.js';
+import type { Actor } from '../../../platform/audit/audit.js';
+import { writeAudit } from '../../../platform/audit/audit.js';
+import { lockIncidentScope, transitionIncident } from '../../incidents/service.js';
+import type { ActionType } from '../../labs/actions.js';
+import type { ErrorCategory } from '../../labs/failures.js';
+import { labStatusesOf } from '../../labs/service.js';
+import { withSpan } from '../../../platform/observability/tracing.js';
+import { ACTION_POLICIES } from '../../policies/actions.js';
+import type { PolicyFacts } from '../../policies/evaluate.js';
+import { evaluatePolicy, PROPOSAL_STEPS } from '../../policies/evaluate.js';
 
 export interface ActionRequest {
   actionType: ActionType;

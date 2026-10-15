@@ -5,37 +5,20 @@ import type {
   RawRequestDefaultExpression,
   RawServerDefault,
 } from 'fastify';
-import { z } from 'zod';
 import { actorOf } from '../../platform/auth/guard.js';
 import { prisma } from '../../db.js';
 import { AppError } from '../../platform/http/errors.js';
 import { incidentParams } from '../incidents/schemas.js';
 import { assertIncidentExists, IncidentNotFoundError } from '../incidents/service.js';
-import { ACTION_TYPES } from '../labs/actions.js';
 import {
   ApprovalExpiredError,
   approveAction,
   RecoveryActionConflictError,
   RecoveryActionNotFoundError,
   rejectAction,
-} from './approve.js';
-import { ProposalConflictError, proposeAction } from './propose.js';
-
-const actionParams = z.object({ id: z.string().min(1).max(64) }).strict();
-
-// An unknown action type cannot even be stored (ActionType is a DB enum), so
-// it is a 400 here; the evaluator's step 1 still guards every other caller.
-// Parameters are accepted so policy can record why they were refused.
-const proposalBody = z
-  .object({
-    actionType: z.enum(ACTION_TYPES),
-    targetIds: z.array(z.string().min(1).max(64)).max(50),
-    parameters: z
-      .record(z.string().max(64), z.unknown())
-      .refine((value) => JSON.stringify(value).length <= 2000, 'parameters are too large')
-      .default({}),
-  })
-  .strict();
+} from './services/approve.js';
+import { ProposalConflictError, proposeAction } from './services/propose.js';
+import { actionParams, proposalBody } from './schemas.js';
 
 function mapError(error: unknown): never {
   if (error instanceof IncidentNotFoundError) {

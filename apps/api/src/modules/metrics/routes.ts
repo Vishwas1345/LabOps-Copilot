@@ -5,14 +5,9 @@ import type {
   RawRequestDefaultExpression,
   RawServerDefault,
 } from 'fastify';
-import { z } from 'zod';
 import { failureSeries } from '../events/stats.js';
+import { metricsQuery } from './schemas.js';
 import { collectMetrics } from './service.js';
-
-// Capped at a week: every metric is an aggregate over the window's rows.
-const metricsQuery = z
-  .object({ hours: z.coerce.number().int().min(1).max(168).default(24) })
-  .strict();
 
 /** Not public: aggregates only, but still operator-only like every read. */
 export function registerMetricsRoutes<Logger extends FastifyBaseLogger>(
