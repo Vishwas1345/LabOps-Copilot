@@ -161,6 +161,8 @@ model OperationalEvent {
   @@index([labId, occurredAt])
   @@index([errorCategory, occurredAt])
   @@index([dependencyId, occurredAt])
+  // The metrics window and the failure timeline read by arrival time.
+  @@index([receivedAt])
 }
 
 // Postgres mirror of queue state: Redis is transport, this is the record.
