@@ -22,6 +22,7 @@ import { simulatorAdapter } from './modules/integrations/adapters/simulator-adap
 import { registerJobRoutes } from './platform/jobs/routes.js';
 import { registerLabRoutes } from './modules/labs/routes.js';
 import { registerRecoveryRoutes } from './modules/recovery/routes.js';
+import { registerWebhookRoutes } from './modules/webhooks/routes.js';
 import { logger as defaultLogger } from './platform/observability/logger.js';
 
 // Config validation guarantees all four Google values or none.
@@ -60,6 +61,7 @@ export async function buildApp(options: {
         | 'GOOGLE_CLIENT_SECRET'
         | 'GOOGLE_REDIRECT_URI'
         | 'GOOGLE_ALLOWED_EMAILS'
+        | 'WEBHOOK_SECRET'
       >
     >;
   logger?: pino.Logger;
@@ -119,6 +121,13 @@ export async function buildApp(options: {
   app.addHook('onClose', closeQueues);
   if (options.config.DEMO_ENABLED) {
     registerDemoRoutes(app);
+    // The webhook receiver is demo-only: it is an unauthenticated data entry
+    // point, so it exists exactly as long as the demo does.
+    await registerWebhookRoutes(app, {
+      redisUrl: options.config.REDIS_URL,
+      keyPrefix: options.config.QUEUE_PREFIX,
+      secret: options.config.WEBHOOK_SECRET,
+    });
   }
 
   return app;

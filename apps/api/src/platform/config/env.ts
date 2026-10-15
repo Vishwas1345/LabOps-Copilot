@@ -67,6 +67,10 @@ const envSchema = z
         .transform((value) => value.split(',').map((email) => email.trim().toLowerCase()).filter(Boolean))
         .pipe(z.array(z.email()).min(1).max(100)),
     ),
+    // Shared secret for signed provider webhooks. Absent means the endpoint is
+    // not mounted at all, so an unconfigured deploy exposes no unauthenticated
+    // surface. Never logged, never returned, never echoed in an error.
+    WEBHOOK_SECRET: unsetIfEmpty(z.string().min(32).max(256)),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
