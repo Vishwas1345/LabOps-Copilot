@@ -2,7 +2,7 @@ name: api
 
 # Backend pipeline. Invoked by changes.yml, never triggered directly.
 #
-# Jobs: build, lint, test, integration-test, coverage, quality-gate, image.
+# Jobs: build, lint, test, integration-test, coverage, quality-gate.
 #
 # Every command runs from the repository root with an explicit -w workspace
 # flag. There is deliberately no `defaults.run.working-directory` here: a
@@ -12,11 +12,6 @@ name: api
 
 on:
   workflow_call:
-    inputs:
-      deploy:
-        description: Build the container image. Only set by the release pipeline.
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -278,20 +273,3 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  image:
-    name: build image
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: [quality-gate]
-    if: inputs.deploy
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build the api image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/api/Dockerfile
-          push: false
-          tags: labops-api:${{ github.sha }}
