@@ -1,7 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
-  encodeCredentialsKey,
   openSecret,
   parseCredentialsKey,
   sealSecret,
@@ -14,13 +13,7 @@ const otherKey = randomBytes(32);
 
 describe('parseCredentialsKey', () => {
   it('accepts base64 of exactly 32 bytes', () => {
-    const encoded = encodeCredentialsKey(key);
-
-    expect(parseCredentialsKey(encoded)).toEqual(key);
-  });
-
-  it('round-trips an encoded key', () => {
-    expect(parseCredentialsKey(encodeCredentialsKey(key))).toEqual(key);
+    expect(parseCredentialsKey(key.toString('base64'))).toEqual(key);
   });
 
   // Negative: a wrong-sized key must be refused at startup, not at the first

@@ -1,15 +1,6 @@
-// Credential sealing at rest.
-//
-// AES-256-GCM: the key comes from the environment, exactly as DATABASE_URL and
-// REDIS_URL do. This is the same trust model the project already has, and it
-// needs no new dependency. The weakness is stated rather than hidden: a key in
-// the environment is readable by anything that can read the process, and
-// rotating it means re-sealing every stored credential. `keyVersion` on the
-// stored row is what keeps that a contained change later.
-//
-// GCM is authenticated, so a wrong key and a tampered blob fail the same way and
-// identically: decryption throws. Neither is ever distinguishable, because
-// telling them apart is exactly what an attacker probing the ciphertext wants.
+// Credential sealing at rest: AES-256-GCM with a key from the environment, the
+// same trust model as DATABASE_URL. Rotation means re-sealing every row, which
+// `keyVersion` keeps contained. Trade-offs: ARCHITECTURE.md section 13.
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 
@@ -30,38 +21,17 @@ export class SecretUnavailableError extends Error {
 
 export class SecretDecryptionError extends Error {
   constructor() {
-    // Deliberately vague: whether the key was wrong or the bytes were altered
-    // is not something an error message should answer.
+    // Wrong key and altered bytes read the same, so a probe learns nothing.
     super('stored credential could not be read');
     this.name = 'SecretDecryptionError';
   }
 }
 
-/**
- * Parses CREDENTIALS_KEY: base64 of exactly 32 bytes. Rejects anything else at
- * startup rather than at the first credential save.
- */
+/** CREDENTIALS_KEY is base64 of exactly 32 bytes; anything else is no key. */
 export function parseCredentialsKey(value: string | undefined): Buffer {
-  if (!value) throw new SecretUnavailableError();
-
-  let key: Buffer;
-  try {
-    key = Buffer.from(value, 'base64');
-  } catch {
-    throw new SecretUnavailableError();
-  }
-
-  if (key.length !== KEY_BYTES) {
-    throw new SecretUnavailableError();
-  }
+  const key = Buffer.from(value ?? '', 'base64');
+  if (key.length !== KEY_BYTES) throw new SecretUnavailableError();
   return key;
-}
-
-export function encodeCredentialsKey(key: Buffer): string {
-  if (key.length !== KEY_BYTES) {
-    throw new SecretUnavailableError();
-  }
-  return key.toString('base64');
 }
 
 /** Seals a credential. The same input never seals to the same bytes twice. */
