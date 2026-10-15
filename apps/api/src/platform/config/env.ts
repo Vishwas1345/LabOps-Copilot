@@ -29,7 +29,7 @@ const envSchema = z
     SESSION_COOKIE_SECURE: z.stringbool().default(true),
     LLM_PROVIDER: z.enum(['fixture', 'gemini']).default('fixture'),
     // Never logged, never returned, never written to modelMetadata.
-    LLM_API_KEY: z.string().min(1).max(500).optional(),
+    LLM_API_KEY: unsetIfEmpty(z.string().max(500)),
     LLM_MODEL: z.string().min(1).max(100).default(DEFAULT_GEMINI_MODEL),
     // Overridable so the same code can point at a local or proxied gateway;
     // http is allowed only for loopback, because the key rides in a header.
@@ -66,6 +66,11 @@ const envSchema = z
       });
     }
   });
+
+// `--env-file` sets `KEY=` to an empty string; an empty value means unset.
+function unsetIfEmpty<T extends z.ZodType>(schema: T) {
+  return z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+}
 
 function isLoopback(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
