@@ -5,8 +5,8 @@ the workflow runs end to end in a browser, with live updates, an opt-in real
 model, and integration settings that report honestly that no live connector has
 been verified. Next is Phase 14.
 
-**Remaining (2):** 14 end-to-end tests and metrics (LOC-19); 15 dependency graph
-(optional) and delivery (LOC-20).
+**Remaining (2):** 14 end-to-end tests and metrics (LOC-19, in progress); 15
+delivery (LOC-20). The dependency graph is dropped by owner decision.
 
 **Order changed after Phase 9:** the dashboard (Phase 12) ran before live
 updates (10) and the real LLM (11), so the proven workflow became visible and
@@ -490,15 +490,16 @@ Phase 13 deviations, settled by building it:
 
 ### Phase 14 — End-to-end tests and metrics
 
-**Files:** `apps/web/e2e/journey.spec.ts` (Playwright, seeded scenario, fixture LLM), CI job running compose and then Playwright; `observability/metrics.ts` (OTel counters and histograms from §16 of the spec: events ingested, incidents created, correlation duration, queue depth, AI success/failure, recovery outcome, time to first incident, approval → verified).
-**Tests:** the spec's 9-step journey, plus the negative cases visible in the UI: the permission-denied incident stays separate, and the blocked action shows its blocking rule.
+**Files:** `apps/web/e2e/journey.spec.ts` (Playwright, seeded scenario, fixture LLM), CI job running compose and then Playwright; `GET /api/metrics` from each module's `stats.ts`: events received, incidents created, first event to incident, correlation run time, queue depth and retries, AI outcomes and latency, recovery outcomes, approval → verified, oldest open transaction.
+**Deviation (owner decision):** metrics are derived from committed Postgres rows, not an OTel metrics SDK. Without a collector in compose OTel metrics would be invisible on a real run, the worker cannot be scraped (it never serves HTTP), and in-process counters would split across two processes and reset on restart. `ARCHITECTURE.md` section 12 records the trade-off.
+**Tests:** the spec's journey, plus the negative cases visible in the UI: the permission-denied incident stays separate, a rejected proposal reopens the incident, and a double-clicked approval runs once. The blocked action's card is not reachable from the UI with the fixture model; see [ACCEPTANCE.md](./ACCEPTANCE.md) criterion 10.
 **Verify:** CI green with the E2E job; metrics are visible from a real run (never hardcoded).
 **Rollback:** revert.
-**Done when:** the spec's §21 success criteria can each be pointed at a test or a screen.
+**Done when:** every SPEC acceptance criterion can be pointed at a test or a screen: see [ACCEPTANCE.md](./ACCEPTANCE.md).
 
-### Phase 15 — Dependency graph (optional) and delivery
+### Phase 15 — Delivery
 
-**Files:** `components/dependency-graph.tsx` (React Flow: incidents ↔ labs ↔ dependencies); deploy config if a free target exists; README walkthrough with real screenshots and real numbers.
+**Files:** deploy config if a free target exists; README walkthrough with real screenshots and real numbers (from `/api/metrics` on a real run). The React Flow dependency graph was dropped by owner decision: it was optional, and correlation is already explained per lab on the incident page.
 **Done when:** a reviewer can start the stack from the README, run the scenario, and follow one incident through logs and a trace.
 
 ---

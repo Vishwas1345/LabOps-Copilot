@@ -68,7 +68,9 @@ unprefixed variables are read at runtime and never reach the browser.
 **Host port clashes.** Compose publishes 5432, 6379, 4000 and 3000 on the host.
 If another project already holds 6379, set `REDIS_HOST_PORT=6380` in a root
 `.env` (git-ignored; compose reads it) and point `REDIS_URL` in
-`apps/api/.env` at that port. Integration tests use Redis, so they must never
+`apps/api/.env` at that port. Likewise `WEB_HOST_PORT` moves the web app off
+3000 (then pass the same port to the smoke script and the journey as
+`WEB_URL`). Integration tests use Redis, so they must never
 reach another project's instance.
 
 ---
@@ -167,7 +169,7 @@ Three workflows in `.github/workflows/`. Triggered on pushes and pull requests t
 
 | Workflow | Role |
 |---|---|
-| `changes.yml` | The only entry point. Uses `dorny/paths-filter` to decide which service changed, then calls only the matching pipeline. Root manifests and the ESLint config fan out to both. Also runs the **compose smoke test** whenever api or web changed. |
+| `changes.yml` | The only entry point. Uses `dorny/paths-filter` to decide which service changed, then calls only the matching pipeline. Root manifests and the ESLint config fan out to both. Also runs the **compose smoke and e2e** job whenever api or web changed: build the images, run `scripts/compose-smoke.sh`, then reset the stack (`down -v`, `up`) and run the Playwright journey (`npm run test:e2e -w @labops/web`); screenshots are uploaded only on failure, never traces, which hold cookies. |
 | `api.yml` | build (`tsc` + `prisma validate`), lint and unit tests in parallel; then integration tests (real Postgres + Redis) and coverage; then the quality gate; then the image (only when `deploy` is set) |
 | `web.yml` | build, lint and unit tests in parallel; then coverage; then the quality gate; then the image (only when `deploy` is set) |
 
@@ -212,8 +214,7 @@ excludes server components, which only E2E can reach.
 | Gap | Fix | Phase |
 |---|---|---|
 | Nothing sets the `deploy` input, so images are never built in CI | Add a release trigger once a deployment target exists | 15 |
-| No Playwright job | Compose up, then run the journey | 14 |
-| A transaction left open on the database holds back every live update until it finishes (the stream reads below the oldest running transaction) | Keep transactions short (they are); alert on long-running transactions once metrics exist | 14 |
+| A transaction left open on the database holds back every live update until it finishes (the stream reads below the oldest running transaction) | Keep transactions short (they are). `oldestOpenTransactionMs` in `/api/metrics` now shows it; nothing alerts on it yet | 15 |
 | Dashboard logins all reach the API from the web server's IP, so the per-IP login limit is effectively global (5/min) | Forward the client IP from the web server and trust it only from that host, once the API is no longer reachable directly | 15 |
 | Login rate limit keys on the socket IP (`trustProxy` off) | Behind a load balancer every client would share one IP, so set `trustProxy` to the real proxy hops only (a blanket `true` lets clients spoof `X-Forwarded-For`) | 15 |
 | `main` has no branch protection | Require the quality gates before merge | Settings change; do it before Phase 1 |
@@ -236,4 +237,4 @@ demo endpoints disabled, and an app database role limited to its own schema.
 |---|---|---|
 | Logs | Pino JSON to stdout; Fastify shares the instance; key-name redaction as a safety net; job logs carry `jobId` and `traceId`; correlation logs carry `incidentId` | `traceId` on API request logs needs HTTP spans (later) |
 | Traces | `event.ingest` (api) and `incident.correlate` (worker) in one trace via `traceparent` in the job row | Remaining lifecycle spans as each stage lands |
-| Metrics | None | OTel counters and histograms from real runs only (Phase 14) |
+| Metrics | `GET /api/metrics` and the overview card, derived from committed rows over a window (default 24 h, max 168); see `ARCHITECTURE.md` section 12 | Indexes or a rollup table on the windowed columns if volume grows |

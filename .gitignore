@@ -13,3 +13,7 @@ LabOps_Copilot_Project_Specification-2.md
 
 # Per-machine compose overrides (see docs/infra/INFRA.md)
 compose.local.yml
+
+# Playwright output
+apps/web/test-results
+apps/web/playwright-report

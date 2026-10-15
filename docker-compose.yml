@@ -94,7 +94,8 @@ services:
       # The web app holds the operator's session cookie (BFF); plain http here.
       SESSION_COOKIE_SECURE: "false"
     ports:
-      - "3000:3000"
+      # Overridable when another project already holds 3000 on the host.
+      - "${WEB_HOST_PORT:-3000}:3000"
     depends_on:
       - api
 
