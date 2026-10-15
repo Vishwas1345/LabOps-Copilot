@@ -131,8 +131,9 @@ and approval that operators triggered minutes later from new requests.
 
 ![One incident as one trace in Jaeger](docs/images/trace.png)
 
-Every worker log line for the incident carries that trace id and the incident
-id, so one search follows it through the logs:
+The worker's job logs carry that trace id, and its incident lines (created,
+investigation finished, execution finished) carry the incident id too, so one
+search follows it through the logs:
 
 ```bash
 docker compose logs worker | grep <traceId>
@@ -248,7 +249,7 @@ rather than a principle.
 |---|---|---|
 | Frontend | Next.js 15, React 19, TypeScript | Operator dashboard and workflows |
 | Styling / UI | Tailwind CSS, shadcn/ui | Consistent interface components |
-| Dependency graph | React Flow | Incident / lab / dependency relationships |
+| Charts | Recharts | Failure timeline and labs-by-state donut |
 | Backend | Node.js + TypeScript | All backend processing |
 | HTTP API | Fastify 5 | REST endpoints and SSE |
 | Validation | Zod | Request, event and LLM output schemas |
@@ -286,7 +287,7 @@ implementation status, and the trade-offs taken.
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22 (`.nvmrc`)
 - npm 10+
 - Docker (for PostgreSQL and Redis)
 
@@ -312,17 +313,14 @@ cp apps/api/.env.example apps/api/.env
 ```
 
 Defaults match the compose credentials. To sign in, set `SEED_OPERATOR_PASSWORD`
-(12+ characters) in that file, then create the operator:
+(12+ characters) in that file.
 
-```bash
-npm run seed:operator -w @labops/api
-```
-
-### 4. Apply migrations and generate the client
+### 4. Apply migrations, generate the client, create the operator
 
 ```bash
 npm run db:generate
 npm run db:migrate
+npm run seed:operator -w @labops/api
 ```
 
 Schema changes are checked-in migrations under `apps/api/prisma/migrations`.
@@ -384,7 +382,7 @@ For the faster dev loop, run `npm run db:up` for infrastructure only and
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DATABASE_URL` | `postgresql://labops:labops@localhost:5432/labops` | PostgreSQL connection string |
+| `DATABASE_URL` | required (`.env.example`: `postgresql://labops:labops@localhost:5432/labops`) | PostgreSQL connection string |
 | `TEST_DATABASE_URL` | `postgresql://labops:labops@localhost:5432/labops_test` | Integration tests only; must differ from `DATABASE_URL` |
 | `API_HOST` | `127.0.0.1` | API bind address |
 | `API_PORT` | `4000` | API port |
@@ -415,8 +413,9 @@ header only — never in a URL, a log, a prompt, or `modelMetadata`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:4000` | API base URL for the browser |
-| `API_INTERNAL_URL` | falls back to `NEXT_PUBLIC_API_URL` | API base URL for server-side rendering; `http://api:4000` in Docker Compose |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:4000` | Fallback API URL when `API_INTERNAL_URL` is unset. The browser never calls the API; it talks only to the web server (BFF) |
+| `API_INTERNAL_URL` | falls back to `NEXT_PUBLIC_API_URL` | API base URL the web server uses; `http://api:4000` in Docker Compose |
+| `SESSION_COOKIE_SECURE` | `true` | Send the web session cookie over https only; `false` for local http |
 
 The full list, including `REDIS_URL`, `DEMO_ENABLED` and `LOG_LEVEL`, is in
 `docs/infra/INFRA.md` §4. Real secrets are never committed; `.env` is
@@ -445,11 +444,11 @@ labops-copilot/
 
 | Script | Action |
 |---|---|
-| `npm run dev` | Run API and web together |
+| `npm run dev` | Run the API, the worker and the web app together |
 | `npm run dev:api` | Run the API only |
 | `npm run dev:web` | Run the web app only |
 | `npm run dev:worker` | Run the background worker only |
-| `npm run db:up` | Start PostgreSQL via Docker Compose |
+| `npm run db:up` | Start PostgreSQL and Redis via Docker Compose |
 | `npm run db:generate` | Generate the Prisma client |
 | `npm run db:migrate` | Apply checked-in migrations to the database |
 | `npm run lint` | ESLint across both workspaces |
@@ -466,7 +465,7 @@ labops-copilot/
 npm run lint && npm run typecheck && npm run test
 ```
 
-CI runs the same three, plus coverage and a quality gate.
+CI runs the equivalent (a type-checking build, lint and unit tests per workspace), plus integration tests, coverage and a quality gate.
 
 ---
 
@@ -558,19 +557,19 @@ Workflows under `.github/workflows/`:
 
 | Workflow | Role |
 |---|---|
-| `changes.yml` | Detects whether a change touched `apps/web`, `apps/api` or shared tooling, dispatches only the matching pipeline, and runs the **compose smoke and e2e** job: build both images, boot the stack, run the smoke script, then reset the stack and run the Playwright journey |
+| `changes.yml` | Runs on pushes and pull requests to `main`. Detects whether a change touched `apps/web` or `apps/api` (root manifests count for both), dispatches only the matching pipeline, and runs the **compose smoke and e2e** job: build both images, boot the stack, run the smoke script, then reset the stack and run the Playwright journey |
 | `api.yml` | Build, lint, unit tests, integration tests (real Postgres + Redis), coverage, schema drift, quality gate |
 | `web.yml` | Build, lint, unit tests, coverage, quality gate |
 | `llm-live.yml` | Opt-in, manual only: the one job that calls a real model |
 
-Every pipeline ends in a quality gate that runs even when an upstream job
+The api and web pipelines each end in a quality gate that runs even when an upstream job
 failed (`if: always()`): a secret scan, a dependency audit, and a check that
 the scripts the pipeline depends on still exist.
 
 ### Dependency audit
 
-`npm audit` cannot currently reach zero: six advisories require prisma 7, vitest
-5 or next 16, all major upgrades. Those six are recorded in
+`npm audit` cannot currently reach zero: the remaining advisories are transitive
+and need prisma 7, vitest 5 or next 16, all major upgrades. Six baseline entries record them in
 `.github/audit-baseline.json` with a reason and a review date, and
 `scripts/audit-gate.mjs` fails the build on any **new** high or critical
 advisory. Regenerate the baseline with:

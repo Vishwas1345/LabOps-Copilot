@@ -13,7 +13,7 @@ operational reference.
 | Process | Port | Role | Status |
 |---|---|---|---|
 | `web` (Next.js) | 3000 | Operator UI; holds the session cookie and calls the API server-side (BFF) | Exists |
-| `api` (Fastify) | 4000 | HTTP API: validate, persist, enqueue; SSE | Exists (labs, events, jobs, incidents) |
+| `api` (Fastify) | 4000 | HTTP API: validate, persist, enqueue; SSE | Exists |
 | `worker` (BullMQ) | none | Runs queued jobs and the reconciler (startup, then every 60 s); never serves HTTP | Exists; runs correlation, investigations and recovery execution; also sweeps expired approvals |
 | `postgres` 16 | 5432 | All durable business state | Exists |
 | `redis` 7 | 6379 (host port overridable) | Queue transport; never the source of truth | Exists |
@@ -29,14 +29,14 @@ Two ways to run, for different jobs:
 
 | Mode | Command | Use it for |
 |---|---|---|
-| Hot reload | `npm run db:up`, then `npm run dev` | Day-to-day development. Postgres runs in Docker; api and web run on the host. |
+| Hot reload | `npm run db:up`, then `npm run dev` | Day-to-day development. Postgres and Redis run in Docker; the api, worker and web run on the host. |
 | Full containers | `docker compose up --build` | Checking the reproducible stack the way CI and a reviewer see it. |
 
 First-time setup:
 
 ```bash
 npm install
-npm run db:up                      # postgres only
+npm run db:up                      # postgres and redis
 cp apps/api/.env.example apps/api/.env
 npm run db:generate                # Prisma client
 npm run db:migrate                 # apply checked-in migrations
@@ -61,8 +61,9 @@ different entrypoint), so there is no third Dockerfile.
 
 **Compose networking gotcha.** Inside the `web` container, `localhost` is the web
 container itself. Server-side code therefore uses `API_INTERNAL_URL`
-(`http://api:4000`), while the browser uses `NEXT_PUBLIC_API_URL`
-(`http://localhost:4000`). `NEXT_PUBLIC_*` values are baked in at build time;
+(`http://api:4000`); `NEXT_PUBLIC_API_URL` (`http://localhost:4000`) is only its
+fallback. The browser never calls the API: it talks to the web server, which
+relays. `NEXT_PUBLIC_*` values are baked in at build time;
 unprefixed variables are read at runtime and never reach the browser.
 
 **Host port clashes.** Compose publishes 5432, 6379, 4000 and 3000 on the host.
@@ -81,7 +82,7 @@ reach another project's instance.
 
 | Variable | Service | Default | Purpose |
 |---|---|---|---|
-| `DATABASE_URL` | api | `postgresql://labops:labops@localhost:5432/labops` | PostgreSQL connection |
+| `DATABASE_URL` | api | required (`.env.example`: `postgresql://labops:labops@localhost:5432/labops`) | PostgreSQL connection |
 | `TEST_DATABASE_URL` | integration tests | `.../labops_test` | Database the integration and coverage runs use; must differ from `DATABASE_URL`. Created and migrated on each run |
 | `API_HOST` | api | `127.0.0.1` (`0.0.0.0` in compose) | Bind address |
 | `API_PORT` | api | `4000` | Port |
@@ -164,14 +165,15 @@ than the code: the free tier returns 503 under load, and retired models answer
 
 ## 6. CI pipelines
 
-Three workflows in `.github/workflows/`. Triggered on pushes and pull requests to
-`main`.
+Four workflows in `.github/workflows/`. Only `changes.yml` runs on pushes and pull
+requests to `main`; it calls `api.yml` and `web.yml`. `llm-live.yml` is manual.
 
 | Workflow | Role |
 |---|---|
-| `changes.yml` | The only entry point. Uses `dorny/paths-filter` to decide which service changed, then calls only the matching pipeline. Root manifests and the ESLint config fan out to both. Also runs the **compose smoke and e2e** job whenever api or web changed: build the images, run `scripts/compose-smoke.sh`, then reset the stack (`down -v`, `up`) and run the Playwright journey (`npm run test:e2e -w @labops/web`); screenshots are uploaded only on failure, never traces, which hold cookies. |
+| `changes.yml` | The only entry point. Uses `dorny/paths-filter` to decide which service changed, then calls only the matching pipeline. Root manifests and the ESLint config fan out to both; a change only to workflows or top-level docs runs neither. Also runs the **compose smoke and e2e** job whenever api or web changed: build the images, run `scripts/compose-smoke.sh`, then reset the stack (`down -v`, `up`) and run the Playwright journey (`npm run test:e2e -w @labops/web`); screenshots are uploaded only on failure, never traces, which hold cookies. |
 | `api.yml` | build (`tsc` + `prisma validate`), lint and unit tests in parallel; then integration tests (real Postgres + Redis) and coverage; then the quality gate. Images are built by the compose smoke job on every change |
 | `web.yml` | build, lint and unit tests in parallel; then coverage; then the quality gate. Images are built by the compose smoke job on every change |
+| `llm-live.yml` | Manual only (`workflow_dispatch`): the one job that calls a real model; needs the `GEMINI_API_KEY` repository secret |
 
 **Quality gate** (each pipeline, `if: always()` so it runs even after a failure):
 1. Fails unless every upstream job succeeded.
@@ -187,8 +189,8 @@ creates and migrates that database itself and refuses to start if it names the
 same database as `DATABASE_URL`. Locally it reads `apps/api/.env` and needs
 `npm run db:up`.
 
-**Compose smoke test:** builds both images, boots the full stack, then runs
-`scripts/compose-smoke.sh`: migrations exited 0, `/health` reports ok, the
+**Compose smoke test:** the CI job builds both images and boots the full stack;
+`scripts/compose-smoke.sh` then checks the running stack: migrations exited 0, `/health` reports ok, the
 web login page shows "API: ok" through `API_INTERNAL_URL`, a signed-out
 dashboard request redirects to `/login`, and the demo scenario
 runs and ingests events (at least 19 labs end up failed), `/api/labs` refuses
@@ -206,17 +208,18 @@ a running stack with `scripts/compose-smoke.sh`.
 **Coverage:** 70% lines, functions, branches and statements in both workspaces.
 The api coverage job runs unit and integration specs together against a
 migrated Postgres service container, so database code is measured, not
-excluded; only `src/index.ts` (process bootstrap) is left out. The web job
+excluded; only the process entrypoints (`src/index.ts`, `src/worker.ts`,
+`src/seed-operator.ts`) are left out. The web job
 excludes server components, which only E2E can reach.
 
 **Known gaps**
 
 | Gap | Fix | Phase |
 |---|---|---|
-| A transaction left open on the database holds back every live update until it finishes (the stream reads below the oldest running transaction) | Keep transactions short (they are). `oldestOpenTransactionMs` in `/api/metrics` now shows it; nothing alerts on it yet | 15 |
-| Dashboard logins all reach the API from the web server's IP, so the per-IP login limit is effectively global (5/min) | Forward the client IP from the web server and trust it only from that host, once the API is no longer reachable directly | 15 |
-| Login rate limit keys on the socket IP (`trustProxy` off) | Behind a load balancer every client would share one IP, so set `trustProxy` to the real proxy hops only (a blanket `true` lets clients spoof `X-Forwarded-For`) | 15 |
-| `main` has no branch protection | Require the quality gates before merge | Settings change; do it before Phase 1 |
+| A transaction left open on the database holds back every live update until it finishes (the stream reads below the oldest running transaction) | Keep transactions short (they are). `oldestOpenTransactionMs` in `/api/metrics` now shows it; nothing alerts on it yet | Before production |
+| Dashboard logins all reach the API from the web server's IP, so the per-IP login limit is effectively global (5/min) | Forward the client IP from the web server and trust it only from that host, once the API is no longer reachable directly | Before production |
+| Login rate limit keys on the socket IP (`trustProxy` off) | Behind a load balancer every client would share one IP, so set `trustProxy` to the real proxy hops only (a blanket `true` lets clients spoof `X-Forwarded-For`) | Before production |
+| `main` has no branch protection | Require the quality gates before merge | Owner's settings change |
 | Docs-only changes trigger no pipeline | Intended: `docs/**` is not in any filter | — |
 
 ---

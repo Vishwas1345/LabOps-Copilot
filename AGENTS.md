@@ -440,7 +440,7 @@ protection on `main`. Anything new follows the plan-first loop above.
 
 ```bash
 npm install                    # all workspaces
-npm run db:up                  # postgres only
+npm run db:up                  # postgres and redis
 docker compose up -d redis     # redis too (host port 6380 locally, see section 6)
 npm run db:generate            # Prisma client
 npm run db:migrate             # apply migrations to the dev DB

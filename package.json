@@ -10,7 +10,7 @@
     "dev:api": "npm run dev -w @labops/api",
     "dev:web": "npm run dev -w @labops/web",
     "dev:worker": "npm run dev:worker -w @labops/api",
-    "db:up": "docker compose up -d postgres",
+    "db:up": "docker compose up -d postgres redis",
     "db:generate": "npm run prisma:generate -w @labops/api",
     "db:migrate": "npm run prisma:migrate -w @labops/api",
     "lint": "eslint .",
