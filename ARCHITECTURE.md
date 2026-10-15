@@ -163,42 +163,59 @@ for reporting: the live stream reads `AuditEntry` rows directly (it is the tail
 of that table), and incident metrics join the events they cite.
 
 ```
-apps/api/src/
-  index.ts            process bootstrap, graceful shutdown
-  app.ts              Fastify assembly, plugins, error handler
-  config/             env parsing (Zod), feature flags
-  http/               the shared error envelope
-  auth/               operators, scrypt hashing, server-side sessions,
-                      deny-by-default route guard, login rate limit
-  observability/      Pino logger, key-name redaction, OTel bootstrap and span
-                      helpers, shared metric shapes
-  secrets/            AES-256-GCM sealing with a key from the environment;
-                      keyVersion on each row leaves room for rotation
-  labs/               Lab model, lifecycle state machine, simulator engine
-  events/             normalisation, Zod schemas, dedup, ingestion queries
-  integrations/       provider interface, simulator adapter, CloudLabs adapter
-                      (no capabilities: the gate is closed), connection settings
-  incidents/          correlation engine, incident lifecycle and transitions
-  investigations/     evidence assembly, LLM providers (fixture, Gemini),
-                      prompt, strict output schema, investigate job
-  policies/           pure policy evaluator: allow-list, the seven steps,
-                      preconditions, retry and cooldown limits
-  jobs/               BullMQ queues, outbox job rows, runner, reconciler
-  recovery/           proposals, approve/reject, expiry sweep, execution with
-                      revalidation, post-action verification
-  audit/              append-only audit writer + queries
-  events-stream/      committed-audit feed (xid8 boundary), one poller per
-                      process, SSE route with Last-Event-ID replay
-  metrics/            GET /api/metrics: combines each module's stats.ts, which
-                      derives its own figures from its own committed rows
-  demo/               flag-gated scenario trigger (DEMO_ENABLED); calls the
-                      labs service, never touches real provider data
-  seed-operator.ts    one-shot: creates or resets the demo operator
-  worker.ts           worker entrypoint: wires domain job handlers to jobs/;
-                      jobs/ itself stays generic and imports no domain
+apps/api/
+  src/
+    index.ts            API entrypoint: process bootstrap, graceful shutdown
+    worker.ts           worker entrypoint: wires feature job handlers to
+                        platform/jobs, which stays generic
+    app.ts              Fastify assembly: plugins, error handler, routes
+    db.ts               the Prisma client
+    seed-operator.ts    one-shot: creates or resets the demo operator
+
+    platform/           cross-cutting plumbing; holds no business rules
+      config/           env parsing (Zod), feature flags
+      http/             the shared error envelope
+      auth/             operators, scrypt hashing, server-side sessions,
+                        deny-by-default route guard, login rate limit
+      audit/            append-only audit writer + queries
+      observability/    Pino logger, key-name redaction, OTel bootstrap and
+                        span helpers, shared metric shapes
+      secrets/          AES-256-GCM sealing with a key from the environment;
+                        keyVersion on each row leaves room for rotation
+      jobs/             BullMQ queues, outbox job rows, runner, reconciler
+      events-stream/    committed-audit feed (xid8 boundary), one poller per
+                        process, SSE route with Last-Event-ID replay
+
+    modules/            one folder per business feature: routes.ts (HTTP only),
+                        schemas.ts (request validation), service.ts or
+                        services/ (logic), jobs/ (background jobs); policies
+                        is a pure evaluator with no routes
+      labs/             Lab model, lifecycle state machine, simulator engine
+      events/           normalisation, Zod schemas, dedup, ingestion queries
+      incidents/        correlation engine (scoring, clustering), incident
+                        lifecycle and transitions; jobs/correlate.job.ts
+      investigations/   evidence assembly, prompt, strict output schema,
+                        providers/ (fixture, Gemini); jobs/investigate.job.ts
+      policies/         pure policy evaluator: allow-list, the seven steps,
+                        preconditions, retry and cooldown limits
+      recovery/         services/ (propose, approve/reject, expire); execution
+                        with revalidation and verification in jobs/execute.job.ts
+      integrations/     adapters/ (simulator, CloudLabs with no capabilities:
+                        the gate is closed), connection settings
+      metrics/          GET /api/metrics: combines each module's stats.ts
+      demo/             flag-gated scenario trigger (DEMO_ENABLED)
+
+  test/                 every test, never next to source; mirrors src/
+    unit/               pure logic, no database (npm test)
+    integration/        real Postgres + Redis (npm run test:integration)
+    live/               the opt-in real-model check (npm run test:live)
+    fixtures/           signed-in session, seeded incident
 ```
 
-**Dependency rule:** modules may depend *downward* only —
+Read it top-down: an entrypoint, then `app.ts` for the routes it registers,
+then a module's `routes.ts` and `service.ts`.
+
+**Dependency rule:** feature modules may depend *downward* only —
 `investigations → recovery → {policies, incidents} → events → labs`.
 `investigations` sits above `recovery` (a diagnosis is proposed in the same
 transaction), and `policies` stays pure: it depends only on `labs`, and the
@@ -227,6 +244,9 @@ apps/web/src/
     live-refresh.tsx      one event stream per tab; refreshes on relevant events
   lib/                    API access (cookie forwarding), Zod response
                           schemas, formatters, URL query building
+apps/web/test/
+  unit/                   Vitest, mirroring src/
+  e2e/journey.spec.ts     the Playwright operator journey
 ```
 
 **The browser talks only to the web server (a BFF).** Sign-in runs as a
@@ -527,7 +547,7 @@ auditable function. Keeping these apart is what makes the system explainable.
 | Same state transition pattern | 0.05 | Weak. *Not yet scored*, for the same reason |
 | Same lab type | 0.05 | Weak |
 
-A failure joins at **0.70 or more** (`incidents/scoring.ts`), which takes
+A failure joins at **0.70 or more** (`modules/incidents/scoring.ts`), which takes
 category, dependency and closeness in time together; category alone, or
 category and lab type, can never merge failures. Scores are rounded to two
 decimals so operators read 0.85, not a float artefact.
@@ -557,7 +577,7 @@ chaining into one meaningless mega-incident.
 ### The correlate job
 
 A stored failure arms a correlate job for its ten-minute window (Phase 4).
-The job (`incidents/correlate.job.ts`) runs in one transaction:
+The job (`modules/incidents/jobs/correlate.job.ts`) runs in one transaction:
 
 1. Takes a transaction-scoped advisory lock, so runs are serialised. Overlapping
    windows can choose different anchors for the same failure; the `windowKey`
@@ -610,7 +630,7 @@ flowchart LR
    a deterministic fixture provider and CI never depends on a live model.
 
 
-**How Phase 7 implements them** (`apps/api/src/investigations/`)
+**How Phase 7 implements them** (`apps/api/src/modules/investigations/`)
 
 - The evidence pack (`evidence.ts`) holds at most 50 failures and 500
   characters per message, re-redacted; event metadata is never included.
@@ -710,13 +730,13 @@ exactly *which* rule blocked an action and why.
 
 ### How Phase 8 implements it
 
-- `policies/actions.ts` is the table above as data (targets, eligible lab
+- `modules/policies/actions.ts` is the table above as data (targets, eligible lab
   states, categories an action cannot fix, attempt caps, cooldowns); a test
   fails if it, the enum and this table ever disagree.
-- `policies/evaluate.ts` is pure: steps in fixed order, stopping at the first
+- `modules/policies/evaluate.ts` is pure: steps in fixed order, stopping at the first
   failure, one `{ step, passed, reason }` per step run. Proposals run steps
   1-5; execution re-runs 3-7.
-- `recovery/propose.ts` locks the incident row, gathers facts, evaluates and
+- `modules/recovery/services/propose.ts` locks the incident row, gathers facts, evaluates and
   records the result in one transaction. Allowed: `awaiting_approval` with an
   expiry. Blocked: `rejected_by_policy`, incident to `manual_review`. A repeat
   for the same action and targets returns the unfinished proposal.
@@ -739,20 +759,20 @@ automatically.
 
 ### How Phase 9 implements it
 
-- **Approve / reject** (`recovery/approve.ts`): `SELECT … FOR UPDATE` on the
+- **Approve / reject** (`modules/recovery/services/approve.ts`): `SELECT … FOR UPDATE` on the
   action; approve requires `awaiting_approval`, enforces `expiresAt` itself (a
   late click expires the action and gets 409), records the approver from the
   session and queues one execute job keyed by the action. Reject returns the
   incident to `open`. They live in `recovery/` because `RecoveryAction` is
   recovery's table.
-- **Execute** (`recovery/execute.job.ts`), three steps:
+- **Execute** (`modules/recovery/jobs/execute.job.ts`), three steps:
   1. One transaction: re-run policy steps 3-7 against fresh state (the
      action's own row excluded from concurrency; approver and expiry
      re-checked). Changed means `blocked` with the step and reason, incident
      to `manual_review`. Otherwise `running`, retried labs to `recovering`,
      incident to `recovering`, lab states before stored.
   2. Outside any transaction: the simulated action
-     (`labs/recovery-simulator.ts`, one outcome per failure category).
+     (`modules/labs/recovery-simulator.ts`, one outcome per failure category).
   3. One transaction behind a compare-and-set on `running`: apply, then
      **verify** by re-reading every lab in the incident. All `ready` means
      `resolved`; anything else is `manual_review`.
@@ -761,7 +781,7 @@ automatically.
   lab an ingested event moved meanwhile keeps that newer evidence
   (`verificationResult.changedByEvents`). A replay changes nothing, a crash after step 1 resumes,
   and an exhausted job fails the action and returns labs to `failed`.
-- **Expiry sweep** (`recovery/expire.ts`) runs on the worker's 60 s tick with
+- **Expiry sweep** (`modules/recovery/services/expire.ts`) runs on the worker's 60 s tick with
   `FOR UPDATE SKIP LOCKED`; approve and execute check expiry too, so
   correctness never waits for it.
 - Self-approval is allowed (one demo operator, no roles); proposer and
@@ -824,7 +844,7 @@ and shown on the overview. `GET /api/metrics/series` adds the failure timeline:
 failures received in the window, bucketed by event time per error category,
 at most 60 buckets, with empty buckets filled so a chart never invents a line. Each module computes its own figures from its own
 table (`<module>/stats.ts`; incident metrics also join the events they cite);
-`metrics/` combines them, and the series route reads `events/stats.ts`. Chosen over an
+`metrics/` combines them, and the series route reads `modules/events/stats.ts`. Chosen over an
 in-process OTel meter because the API and the worker both write the rows, so
 one query counts both processes; the figures survive a restart; and they cannot
 disagree with the audit trail. The cost: no time series and no history beyond
@@ -1037,7 +1057,7 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Pino with shared Fastify instance and key-name redaction | Done | Trace id on API request logs (needs HTTP spans) |
 | Vitest unit + integration suites, Playwright journey, CI gates | Done (Phase 14) | — |
 | CI: change detection, build, lint, tests, coverage, quality gate, compose smoke + e2e | Done | No release pipeline: local-only by decision (Phase 15) |
-| Deterministic simulator (`labs/simulator.ts`), `training-event` scenario | Done (Phase 2) | — |
+| Deterministic simulator (`modules/labs/simulator.ts`), `training-event` scenario | Done (Phase 2) | — |
 | Demo scenario endpoint, flag-gated and idempotent | Done (Phase 2) | — |
 | Event ingestion: validation, redaction at entry, DB dedup, lab transitions | Done (Phase 3) | — |
 | `POST /api/events`, `GET /api/labs/:id/events` | Done (Phase 3) | — |

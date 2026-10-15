@@ -25,7 +25,7 @@ handler is a placeholder in `events/` (counts the window's failures) until
 Phase 5 moves real correlation to `incidents/`; `ioredis` is an explicit
 dependency because BullMQ 6 made it optional.
 
-Phase 5 deviations: files are `incidents/scoring.ts`, `clustering.ts`,
+Phase 5 deviations: files are `modules/incidents/scoring.ts`, `clustering.ts`,
 `correlate.job.ts` and `routes.ts`; the preceding-sequence and transition
 signals wait for labs with more than one event; concurrent runs are stopped
 by an advisory lock as well as the `windowKey` index, since overlapping
@@ -95,8 +95,8 @@ server relays the stream to the browser (BFF).
 
 **Source:** `SPEC.md` (this folder), `ARCHITECTURE.md`, `CLAUDE.md`; infrastructure details in `docs/infra/INFRA.md`
 **Starting point:** skeleton — Fastify `/health` + `/api/labs`, one-table Prisma schema
-(`apps/api/prisma/schema.prisma`), lab transition map (`apps/api/src/labs/transitions.ts`),
-Pino logger with key-name redaction (`apps/api/src/observability/`), Next.js health page,
+(`apps/api/prisma/schema.prisma`), lab transition map (`apps/api/src/modules/labs/transitions.ts`),
+Pino logger with key-name redaction (`apps/api/src/platform/observability/`), Next.js health page,
 CI pipelines.
 
 ---
@@ -156,7 +156,7 @@ Phase 0; where a later phase changed a row, the row says so.
 | Deterministic randomness | A ~10-line seeded PRNG (mulberry32) in `labs/simulator` | No dependency for something this small; same seed → identical scenario |
 | Operator auth | Seeded operators, scrypt password hash (`node:crypto`), httpOnly session cookie via `@fastify/cookie`. *As built:* an opaque random token, stored server-side only as its SHA-256; not a signed cookie | Spec asks for a simple operator role; a token in `NEXT_PUBLIC_*` would violate `CLAUDE.md §4` |
 | API error shape | `{ error: { code, message, requestId } }` from one Fastify error handler | One envelope (`CLAUDE.md §7`); stack traces never leave the process |
-| Config | `config/env.ts` parses `process.env` with Zod at startup; the process fails fast on bad config | One place that knows every variable |
+| Config | `platform/config/env.ts` parses `process.env` with Zod at startup; the process fails fast on bad config | One place that knows every variable |
 | Integration tests | `test:integration` script, real Postgres + Redis (compose locally, service containers in CI) | Already the CI design; no extra tool |
 
 **New dependencies (each with why):**
@@ -183,16 +183,16 @@ the code. Where the built name differs, the module is the same:
 
 | Planned | As built |
 |---|---|
-| `labs/labs.service.ts`, `labs/labs.routes.ts` | `labs/service.ts`, `labs/routes.ts` |
-| `incidents/correlation/{signals,cluster}.ts`, `incidents/incidents.routes.ts` | `incidents/scoring.ts`, `incidents/clustering.ts`, `incidents/routes.ts` |
-| `labs/simulator/{prng,scenarios,engine}.ts`, `demo/demo.routes.ts` | `labs/simulator.ts`, `labs/recovery-simulator.ts`, `demo/routes.ts` |
-| `events/ingest.ts`, `events/events.routes.ts` | `events/service.ts`, `events/routes.ts` |
-| `jobs/enqueue.ts` | `jobs/record.ts` (outbox row and dispatch), `jobs/runner.ts` |
-| `auth/auth.routes.ts` | `auth/routes.ts` |
-| `approvals/approve.ts`, `recovery/verify.ts` | `recovery/approve.ts`, `recovery/expire.ts`; verification lives in `recovery/execute.job.ts` |
-| `events-stream/hub.ts` with a Redis subscriber, `stream.routes.ts` | `events-stream/hub.ts` polling committed rows, `feed.ts`, `routes.ts` |
+| `labs/labs.service.ts`, `labs/labs.routes.ts` | `modules/labs/service.ts`, `modules/labs/routes.ts` |
+| `incidents/correlation/{signals,cluster}.ts`, `incidents/incidents.routes.ts` | `modules/incidents/scoring.ts`, `modules/incidents/clustering.ts`, `modules/incidents/routes.ts` |
+| `labs/simulator/{prng,scenarios,engine}.ts`, `demo/demo.routes.ts` | `modules/labs/simulator.ts`, `modules/labs/recovery-simulator.ts`, `modules/demo/routes.ts` |
+| `events/ingest.ts`, `events/events.routes.ts` | `modules/events/service.ts`, `modules/events/routes.ts` |
+| `jobs/enqueue.ts` | `platform/jobs/record.ts` (outbox row and dispatch), `platform/jobs/runner.ts` |
+| `auth/auth.routes.ts` | `platform/auth/routes.ts` |
+| `approvals/approve.ts`, `recovery/verify.ts` | `modules/recovery/services/approve.ts`, `modules/recovery/services/expire.ts`; verification lives in `modules/recovery/jobs/execute.job.ts` |
+| `platform/events-stream/hub.ts` with a Redis subscriber, `stream.routes.ts` | `platform/events-stream/hub.ts` polling committed rows, `feed.ts`, `routes.ts` |
 | web `lib/sse.ts` | `lib/live.ts`, `components/live-refresh.tsx`, `app/api/events/stream/route.ts` |
-| `integrations/integrations.routes.ts`, web `integrations/cloudlabs/page.tsx` | `integrations/routes.ts`, `(dashboard)/integrations/page.tsx` |
+| `integrations/integrations.routes.ts`, web `integrations/cloudlabs/page.tsx` | `modules/integrations/routes.ts`, `(dashboard)/integrations/page.tsx` |
 
 Ordered by dependency: data → logic → API → UI. Every phase merges as its own PR
 with lint, typecheck, unit, integration and coverage green.
@@ -202,7 +202,7 @@ with lint, typecheck, unit, integration and coverage green.
 **Endpoints:** none new. `/api/labs` moves onto the error envelope.
 **Middlewares:** global error handler (envelope + `requestId`); `bodyLimit` set on the Fastify instance.
 **Data / migrations:** `prisma migrate dev --name init` baselines the current `Lab` table; `npm run db:migrate` replaces `db:push` in docs, compose and CI.
-**Files:** new `config/env.ts`, `http/errors.ts`; changed `app.ts`, `index.ts`, `package.json` scripts, `.github/workflows/api.yml`, `scripts/check-required-scripts.mjs` (add `test:integration`), `vitest.integration.config.ts` (new).
+**Files:** new `platform/config/env.ts`, `platform/http/errors.ts`; changed `app.ts`, `index.ts`, `package.json` scripts, `.github/workflows/api.yml`, `scripts/check-required-scripts.mjs` (add `test:integration`), `vitest.integration.config.ts` (new).
 **Logic:** Zod env schema; typed `AppError` with codes mapped to HTTP status.
 **Tests:**
 - An invalid env (missing `DATABASE_URL`) fails startup → catches silent misconfiguration.
@@ -219,7 +219,7 @@ with lint, typecheck, unit, integration and coverage green.
 - `Lab` += `labType`, `source` (`simulated|provider`), status → enum `LabStatus`.
 - New `Dependency(id, kind, status)`, `LabDependency(labId, dependencyId)` with a composite primary key.
 - New `AuditEntry(id, seq BIGSERIAL UNIQUE, actorType enum, actorId, action, targetType, targetId, outcome, correlationId, metadata jsonb, createdAt)`, with indexes on `(targetType, targetId, seq)` and the append-only trigger.
-**Files:** new `audit/audit.ts` (`writeAudit(tx, entry)`; it takes a transaction so it cannot be written outside one), `labs/labs.service.ts` (`transitionLab(tx, labId, to, actor)` = `assertTransition` + update + audit), `labs/labs.routes.ts`.
+**Files:** new `platform/audit/audit.ts` (`writeAudit(tx, entry)`; it takes a transaction so it cannot be written outside one), `labs/labs.service.ts` (`transitionLab(tx, labId, to, actor)` = `assertTransition` + update + audit), `labs/labs.routes.ts`.
 **Logic:** every lab status change goes through `transitionLab`; responses map to a `LabView` type, never raw Prisma rows (fixes the current `/api/labs`).
 **Tests:**
 - Illegal transition throws and writes nothing → catches a half-applied transition.
@@ -253,7 +253,7 @@ with lint, typecheck, unit, integration and coverage green.
 **Endpoints:** `POST /api/events` → `201 { eventId }` or `200 { eventId, duplicate: true }`.
 **Middlewares:** per-route `bodyLimit` (16 KB).
 **Data / migrations:** `OperationalEvent(id, labId FK, eventType enum, errorCategory enum, message, dependencyId?, occurredAt, metadata jsonb, deduplicationKey UNIQUE, traceId, source)`; indexes on `(labId, occurredAt)`, `(errorCategory, occurredAt)`, `(dependencyId, occurredAt)` for correlation reads.
-**Files:** new `events/schema.ts` (Zod), `events/normalise.ts` (raw error → category), `events/ingest.ts` (one transaction: insert event + transition lab to `failed` on an error event + audit), `events/events.routes.ts`. The simulator now emits through `ingest()`, not HTTP.
+**Files:** new `modules/events/schemas.ts` (Zod), `modules/events/normalise.ts` (raw error → category), `events/ingest.ts` (one transaction: insert event + transition lab to `failed` on an error event + audit), `events/events.routes.ts`. The simulator now emits through `ingest()`, not HTTP.
 **Logic:** redaction runs in `normalise` before persistence (`CLAUDE.md §5`: at the boundary); the dedup key is the provider event ID if present, else a hash of `(labId, eventType, errorCategory, occurredAt)`; a conflict returns the prior event and re-runs nothing.
 **Tests:**
 - A malformed payload returns 400 with the envelope and persists nothing.
@@ -268,7 +268,7 @@ with lint, typecheck, unit, integration and coverage green.
 
 **Endpoints:** `GET /api/jobs/:id`.
 **Data / migrations:** `JobExecution(id, queue, jobKey UNIQUE, status enum, attempts, errorSummary, startedAt, finishedAt, traceparent)`.
-**Files:** new `jobs/queues.ts` (queue names + typed payloads), `jobs/enqueue.ts` (`jobId` derived from an idempotency key; writes the `JobExecution` row), `jobs/worker.ts` (entrypoint, no HTTP listener), `jobs/reconcile.ts` (on startup, re-queue or fail `running` rows past their lease), `observability/tracing.ts` (OTel SDK bootstrap + `traceparent` inject/extract helpers); compose gets a `worker` service; root script `dev:worker`.
+**Files:** new `platform/jobs/queues.ts` (queue names + typed payloads), `jobs/enqueue.ts` (`jobId` derived from an idempotency key; writes the `JobExecution` row), `platform/jobs/worker.ts` (entrypoint, no HTTP listener), `platform/jobs/reconcile.ts` (on startup, re-queue or fail `running` rows past their lease), `platform/observability/tracing.ts` (OTel SDK bootstrap + `traceparent` inject/extract helpers); compose gets a `worker` service; root script `dev:worker`.
 **Logic:** ingestion enqueues `correlate` with `jobId = correlate:<windowKey>` and a short delay (debounce). Trace context goes into the job payload, and the worker continues the same trace.
 **Tests:**
 - Enqueueing the same key twice gives one job → catches duplicate work.
@@ -285,7 +285,7 @@ with lint, typecheck, unit, integration and coverage green.
 **Data / migrations:**
 - `Incident(id, title, status enum, severity enum, windowKey, confidenceScore, correlationReason jsonb, createdAt, updatedAt, resolvedAt)` + partial unique index on open `windowKey`.
 - `IncidentLab(incidentId, labId, reason, signalScore)` with a composite primary key.
-**Files:** new `incidents/transitions.ts` (`INCIDENT_TRANSITIONS`, same pattern as `labs/transitions.ts`), `incidents/correlation/signals.ts`, `incidents/correlation/cluster.ts` (pure), `incidents/correlate.job.ts`, `incidents/incidents.routes.ts`.
+**Files:** new `modules/incidents/transitions.ts` (`INCIDENT_TRANSITIONS`, same pattern as `modules/labs/transitions.ts`), `incidents/correlation/signals.ts`, `incidents/correlation/cluster.ts` (pure), `modules/incidents/jobs/correlate.job.ts`, `incidents/incidents.routes.ts`.
 **Logic:**
 - Signals and weights come from `ARCHITECTURE.md §8`. Clustering is anchor-based, which blocks single-link chaining.
 - Writes are upserts keyed by `windowKey`, and a lab already in an open incident is not re-added.
@@ -306,7 +306,7 @@ with lint, typecheck, unit, integration and coverage green.
 **Endpoints:** `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`.
 **Middlewares:** `requireOperator` preHandler on every `/api/*` route except `/health`, `/api/auth/login` and, when enabled, the demo scenario route (only behind `DEMO_ENABLED`). Rate limit on login.
 **Data / migrations:** `Operator(id, username UNIQUE, passwordHash, role enum, createdAt)`; seed script creates demo operators from env.
-**Files:** new `auth/password.ts` (scrypt), `auth/session.ts`, `auth/auth.routes.ts`; CORS gets `credentials: true`; web `api-client` sends `credentials: 'include'`.
+**Files:** new `platform/auth/password.ts` (scrypt), `platform/auth/session.ts`, `auth/auth.routes.ts`; CORS gets `credentials: true`; web `api-client` sends `credentials: 'include'`.
 **Logic:** a signed, httpOnly, `SameSite=Lax` cookie holds the operator ID and expiry; `actorId` on every human-caused audit entry comes from the session, never from the request body.
 **Tests:**
 - No cookie → 401 on a protected route.
@@ -321,7 +321,7 @@ with lint, typecheck, unit, integration and coverage green.
 
 **Endpoints:** `POST /api/incidents/:id/investigate` → `202 { jobId }`, or `200` with the active investigation while one is running.
 **Data / migrations:** `Investigation(id, incidentId FK, status enum pending|running|completed|error, summary, candidateCause, evidenceReferences jsonb, missingEvidence jsonb, contradictingEvidence jsonb, confidence, diagnosticChecks jsonb, recommendedAction enum?, requiresApproval, modelMetadata jsonb, createdAt)`.
-**Files:** new `investigations/provider.ts` (`LlmProvider.analyse(pack): Promise<unknown>`), `investigations/fixture-provider.ts`, `investigations/evidence.ts` (fixed query, capped at N events and M characters each, redacted, with a redaction summary), `investigations/prompt.ts` (fixed system text + delimited data block), `investigations/output-schema.ts` (strict Zod, closed enums), `investigations/investigate.job.ts`.
+**Files:** new `modules/investigations/providers/provider.ts` (`LlmProvider.analyse(pack): Promise<unknown>`), `modules/investigations/providers/fixture-provider.ts`, `modules/investigations/evidence.ts` (fixed query, capped at N events and M characters each, redacted, with a redaction summary), `modules/investigations/prompt.ts` (fixed system text + delimited data block), `modules/investigations/output-schema.ts` (strict Zod, closed enums), `modules/investigations/jobs/investigate.job.ts`.
 **Logic:**
 - Incident `open → investigating`, call the provider, then parse.
 - If the output is valid, persist it, then intersect the targets with the incident's labs and drop the rest.
@@ -343,7 +343,7 @@ with lint, typecheck, unit, integration and coverage green.
 
 **Endpoints:** `POST /api/incidents/:id/recovery-proposals` → `201 { recoveryActionId, status }`; also created automatically after a completed investigation.
 **Data / migrations:** `RecoveryAction(id, incidentId FK, actionType enum, targetIds text[], parameters jsonb, status enum proposed|rejected_by_policy|awaiting_approval|approved|rejected|expired|running|succeeded|failed|blocked, idempotencyKey UNIQUE, proposedBy, approvedBy?, approvedAt?, expiresAt?, executedAt?, result jsonb, verificationResult jsonb, policyDecisions jsonb)`.
-**Files:** new `policies/actions.ts` (the allow-list from `ARCHITECTURE.md §10`), `policies/evaluate.ts` (pure; the 7 steps in fixed order, each returning `{ step, passed, reason }`), `recovery/propose.ts`.
+**Files:** new `modules/policies/actions.ts` (the allow-list from `ARCHITECTURE.md §10`), `modules/policies/evaluate.ts` (pure; the 7 steps in fixed order, each returning `{ step, passed, reason }`), `modules/recovery/services/propose.ts`.
 **Logic:**
 - Evaluation runs in fixed order and stops at the first failing step, recording it.
 - Steps 1–5 run at proposal time; 6–7 run again at execution time (Phase 9).
@@ -364,7 +364,7 @@ with lint, typecheck, unit, integration and coverage green.
 **Endpoints:** `POST /api/recovery-actions/:id/approve` → `202 { jobId }`; `POST /api/recovery-actions/:id/reject` → `200`.
 **Middlewares:** `requireOperator`.
 **Data:** none new; uses `RecoveryAction`, `JobExecution`, `Incident`, `Lab`.
-**Files:** new `approvals/approve.ts` (`SELECT … FOR UPDATE`, TTL check, record approver), `recovery/execute.job.ts`, `recovery/verify.ts`.
+**Files:** new `approvals/approve.ts` (`SELECT … FOR UPDATE`, TTL check, record approver), `modules/recovery/jobs/execute.job.ts`, `recovery/verify.ts`.
 **Logic:**
 - Approve: lock the row, require `awaiting_approval` and not expired, record the approver, enqueue `execute:<idempotencyKey>`.
 - Execute: in one transaction, re-run policy steps 3–7 against fresh state. If anything changed, the action is `blocked` with a reason. Otherwise it is `running` and the lab moves to `recovering`.
@@ -385,7 +385,7 @@ with lint, typecheck, unit, integration and coverage green.
 ### Phase 10 — Live updates over SSE
 
 **Endpoints:** `GET /api/events/stream` (`text/event-stream`; honours `Last-Event-ID`).
-**Files:** new `events-stream/hub.ts` (one Redis subscriber per API process, fan-out to connected clients), `events-stream/stream.routes.ts`; `audit.ts` publishes the `seq` after commit (`afterCommit`, never inside the transaction).
+**Files:** new `platform/events-stream/hub.ts` (one Redis subscriber per API process, fan-out to connected clients), `events-stream/stream.routes.ts`; `audit.ts` publishes the `seq` after commit (`afterCommit`, never inside the transaction).
 **Logic:** each SSE message is `id: <seq>` plus an audit-derived payload (no metadata blobs). On reconnect, missed entries are replayed from Postgres where `seq > Last-Event-ID`. A heartbeat comment every 15 s keeps proxies from closing the connection.
 **Tests:**
 - A client that reconnects with `Last-Event-ID` receives exactly the missed entries.
@@ -397,7 +397,7 @@ with lint, typecheck, unit, integration and coverage green.
 
 ### Phase 11 — Real LLM provider (opt-in)
 
-**Files:** new `investigations/<provider>-provider.ts`; `config/env.ts` gets `LLM_PROVIDER=fixture|<provider>`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TIMEOUT_MS`.
+**Files:** new `investigations/<provider>-provider.ts`; `platform/config/env.ts` gets `LLM_PROVIDER=fixture|<provider>`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TIMEOUT_MS`.
 **Logic:** same `LlmProvider` interface; structured output constrained by the same Zod schema (converted to JSON Schema); timeout plus bounded retry with backoff; `modelMetadata` stores the model ID and token counts, never the key.
 **Tests:** a `*.live.test.ts`, excluded from the default run (the exclusion already exists in `vitest.config.ts`) and run by an opt-in CI job; the malformed-output tests from Phase 7 still pass with the fixture provider.
 **Verify:** run the opt-in test locally with a key; confirm the default CI run makes no network call to the provider.
@@ -459,7 +459,7 @@ Phase 11 deviations, settled by measurement rather than by the docs:
 
 `sync`, `webhooks` and `deliveries` are **not built**: their contract is unverified (Integration gate, `ARCHITECTURE.md §13`).
 **Data / migrations:** `IntegrationConnection(id, provider UNIQUE, displayName, state enum, encryptedCredentials bytea?, keyVersion, supportedEventTypes jsonb, lastSuccessfulTestAt?, lastSyncAt?, updatedBy, createdAt, updatedAt)`.
-**Files:** new `secrets/crypto.ts` (AES-256-GCM, key from `CREDENTIALS_KEY` env, versioned), `integrations/adapter.ts` (the `ProviderAdapter` interface), `integrations/simulator-adapter.ts`, `integrations/cloudlabs-adapter.ts` (reports no capabilities, so the connection reads `not_configured`), `integrations/integrations.routes.ts`; web `app/(dashboard)/integrations/cloudlabs/page.tsx`.
+**Files:** new `platform/secrets/crypto.ts` (AES-256-GCM, key from `CREDENTIALS_KEY` env, versioned), `modules/integrations/adapters/adapter.ts` (the `ProviderAdapter` interface), `modules/integrations/adapters/simulator-adapter.ts`, `modules/integrations/adapters/cloudlabs-adapter.ts` (reports no capabilities, so the connection reads `not_configured`), `integrations/integrations.routes.ts`; web `app/(dashboard)/integrations/cloudlabs/page.tsx`.
 **Logic:** the UI renders only what `capabilities` reports, and simulator mode is shown clearly. No auth fields are rendered until the real contract is known (spec F2a).
 **Tests:**
 - An encrypt/decrypt round trip works, and a wrong key fails closed.
@@ -503,7 +503,7 @@ Phase 13 deviations, settled by building it:
 
 ### Phase 14 — End-to-end tests and metrics
 
-**Files:** `apps/web/e2e/journey.spec.ts` (Playwright, seeded scenario, fixture LLM), CI job running compose and then Playwright; `GET /api/metrics` from each module's `stats.ts`: events received, incidents created, first event to incident, correlation run time, queue depth and retries, AI outcomes and latency, recovery outcomes, approval → verified, oldest open transaction.
+**Files:** `apps/web/test/e2e/journey.spec.ts` (Playwright, seeded scenario, fixture LLM), CI job running compose and then Playwright; `GET /api/metrics` from each module's `stats.ts`: events received, incidents created, first event to incident, correlation run time, queue depth and retries, AI outcomes and latency, recovery outcomes, approval → verified, oldest open transaction.
 **Deviation (owner decision):** metrics are derived from committed Postgres rows, not an OTel metrics SDK. Without a collector in compose OTel metrics would be invisible on a real run, the worker cannot be scraped (it never serves HTTP), and in-process counters would split across two processes and reset on restart. `ARCHITECTURE.md` section 12 records the trade-off.
 **Tests:** the spec's journey, plus the negative cases visible in the UI: the permission-denied incident stays separate, a rejected proposal reopens the incident, and a double-clicked approval runs once. The blocked action's card is checked too: the fixture model recommends a retry for a permission failure on purpose, and policy blocks it (#24).
 **Verify:** CI green with the E2E job; metrics are visible from a real run (never hardcoded).
@@ -512,7 +512,7 @@ Phase 13 deviations, settled by building it:
 
 ### Phase 15 — Delivery
 
-**Delivered:** `Incident.traceparent`, joined by the investigation and the approval, so one incident is one trace (`recovery/incident-trace.int.test.ts`); the service name on every span; `compose.tracing.yml` (opt-in Jaeger); the README walkthrough with real screenshots and real numbers from `/api/metrics`; the unused CI `deploy` path removed.
+**Delivered:** `Incident.traceparent`, joined by the investigation and the approval, so one incident is one trace (`test/integration/modules/recovery/incident-trace.int.test.ts`); the service name on every span; `compose.tracing.yml` (opt-in Jaeger); the README walkthrough with real screenshots and real numbers from `/api/metrics`; the unused CI `deploy` path removed.
 **Decisions (owner):** local-only, no hosted instance (a public deploy adds attack surface and makes the proxy-IP gaps live, for nothing a reviewer can check); the React Flow dependency graph dropped (optional, and correlation is explained per lab on the incident page).
 **Done when:** a reviewer can start the stack from the README, run the scenario, and follow one incident through logs and a trace.
 

@@ -14,19 +14,19 @@ the job id — never await the work.
 ## Where things go
 
 ```
-apps/api/src/jobs/
+apps/api/src/platform/jobs/
   queues.ts       queue names, the JobMessage type, connections
   record.ts       recordJob (outbox row in the caller's transaction),
                   dispatchJob (send to Redis after commit)
   runner.ts       runJob: status, attempts, trace continuation, onExhausted
   reconcile.ts    re-sends stale queued/running rows (lease 2 min)
   worker.ts       creates a BullMQ worker for one queue
-apps/api/src/<domain>/*.job.ts   the handlers, e.g. incidents/correlate.job.ts
+apps/api/src/modules/<feature>/jobs/*.job.ts   the handlers, e.g. incidents/jobs/correlate.job.ts
 apps/api/src/worker.ts           the worker entrypoint: wires handlers to jobs/
 ```
 
 `src/index.ts` boots the API; `src/worker.ts` boots the worker. `jobs/` stays
-generic and imports no domain module. **The worker never serves HTTP.**
+generic and imports no feature module. **The worker never serves HTTP.**
 
 ## Procedure
 

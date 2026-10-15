@@ -429,10 +429,19 @@ git-ignored.
 labops-copilot/
 ├── apps/
 │   ├── api/                     Fastify API + BullMQ worker (Node.js/TS)
-│   │   ├── prisma/schema.prisma Data model
-│   │   └── src/                 Application source
+│   │   ├── prisma/              Data model and migrations
+│   │   ├── src/
+│   │   │   ├── index.ts, worker.ts, app.ts   Entrypoints: start here
+│   │   │   ├── platform/        Cross-cutting: config, http, auth, audit,
+│   │   │   │                    observability, secrets, jobs, events-stream
+│   │   │   └── modules/         One folder per feature: labs, events,
+│   │   │                        incidents, investigations, policies, recovery,
+│   │   │                        integrations, metrics, demo. Each has routes.ts,
+│   │   │                        schemas.ts, service.ts (or services/), jobs/
+│   │   └── test/                unit/, integration/, live/, fixtures/
 │   └── web/                     Next.js operator dashboard
-│       └── e2e/                 Playwright operator journey
+│       ├── src/                 app/ (pages), components/, lib/
+│       └── test/                unit/ (Vitest), e2e/ (Playwright journey)
 ├── docs/                        Spec, plan, acceptance map, infra notes, images
 ├── ARCHITECTURE.md              System architecture and trade-offs
 ├── docker-compose.yml           The full stack

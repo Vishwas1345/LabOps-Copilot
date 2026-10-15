@@ -13,7 +13,7 @@ skill is mandatory — not optional polish.
 ## Where things go
 
 ```
-apps/api/src/observability/
+apps/api/src/platform/observability/
   logger.ts      Pino, the key-name redaction safety net, header paths
   redact.ts      redactSecrets: walks a log object and masks secret-named keys
   tracing.ts     OpenTelemetry bootstrap (service.name), withSpan,
@@ -30,7 +30,7 @@ apps/api/src/observability/
    redaction is the control.
 
 2. **Child loggers carry context.** Worker job lines carry `jobId`, `jobKey`,
-   `queue` and `traceId` (`jobs/runner.ts`); handlers add `incidentId` where
+   `queue` and `traceId` (`platform/jobs/runner.ts`); handlers add `incidentId` where
    they know it. Fastify request lines carry the request id.
 
 3. **Never `console.log` in backend source.** Never log a full unredacted
@@ -69,9 +69,9 @@ apps/api/src/observability/
 Metrics are **derived from committed Postgres rows**, not kept in process
 counters: one query counts both the api and the worker, the figures survive a
 restart, and they cannot disagree with the audit trail. Each module that owns a
-table computes its own figures in `<module>/stats.ts`; `metrics/service.ts`
+table computes its own figures in `<module>/stats.ts`; `modules/metrics/service.ts`
 combines them for `GET /api/metrics`, and `GET /api/metrics/series` reads
-`events/stats.ts` directly.
+`modules/events/stats.ts` directly.
 
 - Durations are percentiles (`percentile_cont`) over the window; one with no
   samples is `null`, never `0`.
