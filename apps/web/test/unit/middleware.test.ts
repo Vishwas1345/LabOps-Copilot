@@ -24,6 +24,10 @@ describe('middleware', () => {
     const pattern = new RegExp(`^${config.matcher[0]}$`);
     expect(pattern.test('/login')).toBe(false);
     expect(pattern.test('/_next/static/chunk.js')).toBe(false);
+    // Google sign-in starts and returns before there is a session.
+    expect(pattern.test('/auth/google/start')).toBe(false);
+    expect(pattern.test('/auth/google/callback')).toBe(false);
     expect(pattern.test('/incidents')).toBe(true);
+    expect(pattern.test('/authors')).toBe(true);
   });
 });
