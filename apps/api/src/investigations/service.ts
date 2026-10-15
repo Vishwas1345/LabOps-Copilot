@@ -10,12 +10,13 @@ import { prisma } from '../db.js';
 import {
   assertIncidentExists,
   ConcurrentIncidentTransitionError,
+  incidentTraceparent,
   transitionIncident,
 } from '../incidents/service.js';
 import { IllegalIncidentTransitionError } from '../incidents/transitions.js';
 import { dispatchJob, jobIdForKey, recordJob } from '../jobs/record.js';
 import { logger } from '../observability/logger.js';
-import { currentTraceparent, withSpan } from '../observability/tracing.js';
+import { currentTraceparent, withSpan, withTraceparent } from '../observability/tracing.js';
 
 export const investigateJobKey = (investigationId: string) => `investigate-${investigationId}`;
 
@@ -50,11 +51,14 @@ async function activeInvestigation(incidentId: string): Promise<InvestigationReq
  * Idempotent while one is active: a repeat or concurrent request returns the
  * running investigation instead of paying for a second model call.
  */
-export function requestInvestigation(
+export async function requestInvestigation(
   incidentId: string,
   actor: Actor,
 ): Promise<InvestigationRequest> {
-  return withSpan('investigation.queue', async () => {
+  // Starts in the incident's own trace, not this request's, so the queued job
+  // and everything after it read as one trace with the incident's birth.
+  const parent = await incidentTraceparent(prisma, incidentId);
+  return withTraceparent(parent, () => withSpan('investigation.queue', async () => {
     try {
       const { request, job } = await prisma.$transaction(async (tx) => {
         await transitionIncident(tx, incidentId, 'investigating', actor, {
@@ -98,7 +102,7 @@ export function requestInvestigation(
       if (active) return active;
       throw new InvestigationConflictError(incidentId);
     }
-  });
+  }));
 }
 
 export interface InvestigationView {

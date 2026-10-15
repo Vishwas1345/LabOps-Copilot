@@ -108,6 +108,15 @@ export async function getIncident(incidentId: string): Promise<IncidentDetail> {
   };
 }
 
+/** The trace an incident was born in, for later steps to join; absent before it was recorded. */
+export async function incidentTraceparent(
+  client: Prisma.TransactionClient,
+  incidentId: string,
+): Promise<string | undefined> {
+  const row = await client.incident.findUnique({ where: { id: incidentId }, select: { traceparent: true } });
+  return row?.traceparent ?? undefined;
+}
+
 /** Throws IncidentNotFoundError, so a missing incident is 404, not an empty list. */
 export async function assertIncidentExists(incidentId: string): Promise<void> {
   const found = await prisma.incident.count({ where: { id: incidentId } });
