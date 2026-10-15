@@ -27,7 +27,8 @@ interface WindowRow {
   succeeded: number;
   failed: number;
   retries: number;
-  samples: number;
+  runSamples: number;
+  totalSamples: number;
   runP50: number | null;
   runP95: number | null;
   totalP50: number | null;
@@ -46,7 +47,8 @@ export async function queueStats(since: Date): Promise<QueueStats[]> {
              count(*) FILTER (WHERE status = 'succeeded')::int AS succeeded,
              count(*) FILTER (WHERE status = 'failed')::int AS failed,
              coalesce(sum(greatest(attempts - 1, 0)), 0)::int AS retries,
-             count(*) FILTER (WHERE status = 'succeeded')::int AS samples,
+             count(run_ms) FILTER (WHERE status = 'succeeded')::int AS "runSamples",
+             count(total_ms) FILTER (WHERE status = 'succeeded')::int AS "totalSamples",
              percentile_cont(0.5) WITHIN GROUP (ORDER BY run_ms) FILTER (WHERE status = 'succeeded') AS "runP50",
              percentile_cont(0.95) WITHIN GROUP (ORDER BY run_ms) FILTER (WHERE status = 'succeeded') AS "runP95",
              percentile_cont(0.5) WITHIN GROUP (ORDER BY total_ms) FILTER (WHERE status = 'succeeded') AS "totalP50",
@@ -56,7 +58,7 @@ export async function queueStats(since: Date): Promise<QueueStats[]> {
                EXTRACT(EPOCH FROM "finishedAt" - "startedAt")::float8 * 1000 AS run_ms,
                EXTRACT(EPOCH FROM "finishedAt" - "createdAt")::float8 * 1000 AS total_ms
         FROM "JobExecution"
-        WHERE "createdAt" >= ${since}
+        WHERE "createdAt" >= (${since} AT TIME ZONE 'UTC')
       ) jobs
       GROUP BY queue`),
   ]);
@@ -69,9 +71,9 @@ export async function queueStats(since: Date): Promise<QueueStats[]> {
       succeeded: row?.succeeded ?? 0,
       failed: row?.failed ?? 0,
       retries: row?.retries ?? 0,
-      run: toDurationSummary(row && { samples: row.samples, p50: row.runP50, p95: row.runP95 }),
+      run: toDurationSummary(row && { samples: row.runSamples, p50: row.runP50, p95: row.runP95 }),
       endToEnd: toDurationSummary(
-        row && { samples: row.samples, p50: row.totalP50, p95: row.totalP95 },
+        row && { samples: row.totalSamples, p50: row.totalP50, p95: row.totalP95 },
       ),
     };
   });

@@ -2,6 +2,7 @@
 // then the endpoint read before and after. Files run one at a time, so the
 // deltas belong to this run.
 
+import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { signedInCookie } from '../auth/session.fixture.js';
@@ -125,6 +126,57 @@ describe('GET /api/metrics', () => {
     for (const id of [burst.id, ...labIds.slice(0, 5)]) expect(after.body).not.toContain(id);
     expect(after.body).not.toContain(scenario.events[0].message);
   }, 60_000);
+
+  // Negative (#22): the columns hold UTC without a zone, so a database whose
+  // sessions run in another zone must report exactly the same window.
+  it('reports the same window on a database that is not in UTC', async () => {
+    // The raw-SQL figures are the ones at risk; Prisma's typed counts never were.
+    const windowed = (m: Metrics) => [
+      m.incidents.timeToIdentify.samples,
+      m.investigations.latency.samples,
+      m.recovery.approvalToVerified.samples,
+      ...m.queues.map((queue) => queue.succeeded),
+    ];
+    // The run above drives its jobs directly, so give the jobs query a row too.
+    const now = new Date();
+    const job = await prisma.jobExecution.create({
+      data: { queue: 'correlate', jobKey: `tz-${randomUUID()}`, payload: {}, status: 'succeeded', startedAt: now, finishedAt: now },
+    });
+    const utc = await collectMetrics(1);
+    expect(windowed(utc).filter((value) => value === 0)).toHaveLength(2); // investigate, execute queues
+    expect(utc.queues.find((queue) => queue.queue === 'correlate')?.succeeded).toBeGreaterThan(0);
+    const [{ db }] = await prisma.$queryRaw<[{ db: string }]>`SELECT current_database() AS db`;
+    await prisma.$executeRawUnsafe(`ALTER DATABASE "${db}" SET timezone TO 'Asia/Kolkata'`);
+    // New connections pick up the database default; pooled ones would not.
+    await prisma.$disconnect();
+    try {
+      const [{ timezone }] = await prisma.$queryRaw<[{ timezone: string }]>`SELECT current_setting('TimeZone') AS timezone`;
+      expect(timezone).toBe('Asia/Kolkata');
+      const ist = await collectMetrics(1);
+      expect(windowed(ist)).toEqual(windowed(utc));
+    } finally {
+      await prisma.$executeRawUnsafe(`ALTER DATABASE "${db}" RESET timezone`);
+      await prisma.$disconnect();
+      await prisma.jobExecution.delete({ where: { id: job.id } });
+    }
+  });
+
+  // Negative (#23): a sample is a measured duration, not a succeeded row.
+  it('counts a job without a start time as succeeded but not as a sample', async () => {
+    const correlate = async () => (await collectMetrics(1)).queues.find((queue) => queue.queue === 'correlate')!;
+    const before = await correlate();
+    const row = await prisma.jobExecution.create({
+      data: { queue: 'correlate', jobKey: `metrics-${randomUUID()}`, payload: {}, status: 'succeeded', finishedAt: new Date() },
+    });
+    try {
+      const after = await correlate();
+      expect(after.succeeded).toBe(before.succeeded + 1);
+      expect(after.run.samples).toBe(before.run.samples);
+      expect(after.endToEnd.samples).toBe(before.endToEnd.samples + 1);
+    } finally {
+      await prisma.jobExecution.delete({ where: { id: row.id } });
+    }
+  });
 
   // Negative: an empty window is unknown, not zero milliseconds.
   it('reports zero counts and null durations when nothing happened', async () => {

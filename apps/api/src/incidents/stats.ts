@@ -26,7 +26,7 @@ export async function incidentStats(since: Date): Promise<IncidentStats> {
         FROM "Incident" i
         JOIN "IncidentLab" il ON il."incidentId" = i.id
         JOIN "OperationalEvent" e ON e.id = il."eventId"
-        WHERE i."createdAt" >= ${since}
+        WHERE i."createdAt" >= (${since} AT TIME ZONE 'UTC')
         GROUP BY i.id
       ) per_incident`),
   ]);
