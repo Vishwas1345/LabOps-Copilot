@@ -68,7 +68,7 @@ step completes. Every simulated lab, event and screen is visibly labelled
 *simulated*.
 
 **Empty state.** Before any scenario runs: zero labs and no incidents, with a
-prompt to run the demo scenario. Where demo mode is off, the prompt says so.
+prompt to run the demo scenario; if demo mode is off, trying it says so.
 
 **Errors.**
 - An incoming event that is malformed is rejected with a clear error and

@@ -1,6 +1,6 @@
 ---
 name: background-job
-description: Use when adding a BullMQ queue, job handler or worker. Covers stable jobIds derived from idempotency keys, bounded retries with backoff, crash recovery reconciliation, trace-context propagation into job payloads, and keeping long work out of the HTTP request lifecycle.
+description: Use when adding a BullMQ queue, job handler or worker. Covers outbox job rows, stable jobIds derived from idempotency keys, bounded retries with backoff, crash recovery reconciliation, trace-context propagation through the job row, and keeping long work out of the HTTP request lifecycle.
 ---
 
 # Adding or changing a background job
@@ -15,40 +15,39 @@ the job id — never await the work.
 
 ```
 apps/api/src/jobs/
-  queues.ts       queue names, payload types, enqueue helpers
-  worker.ts       worker bootstrap
-  handlers/<name>.ts
+  queues.ts       queue names, the JobMessage type, connections
+  record.ts       recordJob (outbox row in the caller's transaction),
+                  dispatchJob (send to Redis after commit)
+  runner.ts       runJob: status, attempts, trace continuation, onExhausted
+  reconcile.ts    re-sends stale queued/running rows (lease 2 min)
+  worker.ts       creates a BullMQ worker for one queue
+apps/api/src/<domain>/*.job.ts   the handlers, e.g. incidents/correlate.job.ts
+apps/api/src/worker.ts           the worker entrypoint: wires handlers to jobs/
 ```
 
-`src/index.ts` boots the API. A separate entrypoint boots the worker. **The
-worker never serves HTTP.**
+`src/index.ts` boots the API; `src/worker.ts` boots the worker. `jobs/` stays
+generic and imports no domain module. **The worker never serves HTTP.**
 
 ## Procedure
 
-1. **Define the payload as a type.** Not `any`, not an inline object literal.
+1. **Write the job row in the caller's transaction, then dispatch.** The domain
+   payload is stored on the `JobExecution` row and Zod-validated by the
+   handler; the BullMQ message carries only `{ jobExecutionId, generation }`.
 
    ```ts
-   export interface CorrelateJob {
-     incidentId: string;
-     spanContext: TraceContext;
-   }
+   const job = await recordJob(tx, 'investigate', investigateJobKey(id), { investigationId: id }, currentTraceparent());
+   // after the transaction commits:
+   await dispatchJob(job);
    ```
 
-2. **Derive `jobId` from the idempotency key.** This is what collapses
-   duplicate enqueues into one job instead of racing.
+2. **Derive the job key from the idempotency key.** It is unique on the row and
+   is the BullMQ `jobId`, so duplicate enqueues collapse into one job instead of
+   racing. Use a stable prefix + key, never a random id. A repeat `recordJob`
+   for the same key re-arms the row (generation + 1).
 
-   ```ts
-   await queue.add('correlate', payload, {
-     jobId: `correlate:${payload.incidentId}`,
-     attempts: 3,
-     backoff: { type: 'exponential', delay: 1000 },
-   });
-   ```
-
-   Use a stable prefix + key. Never a random id — that defeats the purpose.
-
-3. **Propagate trace context into the payload.** One incident must resolve to
-   one trace across processes and minutes. See `CLAUDE.md §9` and the
+3. **Carry trace context on the row.** `recordJob` stores the traceparent and the
+   runner continues it. For a step on an existing incident, pass the incident's
+   own trace so one incident stays one trace. See `CLAUDE.md §9` and the
    `observability` skill.
 
 4. **Make the handler idempotent.** Assume it will run twice. Read current state

@@ -15,11 +15,15 @@ proposal engine, never an execution authority.**
 
 ```
 apps/api/src/investigations/
-  provider.ts      LlmProvider interface + implementations
-  evidence.ts      server-side evidence assembly, bounds and redaction
-  prompt.ts        fixed system policy + delimited data block
-  schema.ts        strict Zod output schemas
-  service.ts       persistence of the investigation result
+  provider.ts          LlmProvider interface, callProvider (timeout, never throws)
+  fixture-provider.ts  the deterministic default provider
+  gemini-provider.ts   the opt-in real provider (plain fetch)
+  gemini-schema.ts     Zod -> Gemini responseSchema transform
+  evidence.ts          server-side evidence assembly, bounds and redaction
+  prompt.ts            fixed system policy + delimited data block
+  output-schema.ts     the strict Zod output schema and parseOutput
+  investigate.job.ts   the job: call, validate, record, propose
+  service.ts           requesting and reading investigations
 ```
 
 ## Procedure
@@ -56,16 +60,21 @@ apps/api/src/investigations/
    not coerced. Enums are closed sets. Anything unparseable is a rejection, not
    a best-effort salvage.
 
+   The real schema (`output-schema.ts`), in outline:
+
    ```ts
-   const Diagnosis = z.object({
-     summary: z.string().max(2000),
-     candidateCause: z.string().max(500),
-     evidenceReferences: z.array(z.string()).max(20),
-     missingEvidence: z.array(z.string()).max(20),
+   z.object({
+     outcome: z.enum(['diagnosis', 'insufficient_evidence']),
+     summary, candidateCause,                       // bounded strings
+     evidenceFor, evidenceAgainst, missingEvidence, diagnosticChecks,
      confidence: z.number().min(0).max(1),
-     recommendedAction: z.enum(ACTION_TYPES),   // closed set
+     recommendedAction: z.enum(ACTION_TYPES).nullable(),   // closed set
+     targetLabIds: z.array(labId),
    }).strict();
    ```
+
+   Evidence ids not in the pack and labs outside the incident are dropped and
+   reported; anything else that fails is a rejection.
 
 6. **Intersect targets with server-side truth.** If the model names a lab that
    is not in the incident's own affected labs, discard it. A hallucinated
@@ -84,9 +93,10 @@ apps/api/src/investigations/
 
 ## Mandatory negative tests
 
-- Malformed JSON from the provider → rejected, incident unchanged
+- Malformed JSON from the provider → rejected, incident back to `open`, audited
 - Unknown field in the output → rejected, not stripped
-- `recommendedAction` outside the enum → dropped, no action created
+- `recommendedAction` outside the enum → the whole output is rejected
+  (`SCHEMA_REJECTED`), no action created
 - Prompt injection inside event text → does not change the action proposed or
   the schema honoured
 - Model names a lab outside the incident → target discarded

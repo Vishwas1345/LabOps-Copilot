@@ -28,7 +28,7 @@ apps/api/src/labs/
    generation — derive timestamps from the scenario's fixed epoch.
 
    ```ts
-   export function createScenario(seed: number, epoch: Date): Scenario {
+   export function createTrainingEvent(seed: number, epoch: Date): Scenario {
      // seeded PRNG, not Math.random
    }
    ```
@@ -72,7 +72,10 @@ provisioning → ready | failed
 failed       → recovering | stopped
 recovering   → ready | failed
 ready        → stopped
+stopped      → provisioning
 ```
+
+The `stopped` transitions are declared for completeness; nothing uses them yet.
 
 An illegal transition throws identically in the API, the worker and the tests.
 
@@ -80,7 +83,8 @@ An illegal transition throws identically in the API, the worker and the tests.
 
 - Scenario-trigger responses return `source: 'simulated'`.
 - The dashboard must show simulator data as simulated.
-- Log lines carry a `simulated: true` field.
+- The demo route's log line carries `simulated: true`, and every event and lab
+  carries `source: 'simulated'`.
 - Never write UI copy implying a live CloudLabs connection was tested.
 
 ## Mandatory tests

@@ -12,35 +12,40 @@ injection and untrusted external input).
 
 **The gate:** a live adapter method may only be implemented when it is verified
 against official CloudLabs documentation, with credentials and sandbox access
-supplied by Spektra. Until then the connection stays `simulated` and reads
-`not_configured`.
+supplied by Spektra. Until then the CloudLabs adapter claims no capabilities
+and its connection reads `not_configured`.
 
 ## Where things go
 
 ```
 apps/api/src/integrations/
-  adapter.ts       ProviderAdapter interface
-  simulator.ts     simulator adapter (always available)
-  cloudlabs.ts     CloudLabs adapter — verified methods only
-  connection.ts    connection state, capabilities
-  webhook.ts       receiver, verification, normalisation
-  secrets/         envelope encryption, redaction
+  adapter.ts            ProviderAdapter, capabilities, stateFor (state is derived)
+  simulator-adapter.ts  simulator adapter (always available)
+  cloudlabs-adapter.ts  CloudLabs adapter: verified methods only (none yet)
+  service.ts            connections: seal, list, test, delete; audit
+  routes.ts, schemas.ts the settings endpoints and their strict schemas
+apps/api/src/secrets/crypto.ts   AES-256-GCM sealing with CREDENTIALS_KEY
+
+Not built, because the contract is unverified: a webhook receiver, sync jobs
+and delivery records.
 ```
 
 ## Procedure
 
-1. **Keep every adapter method optional.**
+1. **Add a method only once it is verified; never leave optional stubs.**
 
    ```ts
    interface ProviderAdapter {
-     testConnection(cfg: ProviderConfig): Promise<ConnectionResult>;
-     fetchLabs?(cfg: ProviderConfig): Promise<NormalizedLab[]>;
-     registerWebhook?(cfg: ProviderConfig, target: WebhookTarget): Promise<void>;
-     normalizeIncomingEvent(raw: unknown, headers: Headers): NormalizedEvent;
-     readonly supportedEventTypes: readonly string[];
-     readonly capabilities: ProviderCapabilities;
+     readonly provider: string;
+     readonly displayName: string;
+     readonly capabilities: ProviderCapabilities;   // canExecuteRecovery: false (literal type)
+     testConnection(config: ConnectionConfig): Promise<ConnectionResult>;
    }
    ```
+
+   `fetchLabs`, `registerWebhook` and `normalizeIncomingEvent` were drafted as
+   optional methods and removed: an optional method invites an implementation
+   by someone who has not read the gate.
 
 2. **Report capabilities at runtime.** The UI renders only what the adapter
    reports. Never present an unverified event type as available. Never display a
@@ -52,8 +57,8 @@ apps/api/src/integrations/
    official documentation, it is not implemented — mark it unsupported and note
    the limitation.
 
-4. **Normalise into the same internal event schema as the simulator.** Provider
-   payloads and simulated events must enter the identical
+4. **Normalise into the same internal event schema as the simulator.** Once a
+   live provider exists, its payloads and simulated events must enter the identical
    event → correlation → investigation → recovery pipeline. That shared path is
    the entire point of the adapter boundary.
 
