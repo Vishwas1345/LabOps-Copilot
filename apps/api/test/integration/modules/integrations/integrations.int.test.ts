@@ -48,20 +48,20 @@ describe('GET /api/integrations', () => {
 
     expect(response.statusCode).toBe(200);
     const parsed = connectionListResponse.parse(response.json());
-    expect(parsed.data.map((entry) => entry.provider).sort()).toEqual(['cloudlabs', 'simulator']);
+    expect(parsed.data.map((entry) => entry.provider).sort()).toEqual(['lab-platform', 'simulator']);
   });
 
   // The gate, visible from the API: a provider that verified nothing reports
   // not_configured and claims no capabilities.
-  it('reports cloudlabs as not_configured, never connected', async () => {
+  it('reports the lab platform as not_configured, never connected', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/integrations', ...authed });
-    const cloudlabs = connectionListResponse.parse(response.json()).data.find(
-      (entry) => entry.provider === 'cloudlabs',
+    const platform = connectionListResponse.parse(response.json()).data.find(
+      (entry) => entry.provider === 'lab-platform',
     );
 
-    expect(cloudlabs?.state).toBe('not_configured');
-    expect(cloudlabs?.capabilities.reachable).toBe(false);
-    expect(cloudlabs?.capabilities.canExecuteRecovery).toBe(false);
+    expect(platform?.state).toBe('not_configured');
+    expect(platform?.capabilities.reachable).toBe(false);
+    expect(platform?.capabilities.canExecuteRecovery).toBe(false);
   });
 
   it('never enables live recovery for any provider', async () => {
@@ -196,8 +196,8 @@ describe('PUT /api/integrations/:provider', () => {
 
   // Negative: the state comes from the adapter, never from the request body.
   it('cannot be made connected by sending a state', async () => {
-    const response = await PUT('cloudlabs', {
-      displayName: 'CloudLabs',
+    const response = await PUT('lab-platform', {
+      displayName: 'External lab platform',
       credential: SECRET,
       state: 'connected',
     });
@@ -297,10 +297,10 @@ describe('POST /api/integrations/:provider/test', () => {
   });
 
   // The headline negative: the gate is closed, and the API must say so.
-  it('fails for cloudlabs and never reports connected', async () => {
+  it('fails for the lab platform and never reports connected', async () => {
     const response = await app.inject({
       method: 'POST',
-      url: '/api/integrations/cloudlabs/test',
+      url: '/api/integrations/lab-platform/test',
       ...authed,
     });
 
@@ -314,7 +314,7 @@ describe('POST /api/integrations/:provider/test', () => {
 
   it('audits a failed test as a failure', async () => {
     const before = await auditCount('integration.tested');
-    await app.inject({ method: 'POST', url: '/api/integrations/cloudlabs/test', ...authed });
+    await app.inject({ method: 'POST', url: '/api/integrations/lab-platform/test', ...authed });
 
     const entries = await prisma.auditEntry.findMany({
       where: { action: 'integration.tested' },
@@ -335,14 +335,14 @@ describe('POST /api/integrations/:provider/test', () => {
     expect(response.statusCode).toBe(401);
   });
 
-  // The original test tested cloudlabs with no stored row, so it never
+  // The original test tested the lab platform with no stored row, so it never
   // exercised the path that matters: a credential saved, then a failed test.
   it('stays not_configured after a failed test on a saved credential', async () => {
-    await PUT('cloudlabs', { displayName: 'CloudLabs', credential: SECRET });
+    await PUT('lab-platform', { displayName: 'External lab platform', credential: SECRET });
 
     const response = await app.inject({
       method: 'POST',
-      url: '/api/integrations/cloudlabs/test',
+      url: '/api/integrations/lab-platform/test',
       ...authed,
     });
 
@@ -354,7 +354,7 @@ describe('POST /api/integrations/:provider/test', () => {
     expect(data.state).not.toBe('error');
 
     const row = await prisma.integrationConnection.findFirstOrThrow({
-      where: { provider: 'cloudlabs' },
+      where: { provider: 'lab-platform' },
     });
     expect(row.state).toBe('not_configured');
   });
@@ -363,11 +363,11 @@ describe('POST /api/integrations/:provider/test', () => {
   // confirms on display. Set on the same row the failing test touches, so the
   // assertion is about clearing and not about a row that was always empty.
   it('clears previously confirmed event types when a test fails', async () => {
-    await PUT('cloudlabs', { displayName: 'CloudLabs', credential: SECRET });
-    await app.inject({ method: 'POST', url: '/api/integrations/cloudlabs/test', ...authed });
+    await PUT('lab-platform', { displayName: 'External lab platform', credential: SECRET });
+    await app.inject({ method: 'POST', url: '/api/integrations/lab-platform/test', ...authed });
 
     const row = await prisma.integrationConnection.findFirstOrThrow({
-      where: { provider: 'cloudlabs' },
+      where: { provider: 'lab-platform' },
     });
     expect(row.supportedEventTypes).toEqual([]);
 
@@ -377,10 +377,10 @@ describe('POST /api/integrations/:provider/test', () => {
       data: { supportedEventTypes: ['stale_event_type'] },
     });
 
-    await app.inject({ method: 'POST', url: '/api/integrations/cloudlabs/test', ...authed });
+    await app.inject({ method: 'POST', url: '/api/integrations/lab-platform/test', ...authed });
 
     const after = await prisma.integrationConnection.findFirstOrThrow({
-      where: { provider: 'cloudlabs' },
+      where: { provider: 'lab-platform' },
     });
     expect(after.supportedEventTypes).toEqual([]);
     expect(after.supportedEventTypes).not.toContain('stale_event_type');
@@ -441,7 +441,7 @@ describe('DELETE /api/integrations/:provider', () => {
   it('is harmless when nothing was configured', async () => {
     const response = await app.inject({
       method: 'DELETE',
-      url: '/api/integrations/cloudlabs',
+      url: '/api/integrations/lab-platform',
       ...authed,
     });
 

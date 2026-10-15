@@ -20,7 +20,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <body className="flex h-dvh flex-col font-sans">
         <div className="flex shrink-0 items-center justify-center gap-2 border-b border-warning-border bg-warning-bg px-4 py-1 text-xs text-warning">
           <Badge variant="warning">Simulated data</Badge>
-          No live CloudLabs connection. Labs, failures and recoveries are simulated.
+          No live lab platform connection. Labs, failures and recoveries are simulated.
         </div>
         <div className="min-h-0 flex-1">{children}</div>
       </body>
