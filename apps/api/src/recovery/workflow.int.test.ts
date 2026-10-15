@@ -3,6 +3,7 @@
 // rows (the outbox contract), and only the fixture model is ever called.
 
 import { afterAll, describe, expect, it } from 'vitest';
+import { listIncidentAudit } from '../audit/audit.js';
 import { signedInCookie } from '../auth/session.fixture.js';
 import { prisma } from '../db.js';
 import { correlationWindow } from '../events/correlation-window.js';
@@ -130,5 +131,23 @@ describe('backend workflow, end to end', () => {
     expect(blocked).toMatchObject({ status: 'rejected_by_policy', blockedAt: 'state' });
     expect(await incidentStatus(permission!.id)).toBe('manual_review');
     await expect(approveAction(blocked.id, OPERATOR)).rejects.toThrow();
+
+    // 7. The incident's own history holds every step, including those that
+    //    name it in metadata, and nothing that belongs to another incident.
+    const history = (await listIncidentAudit(burstId)).map((entry) => entry.action);
+    for (const step of [
+      'incident.created',
+      'investigation.requested',
+      'recovery.proposed',
+      'recovery.approved',
+      'recovery.started',
+      'recovery.verified',
+    ]) {
+      expect(history).toContain(step);
+    }
+    const permissionHistory = await listIncidentAudit(permission!.id);
+    expect(permissionHistory.map((entry) => entry.action)).not.toContain('recovery.approved');
+    const burstSeqs = new Set((await listIncidentAudit(burstId)).map((entry) => entry.seq));
+    expect(permissionHistory.some((entry) => burstSeqs.has(entry.seq))).toBe(false);
   }, 60_000);
 });

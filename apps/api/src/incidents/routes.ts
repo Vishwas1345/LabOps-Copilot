@@ -5,7 +5,7 @@ import type {
   RawRequestDefaultExpression,
   RawServerDefault,
 } from 'fastify';
-import { listAuditFor } from '../audit/audit.js';
+import { listIncidentAudit } from '../audit/audit.js';
 import { AppError } from '../http/errors.js';
 import { incidentParams, listIncidentsQuery } from './schemas.js';
 import {
@@ -45,6 +45,6 @@ export function registerIncidentRoutes<Logger extends FastifyBaseLogger>(
   app.get('/api/incidents/:id/audit', async (request) => {
     const { id } = incidentParams.parse(request.params);
     await assertIncidentExists(id).catch(notFound);
-    return { data: await listAuditFor('incident', id) };
+    return { data: await listIncidentAudit(id) };
   });
 }
