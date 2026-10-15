@@ -200,7 +200,9 @@ steps:**.
   data entry point, `POST /api/webhooks/mock-platform`, authenticates by HMAC
   over the **raw** bytes, forces `source: 'provider'` rather than reading it,
   answers one generic 401 for every signature failure, and exists only while
-  `DEMO_ENABLED` and `WEBHOOK_SECRET` are both set.
+  `DEMO_ENABLED` and `WEBHOOK_SECRET` are both set. Nothing before that handler
+  may answer either: its content-type parser records a parse failure rather than
+  throwing it, and its body-size refusal is audited from `onResponse`.
 - **The browser talks only to the web server (BFF).** It holds the session in
   its own httpOnly cookie and forwards it to the API over `API_INTERNAL_URL`.
   CORS credentials stay off.
@@ -423,11 +425,11 @@ Key behaviours worth knowing (details in `ARCHITECTURE.md`):
   one poller per API process; heartbeat re-checks the session; web relays the
   stream (`app/api/events/stream/route.ts`) and `LiveRefresh` refreshes pages.
 
-Latest verified numbers (after the signed webhook receiver): API unit 710,
-integration 257 (twice in a row on the test database); web 139 tests; coverage
-api 98.58%, web 93.22%; `prisma:drift` clean. **Not yet re-run for this change:**
-the fresh clone, the compose smoke and the browser journey, which were green
-before it.
+Latest verified numbers (after the signed webhook receiver and its self-review
+fixes): API unit 710, integration 259 (twice in a row on the test database); web
+139 tests; coverage api 98.58%, web 93.22%; `prisma:drift` clean. **Not yet
+re-run for this change:** the fresh clone, the compose smoke and the browser
+journey, which were green before it.
 
 ## 8a. Phase 10 (PR #16): merged
 
@@ -549,6 +551,11 @@ Anything new follows the plan-first loop above.
 
 ## 10. Known gaps (recorded in INFRA / PLAN; do not rediscover them)
 
+- `redactSecrets` stops walking at `MAX_DEPTH = 6` and returns deeper values
+  verbatim, so a secret-named key nested 7+ levels down in an event's `metadata`
+  is stored unredacted. Phase 3 code; the signed webhook makes it reachable from
+  a public surface rather than behind a session. Found by webhook self-review,
+  not fixed there.
 - Login rate limit is effectively global behind the BFF (fails safe); Google
   sign-in shares it.
 - Real Google sign-in is tested only by hand with an owner's OAuth client;

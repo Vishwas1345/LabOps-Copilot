@@ -209,20 +209,49 @@ describe('POST /api/webhooks/mock-platform', () => {
     expect(stored.source).toBe('provider');
   });
 
-  it('refuses an oversized body before parsing it', async () => {
+  it('refuses an oversized body before parsing it, and records the attempt', async () => {
+    const before = await rejectionCount();
+
     const response = await post(event({ message: 'x'.repeat(20 * 1024) }));
 
     expect(response.statusCode).toBe(413);
+    expect(await rejectionCount()).toBe(before + 1);
   });
 
-  it('returns 400 for malformed JSON with a valid signature', async () => {
+  it('returns 400 for malformed JSON with a valid signature, and records it', async () => {
     const body = '{not json';
     const timestamp = now();
+    const before = await rejectionCount();
 
     const response = await deliver(body, timestamp);
 
     expect(response.statusCode).toBe(400);
     expect(response.json().error.code).toBe('INVALID_JSON');
+    expect(await rejectionCount()).toBe(before + 1);
+  });
+
+  // Self-review finding: the parser used to throw, so malformed JSON answered
+  // 400 before the signature was checked and wrote no audit row at all. That was
+  // both a pre-auth oracle and an invisible flood path.
+  it.each([
+    ['a bad signature', 't=1,v1=beef'],
+    ['no signature header', undefined],
+  ])('answers 401, not 400, for malformed JSON with %s', async (_case, header) => {
+    const before = await rejectionCount();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: URL,
+      payload: '{not json',
+      headers: {
+        'content-type': 'application/json',
+        ...(header === undefined ? {} : { 'x-labops-signature': header }),
+      },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json().error.code).toBe('SIGNATURE_INVALID');
+    expect(await rejectionCount()).toBe(before + 1);
   });
 
   it('answers 404 when no webhook secret is configured', async () => {

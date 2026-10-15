@@ -35,6 +35,8 @@ declare module 'fastify' {
   interface FastifyRequest {
     /** The exact bytes received, before parsing. The signature covers these. */
     rawBody: string | null;
+    /** Set by the content-type parser; never reported before the signature is verified. */
+    bodyParseFailed: boolean;
   }
 }
 
@@ -68,8 +70,6 @@ export async function registerWebhookRoutes<Logger extends FastifyBaseLogger>(
     keyPrefix: string;
     /** Absent when no shared secret is configured; the route then answers 404. */
     secret?: string;
-    /** Lets tests move the clock without sleeping. */
-    nowSeconds?: () => number;
     /** Tests lower the delivery ceiling so a 429 is reachable in a test run. */
     deliveriesPerMinute?: number;
   },
@@ -92,6 +92,7 @@ export async function registerWebhookRoutes<Logger extends FastifyBaseLogger>(
     });
 
     instance.decorateRequest('rawBody', null);
+    instance.decorateRequest('bodyParseFailed', false);
 
     instance.addContentTypeParser(
       'application/json',
@@ -102,10 +103,27 @@ export async function registerWebhookRoutes<Logger extends FastifyBaseLogger>(
         try {
           done(null, JSON.parse(raw));
         } catch {
-          done(new AppError(400, 'INVALID_JSON', 'body is not valid JSON'), undefined);
+          // Recorded, not thrown. The signature covers these exact bytes, so the
+          // handler verifies it first: a parse error must not become a way to
+          // skip authentication, and must not go unaudited.
+          request.bodyParseFailed = true;
+          done(null, undefined);
         }
       },
     );
+
+    // An oversized body is refused before the handler runs, so the audit entry
+    // is written here. Failures are swallowed: an audit problem must not turn a
+    // 413 into a 500 or stall the response.
+    instance.addHook('onResponse', async (_request, reply) => {
+      if (reply.statusCode === 413) {
+        try {
+          await auditRejection('body_too_large');
+        } catch {
+          // The delivery was refused either way; the trail is best-effort here.
+        }
+      }
+    });
 
     instance.post(
       `/api/webhooks/${WEBHOOK_PROVIDER_ID}`,
@@ -123,7 +141,7 @@ export async function registerWebhookRoutes<Logger extends FastifyBaseLogger>(
         if (!secret) throw new AppError(404, 'NOT_CONFIGURED', 'webhook is not configured');
 
         const header = request.headers['x-labops-signature'];
-        const nowSeconds = options.nowSeconds?.() ?? Math.floor(Date.now() / 1000);
+        const nowSeconds = Math.floor(Date.now() / 1000);
         const result = verifySignature({
           rawBody: request.rawBody ?? '',
           header: typeof header === 'string' ? header : undefined,
@@ -135,6 +153,13 @@ export async function registerWebhookRoutes<Logger extends FastifyBaseLogger>(
           await auditRejection(result.reason);
           // One message for every failure: no oracle for a caller to probe.
           throw new AppError(401, 'SIGNATURE_INVALID', 'signature verification failed');
+        }
+
+        // Past authentication: only a validly-signed body can learn that it
+        // failed to parse, and the attempt is on the record either way.
+        if (request.bodyParseFailed) {
+          await auditRejection('invalid_json');
+          throw new AppError(400, 'INVALID_JSON', 'body is not valid JSON');
         }
 
         if (!isPlainObject(request.body)) {

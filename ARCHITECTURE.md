@@ -965,6 +965,14 @@ oracle telling a caller which check it failed; the reason goes to the audit trai
 and nowhere else. The skew window (5 minutes) plus the existing unique
 `deduplicationKey` are the two replay defences, and they are independent.
 
+**Nothing before the handler may answer.** The content-type parser records a
+parse failure rather than throwing it, and the body-size refusal is audited from
+an `onResponse` hook. Both were found by self-review: a parser that threw
+answered `400 INVALID_JSON` for an *unsigned* malformed body, which both skipped
+authentication and wrote nothing to the trail. An attacker could then probe the
+endpoint freely and leave no trace. Now a malformed body is `401` unless the
+signature is genuinely valid, and every pre-handler refusal is recorded.
+
 `source` is **forced** to `provider` rather than read from the body, so a
 provider cannot label its own events `simulated`. The rest of the payload stays
 strict, so an unexpected field is still a 400, and the event then enters the same
