@@ -35,6 +35,10 @@ export function LiveRefresh() {
     };
     // Too far behind to replay: reload everything.
     source.addEventListener('reset', refresh);
+    // The page was rendered before the stream opened, so anything committed in
+    // between would never arrive. One read once the stream is ready closes
+    // that gap; the stream delivers everything after its boundary.
+    source.addEventListener('ready', refresh);
     return () => {
       clearTimeout(timer);
       source.close();
