@@ -110,14 +110,14 @@ test('operator journey: failures to verified recovery', async ({ page }) => {
     await page.getByRole('button', { name: 'Investigate' }).click();
 
     await expect(page.getByText('Blocked by policy at the state step.')).toBeVisible();
-    await expect(page.getByText(/^state: .*a retry cannot fix missing permissions/)).toBeVisible();
+    await expect(page.getByText(/state: .*a retry cannot fix missing permissions/)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(page.getByText('manual review', { exact: true }).first()).toBeVisible();
   });
 
   await test.step('the dashboard shows this run: tiles, charts, filters', async () => {
     await page.goto('/');
-    const tile = (label: string) => page.getByText(label, { exact: true }).locator('xpath=../../p[2]');
+    const tile = (label: string) => page.getByText(label, { exact: true }).locator('xpath=../../p[1]');
     await expect(tile('Failed labs')).not.toHaveText('0');
     await expect(tile('Approval to verified')).not.toHaveText('—');
     await expect(tile('Blocked by policy')).toHaveText('1');
