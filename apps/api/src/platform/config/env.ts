@@ -18,6 +18,8 @@ const envSchema = z
     REDIS_URL: z.url({ protocol: /^rediss?$/ }),
     // Namespaces every queue key, so separate runs never share jobs.
     QUEUE_PREFIX: z.string().min(1).max(64).default('labops'),
+    // `production` turns on the checks that only a deployed instance needs.
+    APP_ENV: z.enum(['development', 'production']).default('development'),
     // Traces are exported only when a collector is configured.
     OTEL_EXPORTER_OTLP_ENDPOINT: z.url({ protocol: /^https?$/ }).optional(),
     API_HOST: z.string().min(1).default('127.0.0.1'),
@@ -27,6 +29,10 @@ const envSchema = z
     DEMO_ENABLED: z.stringbool().default(false),
     // Secure by default; only local http development turns it off.
     SESSION_COOKIE_SECURE: z.stringbool().default(true),
+    // How many reverse proxies sit in front of this process. Unset trusts
+    // nothing, which is correct locally and wrong behind Caddy or nginx: the
+    // rate limit keys on the client IP, so it must be the real one.
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).optional(),
     LLM_PROVIDER: z.enum(['fixture', 'gemini']).default('fixture'),
     // Never logged, never returned, never written to modelMetadata.
     LLM_API_KEY: unsetIfEmpty(z.string().max(500)),
@@ -92,6 +98,27 @@ const envSchema = z
     if (set.length > 0 && set.length < google.length) {
       for (const key of google.filter((k) => config[k] === undefined)) {
         ctx.addIssue({ code: 'custom', path: [key], message: 'is required when Google sign-in is configured' });
+      }
+    }
+
+    // A deployed instance gets no local development to fall back on: every
+    // setting below is either unreachable or unsafe in production, and each is
+    // cheaper to catch at startup than to discover during an incident.
+    if (config.APP_ENV === 'production') {
+      const required = (
+        key: 'SESSION_COOKIE_SECURE' | 'TRUST_PROXY_HOPS' | 'DEMO_ENABLED',
+        message: string,
+      ) => ctx.addIssue({ code: 'custom', path: [key], message });
+
+      if (!config.SESSION_COOKIE_SECURE) {
+        // A Secure cookie over plain http is never sent, so nobody can sign in.
+        required('SESSION_COOKIE_SECURE', 'must be true in production; the site is served over https');
+      }
+      if (config.TRUST_PROXY_HOPS === undefined) {
+        required('TRUST_PROXY_HOPS', 'is required in production so the rate limit sees the real client IP');
+      }
+      if (config.DEMO_ENABLED) {
+        required('DEMO_ENABLED', 'must be false in production; demo routes must not ship');
       }
     }
   });

@@ -16,6 +16,7 @@ describe('loadConfig', () => {
       DATABASE_URL: VALID.DATABASE_URL,
       REDIS_URL: VALID.REDIS_URL,
       QUEUE_PREFIX: 'labops',
+      APP_ENV: 'development',
       API_HOST: '127.0.0.1',
       API_PORT: 4000,
       CORS_ORIGIN: 'http://localhost:3000',
@@ -219,5 +220,56 @@ describe('Google sign-in config', () => {
     ['an allow-list entry that is not an email', { GOOGLE_ALLOWED_EMAILS: 'ops@example.com,not-an-email' }],
   ])('refuses %s', (_label, change) => {
     expect(() => loadConfig({ ...VALID, ...GOOGLE, ...change })).toThrow(ConfigError);
+  });
+});
+
+describe('production configuration', () => {
+  // A deployed instance cannot fall back on local development, so each of these
+  // is refused at startup rather than discovered during an incident.
+const PROD = {
+    ...VALID,
+    APP_ENV: 'production',
+    SESSION_COOKIE_SECURE: 'true',
+    TRUST_PROXY_HOPS: '1',
+    DEMO_ENABLED: 'false',
+  };
+
+  it('accepts a correctly configured production instance', () => {
+    const config = loadConfig(PROD);
+
+    expect(config.APP_ENV).toBe('production');
+    expect(config.TRUST_PROXY_HOPS).toBe(1);
+  });
+
+  it.each([
+    ['the session cookie is not Secure', { SESSION_COOKIE_SECURE: 'false' }],
+    ['the proxy hop count is missing', { TRUST_PROXY_HOPS: undefined }],
+    ['demo routes are enabled', { DEMO_ENABLED: 'true' }],
+  ])('refuses to start when %s', (_case, change) => {
+    expect(() => loadConfig({ ...PROD, ...change })).toThrow(ConfigError);
+  });
+
+  // Negative: the guard must not fire for a local run, or it would block every
+  // developer who has not set a proxy hop count.
+  it('leaves development runs alone', () => {
+    expect(loadConfig({ ...VALID, DEMO_ENABLED: 'true' }).DEMO_ENABLED).toBe(true);
+    expect(loadConfig(VALID).TRUST_PROXY_HOPS).toBeUndefined();
+  });
+
+  it.each([
+    ['negative', '-1'],
+    ['above the proxy maximum', '11'],
+    ['not a number', 'two'],
+  ])('refuses a hop count that is %s', (_case, hops) => {
+    expect(() => loadConfig({ ...VALID, TRUST_PROXY_HOPS: hops })).toThrow(ConfigError);
+  });
+
+  it('names the variables that must change, never their values', () => {
+    try {
+      loadConfig({ ...PROD, TRUST_PROXY_HOPS: undefined });
+      expect.unreachable('should have thrown');
+    } catch (error) {
+      expect((error as Error).message).toContain('TRUST_PROXY_HOPS');
+    }
   });
 });

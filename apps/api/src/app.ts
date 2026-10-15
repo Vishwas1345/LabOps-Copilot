@@ -1,5 +1,6 @@
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
+import type { FastifyServerOptions } from 'fastify';
 import type pino from 'pino';
 import { registerAuditRoutes } from './platform/audit/routes.js';
 import { registerAuthGuard } from './platform/auth/guard.js';
@@ -56,6 +57,7 @@ export async function buildApp(options: {
         | 'SESSION_COOKIE_SECURE'
         | 'APPROVAL_TTL_MINUTES'
         | 'CREDENTIALS_KEY'
+        | 'TRUST_PROXY_HOPS'
         | 'GOOGLE_CLIENT_ID'
         | 'GOOGLE_CLIENT_SECRET'
         | 'GOOGLE_REDIRECT_URI'
@@ -68,10 +70,23 @@ export async function buildApp(options: {
   /** Tests shorten the stream's poll and heartbeat intervals. */
   streamOptions?: Partial<StreamOptions>;
 }) {
-  const app = Fastify({
+const trustedHops = options.config.TRUST_PROXY_HOPS;
+
+// How many trusted reverse proxies sit in front of this process. Behind Caddy
+  // or nginx this must be set, or every request looks like it came from the
+  // proxy: the rate limit stops being per-client and audit logs record the wrong
+  // address. Fastify takes a trust function rather than a hop count, so the
+  // count becomes "trust everything except the last hop".
+  const serverOptions: FastifyServerOptions = {
     loggerInstance: options.logger ?? defaultLogger,
     bodyLimit: BODY_LIMIT_BYTES,
-  });
+    trustProxy:
+      trustedHops === undefined
+        ? false
+        : (_address: string, hop: number) => hop < trustedHops,
+  };
+
+  const app = Fastify(serverOptions);
 
   registerErrorHandling(app);
 
@@ -108,7 +123,10 @@ export async function buildApp(options: {
   registerAuditRoutes(app);
   registerEventStreamRoutes(app, options.streamOptions);
   registerIncidentRoutes(app);
-  registerInvestigationRoutes(app);
+  await registerInvestigationRoutes(app, {
+    redisUrl: options.config.REDIS_URL,
+    keyPrefix: options.config.QUEUE_PREFIX,
+  });
   registerRecoveryRoutes(app, {
     approvalTtlMs: (options.config.APPROVAL_TTL_MINUTES ?? 30) * 60_000,
   });
