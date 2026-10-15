@@ -122,9 +122,9 @@ a duplicate-execution bug can hide.
 **Scale (10× = 5,000 labs, 300 failures in a burst):**
 - Ingestion is one insert per event; dedup is a unique-index conflict, not a read-then-write.
 - Correlation is debounced per window (BullMQ `jobId` = window key + delay), so a burst of 300 events triggers one correlation run, not 300.
-- Correlation candidates come from inverted indices (category, dependency, time bucket), near-linear rather than O(n²) pairwise (`ARCHITECTURE.md §8`).
+- Correlation candidates come from inverted indices (category, dependency), near-linear rather than O(n²) pairwise (`ARCHITECTURE.md §8`).
 - One investigation per incident (stable `jobId`), and evidence is capped by count and size, so LLM cost grows with incidents, not events.
-- SSE fan-out goes through Redis pub/sub, so adding API instances does not change correctness.
+- SSE: each API instance polls committed audit rows, so adding API instances does not change correctness. (*Changed in Phase 10* from Redis pub/sub; see the deviation above.)
 
 **Security (trust boundaries, `ARCHITECTURE.md §2`):**
 - Browser → API: Zod on every body, param and query; session-authenticated writes; body size limits.
@@ -167,8 +167,8 @@ Phase 0; where a later phase changed a row, the row says so.
 | `bullmq` | 4 | Mandated queue; retries, backoff and job dedup by `jobId` |
 | `ioredis` | 4 | Queue connections and the login rate-limit store (already a BullMQ dependency; declared because we import it directly). *Changed in Phase 10:* no pub/sub; the stream polls committed audit rows |
 | `@opentelemetry/api`, `sdk-trace-node`, `sdk-trace-base`, `core`, `resources`, `exporter-trace-otlp-http` | 4, 15 | Mandated tracing; no built-in tracer (`sdk-node` was planned; the narrower packages were enough) |
-| `@fastify/cookie` | 6 | Signed cookie parsing; hand-rolled cookie parsing is a common source of bugs |
-| `@fastify/rate-limit` | 6 | Login and write throttling |
+| `@fastify/cookie` | 6 | Cookie parsing and setting; hand-rolled cookie parsing is a common source of bugs (the token is opaque, not a signed cookie) |
+| `@fastify/rate-limit` | 6 | Login throttling (only login is limited) |
 | LLM SDK (provider TBD, see §5) | 11 | *As built: none.* Gemini is called over plain `fetch` |
 | `tailwindcss`, shadcn/ui components | 8 | Mandated UI stack |
 | `@xyflow/react` (React Flow) | 13 | *Dropped* with the dependency graph (owner decision) |
