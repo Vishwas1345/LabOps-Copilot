@@ -237,4 +237,4 @@ demo endpoints disabled, and an app database role limited to its own schema.
 |---|---|---|
 | Logs | Pino JSON to stdout; Fastify shares the instance; key-name redaction as a safety net; job logs carry `jobId` and `traceId`; correlation logs carry `incidentId` | `traceId` on API request logs needs HTTP spans (later) |
 | Traces | `event.ingest` (api) and `incident.correlate` (worker) in one trace via `traceparent` in the job row | Remaining lifecycle spans as each stage lands |
-| Metrics | `GET /api/metrics` and the overview card, derived from committed rows over a window (default 24 h, max 168); see `ARCHITECTURE.md` section 12 | Indexes or a rollup table on the windowed columns if volume grows |
+| Metrics | `GET /api/metrics` and `GET /api/metrics/series` (failure timeline), shown as the overview's KPI tiles and charts; derived from committed rows over a window (1 h, 24 h or 7 d in the UI; max 168 h); see `ARCHITECTURE.md` section 12 | Indexes or a rollup table on the windowed columns if volume grows |

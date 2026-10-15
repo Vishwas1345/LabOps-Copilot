@@ -801,7 +801,9 @@ failure reason and latency, recovery outcomes, approval to verified, and the
 age of the oldest open transaction (which delays every live update).
 
 They are **derived from committed Postgres rows**, served by `GET /api/metrics`
-and shown on the overview. Each module computes its own figures from its own
+and shown on the overview. `GET /api/metrics/series` adds the failure timeline:
+failures received in the window, bucketed by event time per error category,
+at most 60 buckets, with empty buckets filled so a chart never invents a line. Each module computes its own figures from its own
 table (`<module>/stats.ts`); `metrics/` only combines them. Chosen over an
 in-process OTel meter because the API and the worker both write the rows, so
 one query counts both processes; the figures survive a restart; and they cannot

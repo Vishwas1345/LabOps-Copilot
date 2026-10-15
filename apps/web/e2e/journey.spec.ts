@@ -101,14 +101,24 @@ test('operator journey: failures to verified recovery', async ({ page }) => {
     }
   });
 
-  await test.step('metrics come from this run', async () => {
+  await test.step('the dashboard shows this run: tiles, charts, filters', async () => {
     await page.goto('/');
-    const metrics = card(page, 'Metrics');
-    await expect(metrics.getByText(/^Last 24 h, measured from committed rows/)).toBeVisible();
+    const tile = (label: string) => page.getByText(label, { exact: true }).locator('xpath=../../p[2]');
+    await expect(tile('Failed labs')).not.toHaveText('0');
+    await expect(tile('Approval to verified')).not.toHaveText('—');
+    await expect(card(page, 'Failures over time').locator('svg.recharts-surface')).toBeVisible();
+    await expect(card(page, 'Labs by state').getByText('40', { exact: true })).toBeVisible();
+
+    const pipeline = card(page, 'Pipeline health');
+    await expect(pipeline.getByText(/^Last 24h, measured from committed rows/)).toBeVisible();
     const value = (label: string) =>
-      metrics.getByText(label, { exact: true }).locator('xpath=following-sibling::span');
+      pipeline.getByText(label, { exact: true }).locator('xpath=following-sibling::span');
     await expect(value('Incidents created')).not.toHaveText('0');
     await expect(value('Recoveries succeeded / failed')).toHaveText('1 / 0');
-    await expect(value('Approval to verified (p50 / p95)')).not.toHaveText('— / —');
+
+    // The window filter is a link: the URL carries it, and the page follows.
+    await page.getByRole('link', { name: '1h', exact: true }).click();
+    await expect(page).toHaveURL(/window=1h/);
+    await expect(pipeline.getByText(/^Last 1h, measured/)).toBeVisible();
   });
 });
