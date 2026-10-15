@@ -57,6 +57,8 @@ describe('incident trace', () => {
     expect(await jobTrace(investigateJobKey(investigationId))).toBe(born);
     const queued = exporter.getFinishedSpans().find((span) => span.name === 'investigation.queue');
     expect(queued?.spanContext().traceId).toBe(born);
+    // Named, so a trace viewer can tell the api from the worker.
+    expect(queued?.resource.attributes['service.name']).toBe('incident-trace-test');
 
     const row = await prisma.jobExecution.findUniqueOrThrow({ where: { jobKey: investigateJobKey(investigationId) } });
     await withTraceparent(row.traceparent, () =>
