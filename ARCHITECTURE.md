@@ -163,7 +163,7 @@ apps/api/src/
   config/             env parsing (Zod), feature flags
   auth/               operators, scrypt hashing, server-side sessions,
                       deny-by-default route guard, login rate limit
-  observability/      Pino logger, OTel bootstrap, metrics, correlation IDs
+  observability/      Pino logger, OTel bootstrap, metric shapes, correlation IDs
   secrets/            envelope encryption, redaction helpers, key rotation
   labs/               Lab model, lifecycle state machine, simulator engine
   events/             normalisation, Zod schemas, dedup, ingestion queries
@@ -178,6 +178,8 @@ apps/api/src/
   audit/              append-only audit writer + queries
   events-stream/      committed-audit feed (xid8 boundary), one poller per
                       process, SSE route with Last-Event-ID replay
+  metrics/            GET /api/metrics: combines each module's stats.ts, which
+                      derives its own figures from its own committed rows
   demo/               flag-gated scenario trigger (DEMO_ENABLED); calls the
                       labs service, never touches real provider data
   seed-operator.ts    one-shot: creates or resets the demo operator
@@ -191,7 +193,7 @@ apps/api/src/
 transaction), and `policies` stays pure: it depends only on `labs`, and the
 caller gathers every fact it judges.
 `audit`, `observability`, `jobs` and `auth` are cross-cutting and depend on nothing
-above them. Circular imports are a build error, enforced by an ESLint
+above them. `metrics` sits on top: it only reads, through each owner's stats. Circular imports are a build error, enforced by an ESLint
 `import/no-cycle` rule.
 
 ### Frontend structure
@@ -793,9 +795,21 @@ event.ingest → incident.correlate → investigation.queue → investigation.ll
              → recovery.policy_check → recovery.execute → recovery.verify
 ```
 
-**Metrics** — events ingested, candidate incidents created, correlation
-duration, queue depth and job latency, AI success/failure and latency, recovery
-success rate, retry count, time-to-first-incident, time-from-approval-to-verified.
+**Metrics** — events received, incidents created, first event to incident,
+correlation run time, queue depth, job latency and retries, AI outcomes by
+failure reason and latency, recovery outcomes, approval to verified, and the
+age of the oldest open transaction (which delays every live update).
+
+They are **derived from committed Postgres rows**, served by `GET /api/metrics`
+and shown on the overview. Each module computes its own figures from its own
+table (`<module>/stats.ts`); `metrics/` only combines them. Chosen over an
+in-process OTel meter because the API and the worker both write the rows, so
+one query counts both processes; the figures survive a restart; and they cannot
+disagree with the audit trail. The cost: no time series and no history beyond
+the window (default 24 h, capped at a week), and each read is an aggregate over
+the window's rows. That is cheap at demo volume; at real volume the windowed
+columns need indexes or a rollup table. A duration with no samples is null and
+shows a dash, never "0 ms".
 
 All demo numbers come from real runs. No fabricated dashboards.
 

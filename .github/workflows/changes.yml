@@ -88,11 +88,11 @@ jobs:
   # Builds both images and boots the real stack, so a Dockerfile or startup
   # bug fails here instead of on the first `docker compose up`.
   compose-smoke:
-    name: compose smoke test
+    name: compose smoke and e2e
     needs: detect
     if: needs.detect.outputs.api == 'true' || needs.detect.outputs.web == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -111,6 +111,37 @@ jobs:
 
       - name: Check migrations, api and web
         run: scripts/compose-smoke.sh
+
+      # The operator journey in a real browser. The smoke run already used the
+      # demo scenario, so the journey gets a reset stack (same images, empty
+      # volumes) and runs the scenario itself.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies and the browser
+        run: |
+          npm ci
+          npx --prefix apps/web playwright install --with-deps chromium
+
+      - name: Reset the stack for the journey
+        run: |
+          docker compose down -v
+          docker compose up -d
+          timeout 180 sh -c "until curl -fs http://localhost:3000/login | grep -Eq 'API: (<!-- -->)?ok'; do sleep 3; done"
+
+      - name: Run the operator journey
+        run: npm run test:e2e -w @labops/web
+
+      # Screenshots only; the config never records traces, which hold cookies.
+      - name: Keep the journey's screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: apps/web/test-results
+          retention-days: 7
 
       - name: Show container logs
         if: failure()
