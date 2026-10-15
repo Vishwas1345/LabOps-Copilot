@@ -5,8 +5,27 @@ Read this first, then `CLAUDE.md`, which is the full rulebook and wins on any
 conflict. This file adds what the rulebook cannot: **how we have been working,
 what is built, what is in flight, and what to do next.**
 
-Last updated: 2026-10-15 (all phases 0 to 15 complete; sections 8a to 8c keep
-the per-phase notes as history).
+Last updated: 2026-10-15, evening (all phases 0 to 15 merged; the folder
+restructure and vendor-neutral naming are PR #32; sections 8a to 8c keep the
+per-phase notes as history).
+
+## 0. Current state: start here
+
+- **`main`** has every phase (0 to 15), the UI revamp, the issue fixes and the
+  doc sync (#31). Nothing is half-built.
+- **PR #32 is open and ready, waiting for the owner to merge it** (head
+  `4f44f0f`). It restructures the folders (section 1b) and removes vendor names
+  (section 4). Until it merges, `main` still has the old flat layout: work on
+  top of `refactor/folder-structure`, or wait for the merge.
+- **Docs match the code.** Three audits plus a second pass checked every
+  present-tense claim in every doc and skill against the code. Keep it that
+  way: when code changes, update the doc that describes it in the same PR, and
+  grep the docs for any path you rename.
+- **Open, owner's side only:** rotate the Gemini key, add the
+  `GEMINI_API_KEY` repository secret and dispatch `llm-live.yml` once (#20);
+  branch protection on `main`.
+- **No phase is planned.** Anything new starts with the plan-first loop in
+  section 3.
 
 ---
 
@@ -40,6 +59,40 @@ implements it" sections), `docs/specs/labops-copilot/SPEC.md` (what and why),
 CI, known gaps), `README.md` (setup, endpoints, roadmap). The git-ignored
 `LabOps_Copilot_Project_Specification-2.md` at the root is internal context:
 **never copy it into any tracked file.**
+
+## 1b. Codebase layout (read this before opening a file)
+
+```
+apps/api/src/
+  index.ts  worker.ts  app.ts  db.ts  seed-operator.ts   entrypoints: start here
+  platform/   config http auth audit observability secrets jobs events-stream
+  modules/    labs events incidents investigations policies recovery
+              integrations metrics demo
+apps/api/test/   unit/  integration/  live/  fixtures/      (mirrors src/)
+apps/web/src/    app/ (Next.js pages)  components/  lib/
+apps/web/test/   unit/ (Vitest)  e2e/journey.spec.ts (Playwright)
+```
+
+- **`platform/`** is cross-cutting plumbing with no business rules.
+  **`modules/`** holds one folder per business feature.
+- **A feature module keeps one shape:**
+  - `routes.ts`: HTTP only;
+  - `schemas.ts`: request validation;
+  - `service.ts`, or `services/` when the logic is split by operation (recovery:
+    `propose`, `approve`, `expire`);
+  - `jobs/*.job.ts`: background jobs.
+
+  LLM providers live in `investigations/providers/`, integration adapters in
+  `integrations/adapters/`. `policies` is a pure evaluator with no routes.
+- **Tests never sit next to source.** A new test goes in
+  `apps/api/test/{unit,integration,live}/` or `apps/web/test/{unit,e2e}/` at
+  the path that mirrors its subject. Fixtures go in `apps/api/test/fixtures/`.
+  Vitest, Playwright and ESLint are configured for these folders.
+- **The api build compiles `src/` only** (`tsconfig.build.json`), so tests
+  never ship in `dist/`. `tsconfig.json` typechecks `src`, `test` and the root
+  config files.
+- **Read top-down:** an entrypoint, then `app.ts` (which registers every route),
+  then `modules/<feature>/routes.ts`, then its service.
 
 ## 2. Stack (fixed; no substitutions)
 
@@ -131,9 +184,16 @@ steps:**.
   redaction at the boundary (`platform/observability/redact.ts`); `.env` files are
   git-ignored; `.env.example` holds placeholders only.
 - **Modules own their tables** and expose functions; dependency direction is
-  downward: `investigations -> recovery -> policies(pure, imports only labs)`,
-  `recovery -> incidents -> events -> labs`; `audit`, `observability`,
-  `config`, `auth`, `jobs` are cross-cutting. No upward imports.
+  downward: `investigations -> recovery -> {policies, incidents} -> events ->
+  labs`, and `policies` is pure (imports only `labs`). Everything in
+  `platform/` is cross-cutting and imports no module. No upward imports
+  (`import/no-cycle` enforces cycles). The two read-only exceptions are noted in
+  `ARCHITECTURE.md §4`.
+- **Vendor-neutral, by the owner's decision.** No vendor or company name
+  appears anywhere in code, comments, tests, docs, skills or UI. The only
+  mention is the README's closing "About this project" note. The integration
+  target is the generic "external lab platform" (provider id `lab-platform`).
+  Never imply that any existing platform lacks a capability.
 - **Deny by default:** every API route needs a session unless it sets
   `config: { public: true }`; a test requests every registered route
   anonymously. Human audit actors come from `actorOf(request)`.
@@ -147,8 +207,12 @@ steps:**.
 
 ## 5. Verification routine (run before every push; report results honestly)
 
-Check disk first: `df -h /`. **Under 5 GB free, stop and ask the owner to run
-`docker builder prune -f`** (a full disk once crashed Docker and the session).
+Check disk first: `df -h /` **and** `docker system df`. Docker Desktop's own
+virtual disk (`Docker.raw`) fills up separately from the Mac's, and when it
+does, builds fail with "read-only file system". **Under 5 GB free on either,
+stop and ask the owner to run `docker builder prune -af`. Never prune or
+restart Docker yourself:** the build cache is shared with the owner's other
+projects. That rule was broken once, and it is not optional.
 
 1. `npm run lint`, `npm run typecheck`, `npm run test` (both workspaces).
 2. `npm run test:integration -w @labops/api` (real Postgres + Redis).
@@ -177,6 +241,16 @@ Check disk first: `df -h /`. **Under 5 GB free, stop and ask the owner to run
    **Always `--build`**: compose names images per project, so a throwaway
    project otherwise runs stale images (this once produced a false
    "verified"). Check image build times if in doubt.
+
+8. **The browser journey** on a fresh stack (the smoke run used the demo, so
+   reset first):
+   ```
+   docker compose down -v && docker compose up -d     # wait for /login to show API: ok
+   set -a; . ./.env; set +a
+   npm run test:e2e -w @labops/web
+   ```
+   `-v` wipes this project's dev data. Use a throwaway `COMPOSE_PROJECT_NAME`
+   when the dev data matters.
 
 The smoke test covers: migrate, health, web login page shows `API: ok`,
 signed-out redirect, demo scenario (201 fresh / 200 replay), anonymous 401,
@@ -243,10 +317,9 @@ the verification event. It passes on a fresh stack and on a re-run.
 - **Never edit an applied migration** (Prisma checksums it); add a new one.
   `npm run prisma:drift -w @labops/api` must stay clean.
 - zsh: `grep --include=*.ts` fails on glob expansion; use plain `grep -rn`.
-- The automation browser in our session could not reach `localhost:3000`; UI
-  checks were done by rendering pages with a real session cookie via curl.
-  Server components are not unit-testable here; Playwright (Phase 14) covers
-  them.
+- Server components are not unit-testable here; the Playwright journey covers
+  them. For a visual check, run a throwaway Playwright script that screenshots
+  pages against the running stack, then look at the images (light and dark).
 - gitleaks runs in CI on each push's commits; fake secrets in tests must be
   allowlisted **by exact string** in `.gitleaks.toml` (never by pattern).
 - `scripts/audit-gate.mjs` fails on new high/critical npm advisories not in
@@ -259,6 +332,37 @@ the verification event. It passes on a fresh stack and on a re-run.
   and defaults the username to `operator`.
 - Main is **not** branch-protected yet (owner's settings task: require the
   api/web quality gates and the compose smoke test).
+
+- **A port can be taken by the owner's other projects.** 3000, and sometimes
+  3001, belong to another local dev server. Set `WEB_HOST_PORT` (like
+  `REDIS_HOST_PORT`) and pass `WEB_URL` to the smoke script and Playwright.
+  Never stop the owner's process. A readiness check must look for something
+  only this app returns (the smoke script greps `API: ok`), not a bare 200.
+- **No route-level `loading.tsx`.** A live refresh landing while a streamed
+  boundary is being revealed left pages stuck on the skeleton, even after a
+  full reload. `LiveRefresh` also refreshes once on the stream's `ready` event,
+  which closes the gap between the server render and the stream connecting.
+- **Raw SQL with a JS `Date`:** Prisma binds it as `timestamptz`, while the
+  columns are UTC `timestamp`. Compare with `(${since} AT TIME ZONE 'UTC')`, or
+  a non-UTC session shifts the window (#22). Typed Prisma queries are fine.
+- **A test that cannot fail is worse than none.** Twice a test passed with its
+  fix removed: one asserted a figure the bug never touched, the other read a
+  KPI tile's caption instead of its value (`p[2]` instead of `p[1]`). Always
+  mutation-check, and when an assertion looks too easy, make it fail once on
+  purpose.
+- **Before saying a PR is ready, push; before merging, check the head.**
+  Three times a merge landed one commit before the final work.
+  `gh pr view N --json headRefOid` should match the commit named as final.
+- **README screenshots must come from a run that follows the README
+  walkthrough exactly.** Images from a test run that also rejected a proposal
+  showed a different timeline and trace than a reader would get. Capture them
+  with a throwaway Playwright script (deleted afterwards) on a fresh stack
+  with `compose.tracing.yml`, and read the README's numbers table from that
+  same run.
+- **Docs drift where they were written before the code.** Architecture
+  diagrams and skill templates described the plan, never the build. Audit
+  claim by claim against the code, then audit the fixes again: a second pass
+  found 16 more issues.
 
 ## 7. What is built (phase by phase)
 
@@ -282,6 +386,8 @@ for Phase N is `LOC-(5+N)`.
 | — | — | #26, #28 | UI revamp: shell, dark mode, design tokens; dashboard with KPI tiles, charts and a time window |
 | — | — | #29 | Fixes #22, #23, #24 (the fixture now shows the policy block), #27 |
 | 15 | LOC-20 | #30 | Delivery: one incident is one trace, opt-in Jaeger, README walkthrough; local-only |
+| — | — | #31 | Docs synced with the code after a full audit; `db:up` starts Redis; dead `withContext` removed |
+| — | — | #32 (open) | Folder restructure (section 1b) and vendor-neutral naming; screenshots retaken from the README walkthrough |
 
 Key behaviours worth knowing (details in `ARCHITECTURE.md`):
 
@@ -303,9 +409,9 @@ Key behaviours worth knowing (details in `ARCHITECTURE.md`):
   one poller per API process; heartbeat re-checks the session; web relays the
   stream (`app/api/events/stream/route.ts`) and `LiveRefresh` refreshes pages.
 
-Latest verified numbers (Phase 15 branch): API unit 665, integration 218
-(twice on a fresh DB); web 123 tests; compose smoke and the browser journey
-green on a fresh stack.
+Latest verified numbers (PR #32 branch): API unit 665, integration 218
+(twice on a fresh DB); web 123 tests; coverage api 98.4%, web 92.5%; fresh
+clone, compose smoke and the browser journey green on a fresh stack.
 
 ## 8a. Phase 10 (PR #16): merged
 
@@ -421,9 +527,10 @@ database, fresh clone, and compose smoke fresh and on a re-run. LOC-18 is Done.
 ## 9. What is left
 
 All phases (0 to 15) are done; `docs/specs/labops-copilot/PLAN.md` records
-each. Open, owner's side only: rotate the Gemini key, add the `GEMINI_API_KEY`
-repository secret and dispatch `llm-live.yml` once (issue #20); branch
-protection on `main`. Anything new follows the plan-first loop above.
+each. In flight: PR #32, waiting for the owner's merge. Open, owner's side
+only: rotate the Gemini key, add the `GEMINI_API_KEY` repository secret and
+dispatch `llm-live.yml` once (issue #20); branch protection on `main`.
+Anything new follows the plan-first loop above.
 
 ## 10. Known gaps (recorded in INFRA / PLAN; do not rediscover them)
 
@@ -438,13 +545,16 @@ protection on `main`. Anything new follows the plan-first loop above.
 - Dev databases can hold incidents from before Phase 8 stuck in
   `investigating` with no proposal (local data only).
 - Branch protection on `main` is off.
+- API request logs carry no trace id until HTTP spans are added (worker logs
+  do).
+- Nothing alerts on a long open transaction; `/api/metrics` only shows it.
+- The README's "Before production" section lists the deployment-only gaps.
 
 ## 11. Commands cheat sheet
 
 ```bash
 npm install                    # all workspaces
-npm run db:up                  # postgres and redis
-docker compose up -d redis     # redis too (host port 6380 locally, see section 6)
+npm run db:up                  # postgres and redis (redis on host 6380 locally)
 npm run db:generate            # Prisma client
 npm run db:migrate             # apply migrations to the dev DB
 npm run dev                    # api :4000, worker, web :3000 (host)
@@ -454,6 +564,10 @@ docker compose up --build -d   # full stack; sign in at http://localhost:3000
 docker compose up -d migrate   # re-run migrations + operator seed
 scripts/compose-smoke.sh       # against a running stack (needs the root .env loaded)
 scripts/clean-db-check.sh      # integration twice on a throwaway DB
+npm run test:e2e -w @labops/web    # Playwright journey; needs a fresh stack
+npm run test:live -w @labops/api   # real model; needs LLM_API_KEY, opt-in only
+docker compose -f docker-compose.yml -f compose.tracing.yml up --build -d   # + Jaeger :16686
+WEB_HOST_PORT=3010 docker compose up -d   # when another project holds :3000
 gh pr create --draft ... ; gh pr ready N ; gh pr checks N
 ```
 
