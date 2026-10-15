@@ -90,7 +90,7 @@ npm run dev                  # API :4000 + worker + web :3000
 npm run dev:api              # API only
 npm run dev:web              # web only
 npm run dev:worker           # background worker only
-npm run db:up                # start PostgreSQL via Docker Compose
+npm run db:up                # start PostgreSQL and Redis via Docker Compose
 npm run db:generate          # regenerate Prisma client
 npm run db:migrate           # apply checked-in migrations
 npm run lint                 # ESLint across both workspaces
