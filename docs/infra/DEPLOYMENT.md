@@ -6,6 +6,10 @@ Written to be handed to someone who has not seen this conversation.
 Read `docs/GAPS.md` first: it says what the system does not do, and two of those
 things shape every decision here.
 
+**If you are resuming this work:** §4a is the host provisioning and is where
+people get stuck, §5 is the deploy itself, §11 is what has never been verified,
+and §12 is what must happen before the site is genuinely public.
+
 ---
 
 ## 1. Where it runs, and why
@@ -104,6 +108,67 @@ SITE_DOMAIN=x POSTGRES_PASSWORD=x docker compose -f docker-compose.prod.yml conf
 the AES credentials key, the model API key and the Google client secret were all
 one `git add` from being committed. Both are now ignored, with the intent stated
 in the file so nobody removes the lines.
+
+---
+
+## 4a. Provisioning the host first
+
+Do this before §5. It is the part most likely to cost an afternoon, and none of it
+is guessable from the repository.
+
+### Which shape to pick, and why memory decides it
+
+**Do not pick an AMD micro shape.** The free tier offers 1 GB RAM machines, and
+this stack runs seven containers on the host — Postgres, Redis, the API, the
+worker, the Next.js server, Caddy, plus the image build itself. 1 GB will thrash
+or get OOM-killed during `docker compose build`, which is the worst way to find
+out.
+
+Ask instead for an **Ampere A1 (ARM)** shape: the Always Free allowance there
+totals 4 OCPUs and 24 GB across the account, which is comfortable. The images
+are `node:22-alpine` on `linux/arm64`, so they build and run on ARM without
+change.
+
+**The catch is capacity.** Free-tier ARM shapes are frequently reported as
+"out of host capacity" in busy regions. This is the single most common way this
+deployment fails, and it fails immediately and visibly rather than subtly.
+Persistence is not guaranteed; if a region is full, try another one or try again
+later.
+
+Verify a card is required for the account regardless: Oracle runs a small
+temporary authorisation on signup.
+
+### Two things that will block HTTP even after the VM exists
+
+**Oracle's own firewall drops inbound traffic.** Oracle Linux images ship
+iptables rules that reject everything inbound, including 80 and 443, and the
+console SSH session does not fix it. Check and correct before blaming Caddy:
+
+```bash
+sudo iptables -L INPUT -n --line-numbers   # look for a REJECT ALL rule
+sudo sed -i '/-A INPUT -j REJECT/d' /etc/iptables/rules.v4
+sudo netfilter-persistent save
+```
+
+**The VCN security list is separate.** In the cloud console, the subnet's security
+list needs ingress for TCP 80 and 443 from `0.0.0.0/0`. Port 22 should be
+restricted to your own address rather than opened to the world.
+
+### Getting the repository onto the host
+
+The server needs the code, and a deploy key is cleaner than copying a password
+around. On the host:
+
+```bash
+git clone https://github.com/Vishwas1345/LabOps-Copilot.git
+cd LabOps-Copilot
+```
+
+For a private repository, create a read-only deploy key in the GitHub UI under
+Settings → Deploy keys, and use `git clone git@github.com:...` with that key in
+`~/.ssh/id_ed25519` and `github.com` in `~/.ssh/known_hosts`.
+
+A first deploy also needs enough disk for the images and for `./backups/`.
 
 ---
 
