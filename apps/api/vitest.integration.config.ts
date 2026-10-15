@@ -6,8 +6,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     env: integrationEnv(),
-    globalSetup: ['./vitest.integration.setup.ts'],
-    include: ['src/**/*.int.test.ts'],
+    globalSetup: ['./vitest.integration.setup'],
+    include: ['test/integration/**/*.int.test.ts'],
     // Specs share one database, so files run one at a time.
     fileParallelism: false,
   },

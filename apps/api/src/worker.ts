@@ -1,21 +1,21 @@
 // Worker process entrypoint. Runs jobs, the reconciler and the approval
 // expiry sweep; never serves HTTP.
 
-import { loadConfig } from './config/env.js';
-import type { Config } from './config/env.js';
+import { loadConfig } from './platform/config/env.js';
+import type { Config } from './platform/config/env.js';
 import { prisma } from './db.js';
-import { handleCorrelate } from './incidents/correlate.job.js';
-import { createGeminiProvider } from './investigations/gemini-provider.js';
-import { fixtureProvider } from './investigations/fixture-provider.js';
-import type { LlmProvider } from './investigations/provider.js';
-import { createInvestigateJob } from './investigations/investigate.job.js';
-import { closeQueues } from './jobs/queues.js';
-import { reconcileJobs } from './jobs/reconcile.js';
-import { createExecuteJob } from './recovery/execute.job.js';
-import { expireStaleApprovals } from './recovery/expire.js';
-import { createWorker } from './jobs/worker.js';
-import { logger } from './observability/logger.js';
-import { initTracing } from './observability/tracing.js';
+import { handleCorrelate } from './modules/incidents/jobs/correlate.job.js';
+import { createGeminiProvider } from './modules/investigations/providers/gemini-provider.js';
+import { fixtureProvider } from './modules/investigations/providers/fixture-provider.js';
+import type { LlmProvider } from './modules/investigations/providers/provider.js';
+import { createInvestigateJob } from './modules/investigations/jobs/investigate.job.js';
+import { closeQueues } from './platform/jobs/queues.js';
+import { reconcileJobs } from './platform/jobs/reconcile.js';
+import { createExecuteJob } from './modules/recovery/jobs/execute.job.js';
+import { expireStaleApprovals } from './modules/recovery/expire.js';
+import { createWorker } from './platform/jobs/worker.js';
+import { logger } from './platform/observability/logger.js';
+import { initTracing } from './platform/observability/tracing.js';
 
 const RECONCILE_INTERVAL_MS = 60_000;
 

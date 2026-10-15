@@ -2,9 +2,9 @@
 // environment. Run after migrations (compose chains it to `migrate`).
 
 import { z } from 'zod';
-import { seedOperator } from './auth/service.js';
+import { seedOperator } from './platform/auth/service.js';
 import { prisma } from './db.js';
-import { logger } from './observability/logger.js';
+import { logger } from './platform/observability/logger.js';
 
 // Unset password means "no operator": the stack still boots, nobody can sign in.
 const seedEnv = z.object({

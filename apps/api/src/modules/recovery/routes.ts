@@ -1,0 +1,130 @@
+import type {
+  FastifyBaseLogger,
+  FastifyInstance,
+  RawReplyDefaultExpression,
+  RawRequestDefaultExpression,
+  RawServerDefault,
+} from 'fastify';
+import { z } from 'zod';
+import { actorOf } from '../../platform/auth/guard.js';
+import { prisma } from '../../db.js';
+import { AppError } from '../../platform/http/errors.js';
+import { incidentParams } from '../incidents/schemas.js';
+import { assertIncidentExists, IncidentNotFoundError } from '../incidents/service.js';
+import { ACTION_TYPES } from '../labs/actions.js';
+import {
+  ApprovalExpiredError,
+  approveAction,
+  RecoveryActionConflictError,
+  RecoveryActionNotFoundError,
+  rejectAction,
+} from './approve.js';
+import { ProposalConflictError, proposeAction } from './propose.js';
+
+const actionParams = z.object({ id: z.string().min(1).max(64) }).strict();
+
+// An unknown action type cannot even be stored (ActionType is a DB enum), so
+// it is a 400 here; the evaluator's step 1 still guards every other caller.
+// Parameters are accepted so policy can record why they were refused.
+const proposalBody = z
+  .object({
+    actionType: z.enum(ACTION_TYPES),
+    targetIds: z.array(z.string().min(1).max(64)).max(50),
+    parameters: z
+      .record(z.string().max(64), z.unknown())
+      .refine((value) => JSON.stringify(value).length <= 2000, 'parameters are too large')
+      .default({}),
+  })
+  .strict();
+
+function mapError(error: unknown): never {
+  if (error instanceof IncidentNotFoundError) {
+    throw new AppError(404, 'INCIDENT_NOT_FOUND', 'incident not found');
+  }
+  if (error instanceof ProposalConflictError) {
+    throw new AppError(409, 'INCIDENT_NOT_PROPOSABLE', 'incident cannot take a proposal now');
+  }
+  if (error instanceof RecoveryActionNotFoundError) {
+    throw new AppError(404, 'RECOVERY_ACTION_NOT_FOUND', 'recovery action not found');
+  }
+  if (error instanceof RecoveryActionConflictError) {
+    throw new AppError(409, 'RECOVERY_ACTION_NOT_PENDING', `recovery action is ${error.status}`);
+  }
+  if (error instanceof ApprovalExpiredError) {
+    throw new AppError(409, 'APPROVAL_EXPIRED', 'the approval window has passed');
+  }
+  throw error;
+}
+
+const MAX_LISTED = 50;
+
+// HTTP only. A blocked proposal is still a 201: it is a recorded decision,
+// not a failed request.
+export function registerRecoveryRoutes<Logger extends FastifyBaseLogger>(
+  app: FastifyInstance<
+    RawServerDefault,
+    RawRequestDefaultExpression,
+    RawReplyDefaultExpression,
+    Logger
+  >,
+  options: { approvalTtlMs: number },
+): void {
+  app.post('/api/incidents/:id/recovery-proposals', async (request, reply) => {
+    const { id } = incidentParams.parse(request.params);
+    const body = proposalBody.parse(request.body);
+    const actor = actorOf(request);
+    const proposal = await prisma
+      .$transaction((tx) => proposeAction(tx, id, body, actor, options))
+      .catch(mapError);
+    return reply.status(proposal.created ? 201 : 200).send({
+      data: {
+        recoveryActionId: proposal.recoveryActionId,
+        status: proposal.status,
+        blockedAt: proposal.blockedAt,
+      },
+    });
+  });
+
+  // The approver is the session's operator, never a field in the body.
+  app.post('/api/recovery-actions/:id/approve', async (request, reply) => {
+    const { id } = actionParams.parse(request.params);
+    const approval = await approveAction(id, actorOf(request)).catch(mapError);
+    return reply.status(approval.created ? 202 : 200).send({ data: { jobId: approval.jobId } });
+  });
+
+  app.post('/api/recovery-actions/:id/reject', async (request) => {
+    const { id } = actionParams.parse(request.params);
+    await rejectAction(id, actorOf(request)).catch(mapError);
+    return { data: { recoveryActionId: id, status: 'rejected' } };
+  });
+
+  app.get('/api/incidents/:id/recovery-actions', async (request) => {
+    const { id } = incidentParams.parse(request.params);
+    await assertIncidentExists(id).catch(mapError);
+    const rows = await prisma.recoveryAction.findMany({
+      where: { incidentId: id },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: MAX_LISTED,
+    });
+    return {
+      data: rows.map((row) => ({
+        id: row.id,
+        investigationId: row.investigationId,
+        actionType: row.actionType,
+        targetIds: row.targetIds,
+        status: row.status,
+        proposedBy: row.proposedBy,
+        blockedAt: row.blockedAt,
+        policyDecisions: row.policyDecisions,
+        expiresAt: row.expiresAt?.toISOString() ?? null,
+        approvedBy: row.approvedBy,
+        approvedAt: row.approvedAt?.toISOString() ?? null,
+        executedAt: row.executedAt?.toISOString() ?? null,
+        // Before-state and execution-time policy decisions, then verification.
+        result: row.result,
+        verificationResult: row.verificationResult,
+        createdAt: row.createdAt.toISOString(),
+      })),
+    };
+  });
+}

@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 // Runs against an already-running compose stack, so the journey exercises the
 // built images; Playwright never starts a dev server itself (docs/infra/INFRA.md).
 export default defineConfig({
-  testDir: './e2e',
+  testDir: './test/e2e',
   // One stack, one seeded scenario: the journey's steps depend on each other.
   workers: 1,
   retries: 0,

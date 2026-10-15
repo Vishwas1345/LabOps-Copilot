@@ -3,14 +3,10 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
-    // Never a live LLM call; integration specs run under their own config.
-    exclude: [
-      '**/node_modules/**',
-      '**/dist/**',
-      'src/**/*.live.test.ts',
-      'src/**/*.int.test.ts',
-    ],
+    // Unit specs only. Integration and live specs live in their own folders
+    // and run under their own configs, so a live LLM call can never sneak in.
+    include: ['test/unit/**/*.test.ts'],
+    exclude: ['**/node_modules/**', '**/dist/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary', 'lcov'],
@@ -19,7 +15,6 @@ export default defineConfig({
       // Coverage counts integration specs too (vitest.coverage.config.ts), so
       // only the process entrypoints, which no test runs, are excluded.
       exclude: [
-        'src/**/*.test.ts',
         'src/index.ts',
         'src/worker.ts',
         'src/seed-operator.ts',
