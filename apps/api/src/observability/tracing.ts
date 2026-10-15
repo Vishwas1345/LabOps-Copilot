@@ -1,5 +1,6 @@
-// OpenTelemetry setup and helpers. Trace context travels inside job payloads
-// as a W3C traceparent, so one incident is one trace across API and worker.
+// OpenTelemetry setup and helpers. Trace context travels as a W3C traceparent
+// on each job row and on the incident, so one incident is one trace across the
+// api, the worker and the operator actions in between.
 
 import type { Span } from '@opentelemetry/api';
 import { context, propagation, SpanStatusCode, trace } from '@opentelemetry/api';
