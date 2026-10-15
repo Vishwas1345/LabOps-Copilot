@@ -66,6 +66,9 @@ describe('route protection', () => {
     'POST /api/auth/google/authorization-url',
     'POST /api/auth/google',
     'POST /api/demo/scenarios/:name',
+    // The webhook authenticates by signature rather than by session, so it is
+    // public by design; with no secret configured it answers 404 anyway.
+    'POST /api/webhooks/mock-platform',
     'OPTIONS *',
   ]);
 

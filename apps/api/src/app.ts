@@ -69,6 +69,8 @@ export async function buildApp(options: {
   googleDeps?: GoogleDeps;
   /** Tests shorten the stream's poll and heartbeat intervals. */
   streamOptions?: Partial<StreamOptions>;
+  /** Tests lower the webhook delivery ceiling so a 429 is reachable. */
+  webhookOptions?: { deliveriesPerMinute?: number };
 }) {
   const app = Fastify({
     loggerInstance: options.logger ?? defaultLogger,
@@ -127,6 +129,7 @@ export async function buildApp(options: {
       redisUrl: options.config.REDIS_URL,
       keyPrefix: options.config.QUEUE_PREFIX,
       secret: options.config.WEBHOOK_SECRET,
+      ...options.webhookOptions,
     });
   }
 

@@ -8,6 +8,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 /** Hex digest length of HMAC-SHA256; any other length cannot be a real signature. */
 const DIGEST_HEX_LENGTH = 64;
 
+const DIGEST_PATTERN = new RegExp(`^[0-9a-f]{${DIGEST_HEX_LENGTH}}$`, 'i');
+
 /** How far a signed request's timestamp may drift from ours, in either direction. */
 export const DEFAULT_TOLERANCE_SECONDS = 300;
 
@@ -87,7 +89,7 @@ export function verifySignature(input: {
 
   // Digits only: rejects '', '+1', '1e3', ' 12' and '-1' alike.
   if (!/^\d+$/.test(parsed.timestamp)) return { ok: false, reason: 'malformed_timestamp' };
-  if (!/^[0-9a-f]{64}$/i.test(parsed.signature)) return { ok: false, reason: 'malformed_header' };
+  if (!DIGEST_PATTERN.test(parsed.signature)) return { ok: false, reason: 'malformed_header' };
 
   const timestampSeconds = Number(parsed.timestamp);
   // A 30-digit timestamp is digits but overflows; refuse it rather than wrap.

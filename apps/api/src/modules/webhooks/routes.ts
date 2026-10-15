@@ -70,24 +70,27 @@ export async function registerWebhookRoutes<Logger extends FastifyBaseLogger>(
     secret?: string;
     /** Lets tests move the clock without sleeping. */
     nowSeconds?: () => number;
+    /** Tests lower the delivery ceiling so a 429 is reachable in a test run. */
+    deliveriesPerMinute?: number;
   },
 ): Promise<void> {
-  // Its own rate-limit instance rather than reusing the login one: this limit
-  // must not change if the auth registration is ever reordered.
-  const redis = new Redis(options.redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1 });
-  app.addHook('onClose', () => redis.quit().then(() => undefined, () => undefined));
-  await app.register(rateLimit, {
-    global: false,
-    redis,
-    nameSpace: `${options.keyPrefix}:webhook-limit:`,
-    errorResponseBuilder: (_request, context) =>
-      new AppError(429, 'RATE_LIMITED', `too many deliveries; retry in ${context.after}`),
-  });
-
   // Encapsulated so the content-type parser below applies to this route only.
   // The rest of the API keeps Fastify's default JSON parsing, and nothing else
-  // can read or depend on an unparsed body.
+  // can read or depend on an unparsed body. The rate limiter is registered in
+  // the same scope rather than reusing the login one, so this limit cannot
+  // change if the auth registration is ever reordered, and so a deploy with no
+  // webhook opens no extra Redis connection.
   await app.register(async (instance) => {
+    const redis = new Redis(options.redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1 });
+    instance.addHook('onClose', () => redis.quit().then(() => undefined, () => undefined));
+    await instance.register(rateLimit, {
+      global: false,
+      redis,
+      nameSpace: `${options.keyPrefix}:webhook-limit:`,
+      errorResponseBuilder: (_request, context) =>
+        new AppError(429, 'RATE_LIMITED', `too many deliveries; retry in ${context.after}`),
+    });
+
     instance.decorateRequest('rawBody', null);
 
     instance.addContentTypeParser(
@@ -109,7 +112,10 @@ export async function registerWebhookRoutes<Logger extends FastifyBaseLogger>(
       {
         config: {
           public: true,
-          rateLimit: { max: WEBHOOK_DELIVERIES_PER_MINUTE, timeWindow: '1 minute' },
+          rateLimit: {
+            max: options.deliveriesPerMinute ?? WEBHOOK_DELIVERIES_PER_MINUTE,
+            timeWindow: '1 minute',
+          },
         },
       },
       async (request, reply) => {
