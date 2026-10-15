@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatDuration,
   formatConfidence,
   formatDateTime,
   formatScore,
@@ -36,6 +37,18 @@ describe('formatters', () => {
     expect(statusVariant('resolved')).toBe('success');
     expect(statusVariant('manual_review')).toBe('destructive');
     expect(statusVariant('something_new')).toBe('outline');
+  });
+});
+
+describe('formatDuration', () => {
+  it.each([
+    [null, '—'],
+    [0, '0 ms'],
+    [999, '999 ms'],
+    [1500, '1.5 s'],
+    [90_000, '1.5 min'],
+  ])('%s -> %s', (ms, text) => {
+    expect(formatDuration(ms)).toBe(text);
   });
 });
 

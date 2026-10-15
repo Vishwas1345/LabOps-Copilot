@@ -18,6 +18,14 @@ export function formatConfidence(confidence: number | null): string {
   return confidence === null ? '—' : `${Math.round(confidence * 100)}% (model's own estimate)`;
 }
 
+/** A measured duration; null (nothing measured yet) -> "—", never "0 ms". */
+export function formatDuration(ms: number | null): string {
+  if (ms === null) return '—';
+  if (ms < 1000) return `${ms} ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`;
+  return `${(ms / 60_000).toFixed(1)} min`;
+}
+
 /** Enum or audit action to words: "awaiting_approval", "recovery.verified". */
 export function humanise(value: string): string {
   return value.replace(/[_.]/g, ' ').toLowerCase();

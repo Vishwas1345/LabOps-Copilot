@@ -25,6 +25,20 @@ export const jobSummarySchema = z.object({
   data: z.array(z.object({ queue: z.string(), status: z.string(), count: z.number() })),
 });
 
+const duration = z.object({ samples: z.number(), p50Ms: z.number().nullable(), p95Ms: z.number().nullable() });
+
+export const metricsSchema = z.object({
+  data: z.object({
+    window: z.object({ hours: z.number() }),
+    events: z.object({ received: z.number() }),
+    incidents: z.object({ created: z.number(), timeToIdentify: duration }),
+    queues: z.array(z.object({ queue: z.string(), depth: z.number(), retries: z.number(), run: duration })),
+    investigations: z.object({ byStatus: z.record(z.string(), z.number()), latency: duration }),
+    recovery: z.object({ byStatus: z.record(z.string(), z.number()), approvalToVerified: duration }),
+    oldestOpenTransactionMs: z.number().nullable(),
+  }),
+});
+
 export const incidentSummary = z.object({
   id: z.string(),
   title: z.string(),
