@@ -492,7 +492,7 @@ Phase 13 deviations, settled by building it:
 
 **Files:** `apps/web/e2e/journey.spec.ts` (Playwright, seeded scenario, fixture LLM), CI job running compose and then Playwright; `GET /api/metrics` from each module's `stats.ts`: events received, incidents created, first event to incident, correlation run time, queue depth and retries, AI outcomes and latency, recovery outcomes, approval → verified, oldest open transaction.
 **Deviation (owner decision):** metrics are derived from committed Postgres rows, not an OTel metrics SDK. Without a collector in compose OTel metrics would be invisible on a real run, the worker cannot be scraped (it never serves HTTP), and in-process counters would split across two processes and reset on restart. `ARCHITECTURE.md` section 12 records the trade-off.
-**Tests:** the spec's journey, plus the negative cases visible in the UI: the permission-denied incident stays separate, a rejected proposal reopens the incident, and a double-clicked approval runs once. The blocked action's card is not reachable from the UI with the fixture model; see [ACCEPTANCE.md](./ACCEPTANCE.md) criterion 10.
+**Tests:** the spec's journey, plus the negative cases visible in the UI: the permission-denied incident stays separate, a rejected proposal reopens the incident, and a double-clicked approval runs once. The blocked action's card is checked too: the fixture model recommends a retry for a permission failure on purpose, and policy blocks it (#24).
 **Verify:** CI green with the E2E job; metrics are visible from a real run (never hardcoded).
 **Rollback:** revert.
 **Done when:** every SPEC acceptance criterion can be pointed at a test or a screen: see [ACCEPTANCE.md](./ACCEPTANCE.md).

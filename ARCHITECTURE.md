@@ -707,7 +707,9 @@ exactly *which* rule blocked an action and why.
   expiry. Blocked: `rejected_by_policy`, incident to `manual_review`. A repeat
   for the same action and targets returns the unfinished proposal.
 - A retry on `PERMISSION_DENIED` is blocked at the state step: the demo's
-  deterministic blocked case.
+  deterministic blocked case. The fixture model recommends exactly that retry
+  for a permission failure, deliberately wrong as a real model can be, so the
+  demo shows policy refusing a model rather than only a test doing so.
 - Each source owns one starting state: a diagnosis proposes from
   `investigating` (which only the investigation leaves), an operator only from
   `manual_review`. Otherwise an operator proposal accepted mid-investigation

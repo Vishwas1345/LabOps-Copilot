@@ -194,6 +194,19 @@ describe('investigate job outcomes', () => {
     expect(await statusOf(incidentId)).toBe('open');
   });
 
+  // Negative, end to end with the default model: the fixture recommends a
+  // retry for a permission failure, and policy refuses it (#24).
+  it('blocks the fixture\'s retry on a permission failure at the state step', async () => {
+    const { incidentId } = await incidentOf(1, { category: 'PERMISSION_DENIED' });
+
+    const investigation = await investigateWith(fixtureProvider, incidentId);
+
+    expect(investigation.recommendedAction).toBe('RETRY_PROVISIONING');
+    expect(await statusOf(incidentId)).toBe('manual_review');
+    const action = await prisma.recoveryAction.findFirstOrThrow({ where: { incidentId } });
+    expect(action).toMatchObject({ status: 'rejected_by_policy', blockedAt: 'state' });
+  });
+
   it('sends a diagnosis with no safe action to manual review', async () => {
     const { incidentId } = await incidentOf(2, { category: 'NETWORK_CONFIG' });
 
