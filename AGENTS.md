@@ -13,7 +13,10 @@ per-phase notes as history).
 
 - **`main`** has every phase (0 to 15), the UI revamp, the issue fixes, the
   doc sync (#31), and the folder restructure with vendor-neutral naming (#32;
-  section 1b and section 4). Nothing is half-built or in flight.
+  section 1b and section 4). Optional Google sign-in (OIDC, PKCE, exact-email
+  allow-list; `docs/specs/google-sign-in/`) sits beside password sign-in, in
+  `platform/auth/google.ts` and the web's `app/auth/google/`. Nothing is
+  half-built or in flight.
 - **Docs match the code.** Three audits plus a second pass checked every
   present-tense claim in every doc and skill against the code. Keep it that
   way: when code changes, update the doc that describes it in the same PR, and
@@ -530,7 +533,10 @@ Anything new follows the plan-first loop above.
 
 ## 10. Known gaps (recorded in INFRA / PLAN; do not rediscover them)
 
-- Login rate limit is effectively global behind the BFF (fails safe).
+- Login rate limit is effectively global behind the BFF (fails safe); Google
+  sign-in shares it.
+- Real Google sign-in is tested only by hand with an owner's OAuth client;
+  the suites sign ID tokens with a local key and stub the token endpoint.
 - `trustProxy` is off; behind a load balancer it must name the real hops.
 - A long-open transaction anywhere on the DB server delays all live updates.
 - Self-approval is allowed (single operator, no roles yet).

@@ -97,6 +97,10 @@ reach another project's instance.
 | `LLM_MAX_ATTEMPTS` | worker | `3` | Total attempts against 429/5xx. The free tier throttles hard; a 400 is never retried |
 | `CREDENTIALS_KEY` | api | unset | base64 of exactly 32 bytes: the AES-256 key for integration credentials. Optional; when absent the settings page works and saving a credential returns 503 `CREDENTIALS_KEY_MISSING` rather than storing anything in the clear. Rotating it means re-sealing every stored credential; `keyVersion` on each row is what keeps that contained |
 | `SESSION_COOKIE_SECURE` | api | `true` (`false` in compose and `.env.example`) | Session cookie only over https; off only for local http |
+| `GOOGLE_CLIENT_ID` | api | unset | Optional Google sign-in. All four `GOOGLE_*` or none, else startup fails; empty counts as unset (compose passes them from the root `.env`) |
+| `GOOGLE_CLIENT_SECRET` | api | unset | Sent only to Google's token endpoint; never returned, logged or sent to the web |
+| `GOOGLE_REDIRECT_URI` | api | unset | Must match the OAuth client exactly; locally `http://localhost:3000/auth/google/callback`. https, or http on loopback |
+| `GOOGLE_ALLOWED_EMAILS` | api | unset | Comma-separated exact emails, 1 to 100; no domain matching |
 | `SEED_OPERATOR_USERNAME` | migrate (seed) | `operator` | Operator the seed creates or resets |
 | `SEED_OPERATOR_PASSWORD` | migrate (seed) | unset: seeds nobody | 12+ characters; root `.env` for compose, a masked random value in CI; never committed |
 | `DEMO_ENABLED` | api | `false` (`true` in compose and `.env.example`) | Registers `/api/demo/*`; when off the routes do not exist (404) |

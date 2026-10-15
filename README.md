@@ -368,6 +368,29 @@ and the demo trigger needs a session.
 For the faster dev loop, run `npm run db:up` for infrastructure only and
 `npm run dev` for the API and web app with hot reload.
 
+### Optional: sign in with Google
+
+Password sign-in always works; Google is offered next to it once configured.
+
+1. In Google Cloud Console, configure the OAuth consent screen (External,
+   Testing) and add each person as a test user.
+2. Create an OAuth client ID of type **Web application** with the authorised
+   redirect URI `http://localhost:3000/auth/google/callback`, exactly.
+3. Set the four variables in `apps/api/.env` (or the root `.env` for compose):
+
+   ```bash
+   GOOGLE_CLIENT_ID=<client id>
+   GOOGLE_CLIENT_SECRET=<client secret>
+   GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback
+   GOOGLE_ALLOWED_EMAILS=you@example.com
+   ```
+
+4. Restart the API. The sign-in page shows **Sign in with Google**.
+
+Only emails on the allow-list, verified by Google, get in. The first sign-in
+links the operator whose username is that email, or creates one with no
+password. The web app needs no new variables: the secret never leaves the API.
+
 ---
 
 ## Environment variables
@@ -389,6 +412,10 @@ For the faster dev loop, run `npm run db:up` for infrastructure only and
 | `LLM_MODEL` | `gemini-3.1-flash-lite` | Override this; it is the most volatile value in the project |
 | `LLM_BASE_URL` | Gemini's REST endpoint | Must be https, or http on loopback: the key rides in a header |
 | `LLM_MAX_ATTEMPTS` | `3` | Total attempts against 429/5xx |
+| `GOOGLE_CLIENT_ID` | unset | Optional Google sign-in; all four `GOOGLE_*` or none, empty counts as unset |
+| `GOOGLE_CLIENT_SECRET` | unset | Stays on the API: sent only to Google's token endpoint, never returned or logged |
+| `GOOGLE_REDIRECT_URI` | unset | `http://localhost:3000/auth/google/callback` locally; https, or http on loopback |
+| `GOOGLE_ALLOWED_EMAILS` | unset | Comma-separated exact emails; nobody else can sign in with Google |
 | `CREDENTIALS_KEY` | unset | base64 of exactly 32 bytes, holding the AES-256 key for integration credentials. Optional: without it the settings page works and saving a credential fails by name rather than storing anything in the clear |
 
 To run against a real model, set `LLM_PROVIDER=gemini` and `LLM_API_KEY` in
@@ -482,6 +509,9 @@ envelope.
 |---|---|---|
 | `GET` | `/health` | Service and database status (public) |
 | `POST` | `/api/auth/login` | Sign in; sets the session cookie; rate limited (public) |
+| `GET` | `/api/auth/providers` | Whether Google sign-in is configured (public) |
+| `POST` | `/api/auth/google/authorization-url` | Google's URL for a state, PKCE challenge and nonce the web issued (public) |
+| `POST` | `/api/auth/google` | Exchange Google's code, verify the ID token, check the allow-list, sign in; rate limited (public) |
 | `POST` | `/api/auth/logout` | Revoke the session |
 | `GET` | `/api/auth/me` | The signed-in operator |
 | `GET` | `/api/labs`, `/api/labs/summary`, `/api/labs/:id`, `/api/labs/:id/events` | Labs, counts by state, one lab, its events |

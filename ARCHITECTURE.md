@@ -331,6 +331,7 @@ erDiagram
   DEPENDENCY ||--o{ LAB_DEPENDENCY : ""
   LAB ||--o{ OPERATIONAL_EVENT : emits
   OPERATOR ||--o{ OPERATOR_SESSION : "signs in with"
+  OPERATOR ||--o{ OPERATOR_IDENTITY : "links"
   INCIDENT ||--o{ INCIDENT_LAB : groups
   LAB ||--o{ INCIDENT_LAB : affected
   INCIDENT ||--o{ INVESTIGATION : "has"
@@ -385,7 +386,14 @@ erDiagram
   OPERATOR {
     string id PK
     string username "UNIQUE"
-    string passwordHash "scrypt; never returned or logged"
+    string passwordHash "scrypt; null for a Google-only operator"
+  }
+  OPERATOR_IDENTITY {
+    string id PK
+    string provider "google"
+    string subject "provider's stable id; UNIQUE with provider"
+    string operatorId FK
+    string email "at link time"
   }
   OPERATOR_SESSION {
     string id PK "SHA-256 of the cookie token"
@@ -940,6 +948,7 @@ sent; a field added to a view by mistake fails the request with a 500.
 | Stale approval replay | TTL + precondition revalidation inside the execution transaction |
 | Unauthorised access | Deny by default: a global guard requires a session on every route unless it opts out (`config.public`); a test requests every registered route anonymously |
 | Stolen or leaked session | Random 32-byte token; only its SHA-256 is stored; httpOnly, SameSite=Lax, Secure cookie; 8 h absolute expiry; logout and password reset revoke server-side |
+| Forged or replayed Google sign-in | Authorization code flow with PKCE; `state` in an httpOnly cookie scoped to `/auth/google`, compared in constant time; the API verifies the ID token's signature against Google's keys, issuer, audience and expiry, then the `nonce`, `email_verified` and an exact-email allow-list. The client secret never leaves the API; a refusal audits the reason, never the email |
 | Credential guessing | scrypt hashing; login rate limited per IP through Redis (fails closed); unknown user and wrong password answer identically and cost the same hash time |
 | Unauthorised approval | Audit `actorId` comes from the session, never the request body; RBAC if time permits |
 | Resource exhaustion | Body size limits, a login rate limit (5 a minute per IP), bounded evidence, bounded queues and retries, timeouts on all outbound calls |
