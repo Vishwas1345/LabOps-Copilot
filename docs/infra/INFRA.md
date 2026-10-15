@@ -277,6 +277,25 @@ losing the VM loses everything on it.
 CI still builds both images on every change; there is no image registry and no
 automated rollout, deliberately.
 
+**`SITE_DOMAIN`, and why a domain is needed at all.** Automatic TLS works by
+verifying control of a hostname over port 80, and browsers reject a certificate
+issued for a bare IP. That is the only reason a hostname is required; nothing
+here depends on owning it.
+
+| Option | Cost | Note |
+|---|---|---|
+| Purchased domain | ~8-15/year | The only option with no caveat. Stable, and yours to point anywhere |
+| IP-based resolver (`203-0-113-5.nip.io`, same on `sslip.io`) | Free | Works with this Caddyfile unchanged, because issuance uses the ordinary HTTP-01 challenge and needs only a hostname resolving to this machine. Shared by many sites, so a certificate can occasionally fail to issue; switching resolver usually fixes it |
+| Permanent free subdomain (e.g. `yours.eu.org`) | Free | Yours forever, but approval is manual and takes days to weeks |
+| Cloudflare tunnel | Free | No hostname needed at all, but the URL changes on every restart |
+
+An Oracle Always Free instance gets a stable public IP for the life of the
+instance, so the IP-based hostname stays valid; destroying and recreating the
+instance changes the IP, and therefore the hostname.
+
+Oracle's free tier also requires a card for verification, and free-tier capacity
+is often unavailable in busy regions, so provisioning can need several attempts.
+
 **Still not done for a public deployment:** no second host or failover, no
 off-host backup, no uptime monitoring, and access control is a single shared
 operator password until Google sign-in with an allow-list is configured

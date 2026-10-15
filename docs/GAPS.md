@@ -180,6 +180,9 @@ platform. The *action* would not.
   600 and git-ignored. A secret in the environment is readable by anything that
   can read the process, and rotating `CREDENTIALS_KEY` means re-sealing every
   stored credential.
+- **The hostname may be a shared one.** With no purchased domain, the certificate
+  is issued for an IP-based hostname from a free resolver, which thousands of
+  sites share; a certificate can occasionally fail to issue as a result.
 - **Branch protection on `main` is off.**
 - **No incident list "likely cause" column.** The detail page shows the AI
   diagnosis; the list does not, because it would need an upward import or a
