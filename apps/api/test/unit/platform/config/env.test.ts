@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { ConfigError, GEMINI_BASE_URL, loadConfig } from '../../../../src/platform/config/env.js';
 
@@ -48,6 +50,16 @@ describe('loadConfig', () => {
   // first incident hours later.
   it('rejects the gemini provider without a key', () => {
     expect(() => loadConfig({ ...VALID, LLM_PROVIDER: 'gemini' })).toThrow(ConfigError);
+  });
+
+  it('rejects the gemini provider with an empty key', () => {
+    expect(() => loadConfig({ ...VALID, LLM_PROVIDER: 'gemini', LLM_API_KEY: '' })).toThrow(ConfigError);
+  });
+
+  // `--env-file` sets `KEY=` to an empty string; the copied example must start.
+  it('accepts .env.example exactly as committed', () => {
+    const example = parseEnv(readFileSync(new URL('../../../../.env.example', import.meta.url), 'utf8'));
+    expect(() => loadConfig(example)).not.toThrow();
   });
 
   it('names LLM_API_KEY as the missing variable', () => {
