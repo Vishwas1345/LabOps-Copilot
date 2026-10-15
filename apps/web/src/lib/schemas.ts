@@ -21,23 +21,34 @@ export const loginSchema = z.object({
 
 export const labSummarySchema = z.object({ data: z.record(z.string(), z.number()) });
 
-export const jobSummarySchema = z.object({
-  data: z.array(z.object({ queue: z.string(), status: z.string(), count: z.number() })),
-});
-
 const duration = z.object({ samples: z.number(), p50Ms: z.number().nullable(), p95Ms: z.number().nullable() });
 
 export const metricsSchema = z.object({
   data: z.object({
     window: z.object({ hours: z.number() }),
     events: z.object({ received: z.number() }),
-    incidents: z.object({ created: z.number(), timeToIdentify: duration }),
+    incidents: z.object({
+      created: z.number(),
+      byStatusNow: z.record(z.string(), z.number()),
+      timeToIdentify: duration,
+    }),
     queues: z.array(z.object({ queue: z.string(), depth: z.number(), retries: z.number(), run: duration })),
     investigations: z.object({ byStatus: z.record(z.string(), z.number()), latency: duration }),
     recovery: z.object({ byStatus: z.record(z.string(), z.number()), approvalToVerified: duration }),
     oldestOpenTransactionMs: z.number().nullable(),
   }),
 });
+
+export const failureSeriesSchema = z.object({
+  data: z.object({
+    failures: z.object({
+      bucketMs: z.number().nullable(),
+      buckets: z.array(z.object({ start: z.string(), counts: z.record(z.string(), z.number()) })),
+      totals: z.record(z.string(), z.number()),
+    }),
+  }),
+});
+export type FailureSeries = z.infer<typeof failureSeriesSchema>['data']['failures'];
 
 export const incidentSummary = z.object({
   id: z.string(),

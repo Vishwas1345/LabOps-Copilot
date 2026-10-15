@@ -24,3 +24,11 @@ export function incidentQuery(params: { status?: string; severity?: string; curs
   if (isId(params.cursor)) query.set('cursor', params.cursor);
   return query.toString();
 }
+
+// The dashboard's time window. Only these values reach the API.
+export const WINDOWS = { '1h': 1, '24h': 24, '7d': 168 } as const;
+export type WindowKey = keyof typeof WINDOWS;
+
+export function windowFrom(value: string | undefined): WindowKey {
+  return value !== undefined && Object.hasOwn(WINDOWS, value) ? (value as WindowKey) : '24h';
+}
