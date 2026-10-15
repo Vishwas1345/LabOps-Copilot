@@ -22,14 +22,13 @@ lab failures → correlate into explainable incidents → AI investigation
              execution → verification → audit trail
 ```
 
-**Framing matters.** This is a proposed *companion concept* for a
-CloudLabs-style platform. It is **not** a claim that Spektra Systems lacks
-incident management, correlation or recovery capability. Never write
-documentation, commit messages, comments or UI copy that implies Spektra has a
-product gap.
+**Framing matters.** This is AI-assisted incident correlation and safe recovery
+orchestration for cloud lab operations: an engineering demonstration. Never
+write documentation, commit messages, comments or UI copy that claims any
+existing platform lacks a capability, or that names a specific vendor.
 
-**All lab infrastructure is simulated.** There is no live CloudLabs connection
-and the MVP never touches real cloud resources. Any UI or log surface that shows
+**All lab infrastructure is simulated.** There is no live lab platform
+connection and the MVP never touches real cloud resources. Any UI or log surface that shows
 simulated data must make that visible. Never imply a live connection was tested
 when it was not.
 
@@ -423,7 +422,7 @@ negative tests and verification steps.
 | Change correlation logic | `.claude/skills/correlation-engine` |
 | Change anything LLM-related | `.claude/skills/ai-investigation` |
 | Add an executable recovery action | `.claude/skills/recovery-action` |
-| Work on the integrations module | `.claude/skills/cloudlabs-adapter` |
+| Work on the integrations module | `.claude/skills/integration-adapter` |
 | Add or change logging / tracing / metrics | `.claude/skills/observability` |
 | Write or review any test | `.claude/skills/negative-case-testing` |
 
@@ -465,7 +464,7 @@ The recipes below are the short form.
    incident state untouched.
 5. Add a fixture-based test for the happy path **and** a malformed-output test.
 
-### Add a CloudLabs capability
+### Add a lab platform capability
 
 Read the **Integration gate** in `ARCHITECTURE.md §13` first. Implement a method
 on the adapter interface only when it is verified against official documentation,
@@ -494,8 +493,8 @@ A change is complete when:
 - [ ] Any new side effect is idempotent.
 - [ ] `ARCHITECTURE.md` and/or `README.md` updated if a boundary, endpoint or
       decision changed.
-- [ ] Nothing user-visible describes simulated data as live, or implies Spektra
-      has a capability gap.
+- [ ] Nothing user-visible describes simulated data as live, or implies an
+      existing platform has a capability gap.
 
 ---
 
@@ -508,7 +507,7 @@ A change is complete when:
 - Never store a secret in plaintext, in a log, in a prompt, or in a URL.
 - Never return credentials from an endpoint.
 - Never mark an incident resolved without passing verification.
-- Never claim a live CloudLabs integration, a production scale, or a performance
+- Never claim a live lab platform integration, a production scale, or a performance
   improvement that was not measured.
 - Never disable a test to make a build pass.
 - Never add a dependency without saying why the standard toolchain cannot do it.

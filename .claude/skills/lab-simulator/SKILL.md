@@ -85,7 +85,7 @@ An illegal transition throws identically in the API, the worker and the tests.
 - The dashboard must show simulator data as simulated.
 - The demo route's log line carries `simulated: true`, and every event and lab
   carries `source: 'simulated'`.
-- Never write UI copy implying a live CloudLabs connection was tested.
+- Never write UI copy implying a live lab platform connection was tested.
 
 ## Mandatory tests
 

@@ -12,10 +12,9 @@ the per-phase notes as history).
 
 ## 1. What this project is
 
-LabOps Copilot is an AI-assisted incident response and recovery coordination
-prototype for cloud lab operations (a companion concept for a CloudLabs-style
-platform; never imply Spektra lacks any capability). **All lab infrastructure
-is simulated**; nothing touches a real cloud resource, and the UI says so on
+LabOps Copilot is a prototype for AI-assisted incident correlation and safe
+recovery orchestration in cloud lab operations. Never imply that any existing
+platform lacks a capability. **All lab infrastructure is simulated**; nothing touches a real cloud resource, and the UI says so on
 every page.
 
 The workflow, which now runs end to end in the browser:
@@ -278,7 +277,7 @@ for Phase N is `LOC-(5+N)`.
 | 12 | LOC-17 | #15 | Dashboard (run **before** 10 and 11 by agreement): BFF login, overview, incidents, incident detail with approve/reject, audit; Zod-parsed responses |
 | 10 | LOC-15 | #16 | Live updates over SSE (see section 8a) |
 | 11 | LOC-16 | #19 | Real LLM provider, opt-in: Gemini over plain `fetch`, Zod → Gemini schema transform, bounded retry, token usage in `modelMetadata`, opt-in live test |
-| 13 | LOC-18 | #21 | Integration settings and secrets, adapter-gated: AES-256-GCM credential sealing, `ProviderAdapter`, a CloudLabs adapter claiming no capabilities, four settings routes, settings page (see section 8c) |
+| 13 | LOC-18 | #21 | Integration settings and secrets, adapter-gated: AES-256-GCM credential sealing, `ProviderAdapter`, a lab platform adapter claiming no capabilities, four settings routes, settings page (see section 8c) |
 | 14 | LOC-19 | #25 | Playwright journey in CI against compose; metrics derived from committed rows (`/api/metrics`) |
 | — | — | #26, #28 | UI revamp: shell, dark mode, design tokens; dashboard with KPI tiles, charts and a time window |
 | — | — | #29 | Fixes #22, #23, #24 (the fixture now shows the policy block), #27 |
@@ -374,7 +373,7 @@ assumed.
 
 **Built.** `platform/secrets/crypto.ts` seals credentials with AES-256-GCM
 (`iv | tag | ciphertext`, random IV per seal) under `CREDENTIALS_KEY`.
-`modules/integrations/adapters/adapter.ts` defines the boundary; `cloudlabs-adapter.ts` reports
+`modules/integrations/adapters/adapter.ts` defines the boundary; `lab-platform-adapter.ts` reports
 `NO_CAPABILITIES` and makes no network call; `simulator-adapter.ts` reports what
 the simulator genuinely has. Four routes: `GET /api/integrations`, and
 `PUT`/`POST .../test`/`DELETE` for a provider. A settings page renders only what
@@ -403,7 +402,7 @@ the first one only shows up on a path the original test never walked:
 
 - An adapter with nothing reachable read `error` after a failed test. `error`
   means "retrying might work", and it never can while the gate is closed. Now
-  `not_configured`. The test missed it because it tested cloudlabs with *no
+  `not_configured`. The test missed it because it tested the lab platform with *no
   stored row*, taking a different branch.
 - A failed test left stale `supportedEventTypes` on the row, so the UI would
   keep offering subscriptions the provider no longer confirms. Now cleared.

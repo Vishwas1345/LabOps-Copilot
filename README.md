@@ -1,24 +1,18 @@
 # LabOps Copilot
 
-**From scattered lab failures to an evidence-backed, safely managed incident
-workflow.**
+**AI-assisted incident correlation and safe recovery orchestration for cloud
+lab operations.**
 
-LabOps Copilot is an AI-assisted incident response and recovery coordination
-prototype for cloud lab operations. It ingests operational events from a
+LabOps Copilot is a prototype that takes cloud lab operations from scattered
+failures to an evidence-backed, safely managed incident workflow. It ingests operational events from a
 simulated lab fleet, correlates unrelated-looking failures into explainable
 candidate incidents, runs an LLM investigation over bounded evidence, and then
 routes any proposed recovery through a deterministic policy engine and a human
 approval before a background worker executes and verifies it.
 
-> **Positioning.** This is a proposed companion concept for a CloudLabs-style
-> platform — a focused workflow and engineering demonstration. It is **not** a
-> claim that Spektra Systems lacks incident management, correlation or recovery
-> capability. Public materials describe overlapping CloudLabs and Cosmos
-> features; whether a genuine product gap exists needs validation with the
-> Spektra team.
->
 > **All lab infrastructure in this repository is simulated.** The MVP does not
-> touch real cloud resources and makes no live CloudLabs connection.
+> touch real cloud resources and makes no live connection to any lab
+> platform.
 
 ![The overview dashboard after the demo scenario](docs/images/dashboard.png)
 
@@ -146,11 +140,11 @@ read from `GET /api/metrics`. Nothing here is estimated.
 
 | Figure | p50 | Note |
 |---|---|---|
-| First event to incident | 2.14 s | About 2 s is the deliberate dispatch delay that lets a burst collapse into one correlation run |
-| Correlation run | 9 ms | 8 runs, one per window |
-| Investigation job | 30 ms | Fixture model; a real model adds its own latency |
-| Recovery execution | 56 ms | Revalidate, retry, verify |
-| Approval to verified | 2.09 s | The same 2 s dispatch delay, then the run |
+| First event to incident | 2.06 s | About 2 s is the deliberate dispatch delay that lets a burst collapse into one correlation run |
+| Correlation run | 10 ms | 8 runs, one per window |
+| Investigation job | 29 ms | Fixture model; a real model adds its own latency |
+| Recovery execution | 63 ms | Revalidate, retry, verify |
+| Approval to verified | 2.14 s | The same 2 s dispatch delay, then the run |
 
 ---
 
@@ -277,7 +271,7 @@ It covers design principles, system context and trust boundaries, runtime
 topology, the backend module map, the incident lifecycle sequence, the data
 model with DB-level invariants, lab and incident state machines, the correlation
 engine and its signal weights, the AI boundary rules, the recovery safety model,
-reliability and failure behaviour, observability, the CloudLabs integration
+reliability and failure behaviour, observability, the lab platform integration
 gate, the security model, the test architecture, deployment topology, current
 implementation status, and the trade-offs taken.
 
@@ -508,7 +502,7 @@ envelope.
 | `POST` | `/api/integrations/:provider/test` | Run the adapter's own probe |
 | `POST` | `/api/demo/scenarios/:name` | Run a seeded scenario; idempotent per seed; only when `DEMO_ENABLED` |
 
-Sync, webhook and delivery endpoints for CloudLabs are **not built on purpose**:
+Sync, webhook and delivery endpoints for the lab platform are **not built on purpose**:
 their contract is unverified (`ARCHITECTURE.md` section 13).
 
 ---
@@ -619,7 +613,7 @@ Known and deliberate. Each is recorded in `docs/infra/INFRA.md`.
   do.
 - **Nothing alerts on a long open transaction.** The metric exists; the alert
   does not.
-- **No live CloudLabs connector.** Built only after the API contract,
+- **No live lab platform connector.** Built only after the API contract,
   credentials and a sandbox are confirmed (`ARCHITECTURE.md` section 13).
 - **Not hosted.** Local-only by decision; the intended production shape is in
   `ARCHITECTURE.md` section 16.
@@ -630,16 +624,17 @@ Known and deliberate. Each is recorded in `docs/infra/INFRA.md`.
 
 Deliberately out of scope for the MVP:
 
-- Assuming access to Spektra's private systems or undocumented endpoints
-- Real CloudLabs recovery execution, unless separately authorised and sandboxed
+- Assuming access to any platform's private systems or undocumented endpoints
+- Real recovery execution against a live platform, unless separately authorised
+  and sandboxed
 - Real Azure/AWS provisioning or destructive cloud operations
-- Replacing CloudLabs or Cosmos, or a general-purpose lab creation platform
+- Replacing a lab platform, or becoming a general-purpose lab creation platform
 - Arbitrary command execution by an LLM
 - Kubernetes or multi-service deployment
 - Multiple cooperating AI agents without a clear need
 - Production-scale claims from a local prototype
 
-A live CloudLabs connector will only be implemented against verified official
+A live lab platform connector will only be implemented against verified official
 documentation, supplied credentials and sandbox access. The provider-adapter
 boundary exists so that adding it later does not change the pipeline. Until
 then the simulator is the data source and the connection state reads
@@ -650,3 +645,10 @@ then the simulator is the data source and the connection state reads
 ## License
 
 Private project. All rights reserved.
+
+---
+
+## About this project
+
+LabOps Copilot was built as a practical assessment for an interview with
+Spektra Systems.
