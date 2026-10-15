@@ -16,6 +16,7 @@ import { registerIncidentRoutes } from './incidents/routes.js';
 import { registerInvestigationRoutes } from './investigations/routes.js';
 import { cloudlabsAdapter } from './integrations/cloudlabs-adapter.js';
 import { registerIntegrationRoutes } from './integrations/routes.js';
+import { registerMetricsRoutes } from './metrics/routes.js';
 import { simulatorAdapter } from './integrations/simulator-adapter.js';
 import { registerJobRoutes } from './jobs/routes.js';
 import { registerLabRoutes } from './labs/routes.js';
@@ -68,6 +69,7 @@ export async function buildApp(options: {
   registerLabRoutes(app);
   registerEventRoutes(app);
   registerJobRoutes(app);
+  registerMetricsRoutes(app);
   registerAuditRoutes(app);
   registerEventStreamRoutes(app, options.streamOptions);
   registerIncidentRoutes(app);
