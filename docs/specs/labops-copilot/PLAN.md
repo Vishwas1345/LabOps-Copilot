@@ -130,7 +130,7 @@ a duplicate-execution bug can hide.
 - Browser → API: Zod on every body, param and query; session-authenticated writes; body size limits.
 - LLM → policy: output is an untrusted proposal; closed action enum; targets intersected with the incident's labs.
 - Event text → LLM: delimited data block, length-capped, redacted before assembly.
-- Provider → API: webhook receiver is **not built** until the CloudLabs contract is verified.
+- Provider → API: webhook receiver is **not built** until the lab platform contract is verified.
 - Secrets: integration credentials encrypted at rest (AES-256-GCM, `node:crypto`), never returned or logged.
 
 **Simplest version that covers the spec:** one API process, one worker process,
@@ -192,7 +192,7 @@ the code. Where the built name differs, the module is the same:
 | `approvals/approve.ts`, `recovery/verify.ts` | `modules/recovery/services/approve.ts`, `modules/recovery/services/expire.ts`; verification lives in `modules/recovery/jobs/execute.job.ts` |
 | `platform/events-stream/hub.ts` with a Redis subscriber, `stream.routes.ts` | `platform/events-stream/hub.ts` polling committed rows, `feed.ts`, `routes.ts` |
 | web `lib/sse.ts` | `lib/live.ts`, `components/live-refresh.tsx`, `app/api/events/stream/route.ts` |
-| `integrations/integrations.routes.ts`, web `integrations/cloudlabs/page.tsx` | `modules/integrations/routes.ts`, `(dashboard)/integrations/page.tsx` |
+| `integrations/integrations.routes.ts`, web `integrations/<provider>/page.tsx` | `modules/integrations/routes.ts`, `(dashboard)/integrations/page.tsx` |
 
 Ordered by dependency: data → logic → API → UI. Every phase merges as its own PR
 with lint, typecheck, unit, integration and coverage green.
@@ -453,13 +453,13 @@ Phase 11 deviations, settled by measurement rather than by the docs:
 
 **Endpoints:**
 - `GET /api/integrations`
-- `PUT /api/integrations/cloudlabs` (validates, encrypts, stores; the response never echoes credentials)
-- `POST /api/integrations/cloudlabs/test`
-- `DELETE /api/integrations/cloudlabs`
+- `PUT /api/integrations/:provider` (validates, encrypts, stores; the response never echoes credentials)
+- `POST /api/integrations/:provider/test`
+- `DELETE /api/integrations/:provider`
 
 `sync`, `webhooks` and `deliveries` are **not built**: their contract is unverified (Integration gate, `ARCHITECTURE.md §13`).
 **Data / migrations:** `IntegrationConnection(id, provider UNIQUE, displayName, state enum, encryptedCredentials bytea?, keyVersion, supportedEventTypes jsonb, lastSuccessfulTestAt?, lastSyncAt?, updatedBy, createdAt, updatedAt)`.
-**Files:** new `platform/secrets/crypto.ts` (AES-256-GCM, key from `CREDENTIALS_KEY` env, versioned), `modules/integrations/adapters/adapter.ts` (the `ProviderAdapter` interface), `modules/integrations/adapters/simulator-adapter.ts`, `modules/integrations/adapters/cloudlabs-adapter.ts` (reports no capabilities, so the connection reads `not_configured`), `integrations/integrations.routes.ts`; web `app/(dashboard)/integrations/cloudlabs/page.tsx`.
+**Files:** new `platform/secrets/crypto.ts` (AES-256-GCM, key from `CREDENTIALS_KEY` env, versioned), `modules/integrations/adapters/adapter.ts` (the `ProviderAdapter` interface), `modules/integrations/adapters/simulator-adapter.ts`, `modules/integrations/adapters/lab-platform-adapter.ts` (reports no capabilities, so the connection reads `not_configured`), `integrations/integrations.routes.ts`; web `app/(dashboard)/integrations/<provider>/page.tsx`.
 **Logic:** the UI renders only what `capabilities` reports, and simulator mode is shown clearly. No auth fields are rendered until the real contract is known (spec F2a).
 **Tests:**
 - An encrypt/decrypt round trip works, and a wrong key fails closed.

@@ -4,8 +4,9 @@
 failures into explained incidents, an evidence-backed diagnosis and a safely
 approved, verified recovery — with a full record of who did what and why.
 
-> **Positioning.** A proposed companion concept for a CloudLabs-style platform
-> and an engineering demonstration. It is not a claim that any existing platform
+> **Positioning.** AI-assisted incident correlation and safe recovery
+> orchestration for cloud lab operations: an engineering demonstration. It is
+> not a claim that any existing platform
 > lacks incident management, correlation or recovery. **All lab infrastructure
 > is simulated**; nothing touches real cloud resources.
 

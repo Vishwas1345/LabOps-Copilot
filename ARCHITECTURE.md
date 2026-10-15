@@ -7,10 +7,10 @@ built is marked as such.
 recovery orchestration and verification for cloud lab operations.
 
 > **Important framing.** All lab infrastructure in this system is **simulated**.
-> There is no live CloudLabs connection in the MVP. The integration layer exists
+> There is no live lab platform connection in the MVP. The integration layer exists
 > as a provider-neutral adapter so a verified connector can be added later
 > without changing the pipeline. See
-> [Integration gate](#13-integration-gate--cloudlabs).
+> [Integration gate](#13-integration-gate--external-lab-platform).
 
 ---
 
@@ -46,7 +46,7 @@ flowchart LR
 
   subgraph external["External"]
     LLMP["LLM provider<br/>structured outputs"]
-    CL["CloudLabs platform<br/>(conditional, access-gated)"]
+    CL["External lab platform<br/>(conditional, access-gated)"]
     OBS["Observability backend<br/>OTel collector"]
   end
 
@@ -200,7 +200,7 @@ apps/api/
                         preconditions, retry and cooldown limits
       recovery/         services/ (propose, approve/reject, expire); execution
                         with revalidation and verification in jobs/execute.job.ts
-      integrations/     adapters/ (simulator, CloudLabs with no capabilities:
+      integrations/     adapters/ (simulator, lab platform with no capabilities:
                         the gate is closed), connection settings
       metrics/          GET /api/metrics: combines each module's stats.ts
       demo/             flag-gated scenario trigger (DEMO_ENABLED)
@@ -453,7 +453,7 @@ erDiagram
   }
   INTEGRATION_CONNECTION {
     string id PK
-    string provider "cloudlabs"
+    string provider "lab-platform|simulator"
     string state "not_configured|connecting|connected|error|needs_attention"
     string encryptedCredentials "AES-256-GCM; never returned to a client"
     int keyVersion "which key sealed it"
@@ -857,7 +857,7 @@ All demo numbers come from real runs. No fabricated dashboards.
 
 ---
 
-## 13. Integration gate — CloudLabs
+## 13. Integration gate — external lab platform
 
 The adapter interface exists; the live implementation does not, and will not
 be written speculatively. `capabilities` is read at runtime, and the UI renders
@@ -867,7 +867,7 @@ available.
 **Gate before any live code:** official API documentation obtained, auth scheme
 and scopes confirmed, sandbox tenant or sample payloads supplied, webhook
 security model documented, rate limits known, permitted operations confirmed.
-Absent that, the CloudLabs adapter claims no capabilities and its connection
+Absent that, the lab platform adapter claims no capabilities and its connection
 reads `not_configured`. The product never claims a connection it has not tested.
 
 **Credential handling:** submitted server-side over HTTPS → sealed at rest with
@@ -908,7 +908,7 @@ Three properties make the gate structural rather than a convention:
 2. **`canExecuteRecovery` is typed as the literal `false`.** A future adapter
    cannot enable live recovery without changing the type, which is a visible
    diff rather than a value someone flipped in a commit.
-3. **No capability combination yields `connected` for the CloudLabs adapter.**
+3. **No capability combination yields `connected` for the lab platform adapter.**
    It reports `NO_CAPABILITIES`, makes no network call, and a test asserts
    `not_configured, never connected` by name.
 
@@ -1105,7 +1105,7 @@ end-to-end workflow exists before breadth is added.
 
 ## 19. Open questions
 
-1. **CloudLabs API contract** — auth, endpoints, event types, webhook security,
+1. **Lab platform API contract** — auth, endpoints, event types, webhook security,
    rate limits. Blocks F2a beyond the adapter interface.
 2. **Sandbox access** — a test tenant or sample payloads. Until then the
    simulator is the only data source.

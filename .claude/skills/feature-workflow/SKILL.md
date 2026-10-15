@@ -176,6 +176,6 @@ one that hides one.
 | Mark done with a known gap unmentioned | State the gap explicitly |
 | Refactor unrelated code mid-feature | Keep one logical change per commit |
 | Bypass a safety rule to ship faster | The rule is the feature |
-| Invent a CloudLabs capability to unblock the demo | Leave it `not_configured` |
+| Invent a lab platform capability to unblock the demo | Leave it `not_configured` |
 | Flatter, then hedge the real problem | Lead with the problem (`CLAUDE.md §14`) |
 | Agree because the human asked | Say why it is wrong; then implement their call |

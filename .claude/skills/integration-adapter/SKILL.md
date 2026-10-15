@@ -1,9 +1,9 @@
 ---
-name: cloudlabs-adapter
+name: integration-adapter
 description: Use when working on the integrations module - provider adapter interface, connection settings, credential storage, webhook receiver, or sync jobs. Enforces the integration gate - implement only capabilities verified against official documentation, never invent endpoints or auth schemes.
 ---
 
-# Working on the CloudLabs integration layer
+# Working on the lab platform integration layer
 
 ## Preconditions
 
@@ -11,8 +11,9 @@ Read `ARCHITECTURE.md §13` (integration gate) and `CLAUDE.md §5` (prompt
 injection and untrusted external input).
 
 **The gate:** a live adapter method may only be implemented when it is verified
-against official CloudLabs documentation, with credentials and sandbox access
-supplied by Spektra. Until then the CloudLabs adapter claims no capabilities
+against the platform's official documentation, with credentials and sandbox
+access supplied by its owner. Until then the lab platform adapter claims no
+capabilities
 and its connection reads `not_configured`.
 
 ## Where things go
@@ -22,7 +23,7 @@ apps/api/src/modules/integrations/
   adapters/
     adapter.ts            ProviderAdapter, capabilities, stateFor (state is derived)
     simulator-adapter.ts  simulator adapter (always available)
-    cloudlabs-adapter.ts  CloudLabs adapter: verified methods only (none yet)
+    lab-platform-adapter.ts  lab platform adapter: verified methods only (none yet)
   service.ts            connections: seal, list, test, delete; audit
   routes.ts, schemas.ts the settings endpoints and their strict schemas
 apps/api/src/platform/secrets/crypto.ts   AES-256-GCM sealing with CREDENTIALS_KEY
@@ -50,7 +51,7 @@ and delivery records.
 
 2. **Report capabilities at runtime.** The UI renders only what the adapter
    reports. Never present an unverified event type as available. Never display a
-   generated webhook receiver URL unless CloudLabs is documented to support
+   generated webhook receiver URL unless the platform is documented to support
    customer-configured webhook delivery.
 
 3. **Never invent provider behaviour.** Do not invent endpoints, auth schemes,
