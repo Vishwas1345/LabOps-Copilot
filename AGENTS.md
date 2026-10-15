@@ -11,21 +11,23 @@ per-phase notes as history).
 
 ## 0. Current state: start here
 
-- **`main`** has every phase (0 to 15), the UI revamp, the issue fixes, the
+- **`main` has every phase (0 to 15), the UI revamp, the issue fixes, the
   doc sync (#31), and the folder restructure with vendor-neutral naming (#32;
-  section 1b and section 4). Optional Google sign-in (OIDC, PKCE, exact-email
+  section 1b and section 4).** Optional Google sign-in (OIDC, PKCE, exact-email
   allow-list; `docs/specs/google-sign-in/`) sits beside password sign-in, in
   `platform/auth/google.ts` and the web's `app/auth/google/`. Nothing is
-  half-built or in flight.
-- **Docs match the code.** Three audits plus a second pass checked every
-  present-tense claim in every doc and skill against the code. Keep it that
-  way: when code changes, update the doc that describes it in the same PR, and
-  grep the docs for any path you rename.
+  half-built on `main`.
+- **Not merged:** a signed webhook receiver (5 commits on
+  `feat/webhook-receiver`, pushed, no PR). A mock lab platform was prototyped and
+  then **dropped on the owner's decision**; nothing of it remains. The receiver
+  is for the end-to-end demo in **section 13**. `main` is still `77661b8`.
+- **Docs match the code** for everything on `main`. Keep it that way: when code
+  changes, update the doc that describes it in the same PR, and grep the docs
+  for any path you rename.
 - **Open, owner's side only:** rotate the Gemini key, add the
   `GEMINI_API_KEY` repository secret and dispatch `llm-live.yml` once (#20);
   branch protection on `main`.
-- **No phase is planned.** Anything new starts with the plan-first loop in
-  section 3.
+- **Next session starts at section 13**, not from this list.
 
 ---
 
@@ -603,3 +605,96 @@ Phase N = `LOC-(5+N)` (Phase 10 = LOC-15, 11 = LOC-16, 13 = LOC-18, 14 =
 LOC-19, 15 = LOC-20). Transition ids: 11 To Do, 21 In Progress, 31 In
 Testing, 41 Done. Subtasks are Done when their commit lands; the story moves
 to In Testing with the PR and to Done after the owner merges.
+
+---
+
+## 13. Follow-up list — next session
+
+State at the time of writing, so the next agent starts from facts rather than
+from this file's hopes.
+
+**Nothing is merged.** `main` is still at `77661b8`. The signed webhook receiver
+(5 commits) is on `feat/webhook-receiver`, pushed, no PR. The mock platform was
+built and then **dropped on the owner's decision**; nothing of it remains.
+
+### 13a. Google sign-in — configure and test, do not rebuild
+
+**The UI side already exists** (merged in `e5d980d`). Building it again would be
+wasted work:
+
+- `apps/web/src/app/auth/google/start/route.ts` and `.../callback/route.ts`
+- `apps/web/src/lib/google-flow.ts` (PKCE, state, nonce)
+- `login/page.tsx` offers the button only when `/api/auth/providers` reports
+  Google configured; any failure hides it
+
+What is actually missing:
+
+1. **An OAuth client and the four env vars.** `GOOGLE_CLIENT_ID`,
+   `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` (must be
+   `http://localhost:3000/auth/google/callback` locally), `GOOGLE_ALLOWED_EMAILS`
+   in the **root** `.env`. All four or startup fails.
+2. **It has never been tested against a real Google client.** Every test signs an
+   ID token with a local key and stubs the token endpoint. One manual run
+   through a real browser is what is missing, and it is the primary goal.
+3. **Known design gap, decide before the demo.** `authorization-url` accepts
+   `state`, `codeChallenge` and `nonce` from the request body and stores nothing;
+   `POST /api/auth/google` then compares the token's nonce against the
+   *client-supplied* nonce. That proves the client repeated a value, so there is
+   **no login-CSRF protection** — which is what `state` exists for. PKCE still
+   protects against an interposer. Options: accept it for a local demo and
+   record it as a known issue, or fix it with server-side storage in Redis (the
+   login rate limiter already proves that pattern and Redis is already there).
+   Fixing it properly is the better answer.
+
+### 13b. Prove the whole path end to end with real-looking data
+
+Every stage exists and is tested in isolation. None has yet been run as one
+demonstration, start to finish, that a reviewer can watch:
+
+```
+simulated lab failures
+  -> events ingested (validated, redacted, deduped, lab transitioned)
+  -> correlate job -> incident
+  -> AI investigation -> proposed actions
+  -> policy (7 steps) -> proposal awaiting approval
+  -> approval -> execute (policy re-checked) -> simulated recovery
+  -> verification -> resolved
+  -> every step in the audit trail, streamed live to the dashboard
+```
+
+**The gap is the data, not the code.** The demo scenario (`modules/labs/
+simulator.ts`, `SCENARIOS`, reached by `POST /api/demo/scenarios/:name`) already
+produces labs, dependencies and failures, and it has driven the backend
+end-to-end test. What is missing is a scenario shaped so the **correlation**
+engine fires for a real reason and the chain visibly completes:
+
+- **Two or more labs must fail on one shared dependency.** The schema says this
+  is the strongest correlation signal, so a scenario with independent failures
+  will not correlate convincingly. Check the scenario assigns more than one lab
+  to the same `Dependency`.
+- Failure `occurredAt` values must land inside one correlation window, or the
+  anchor scoring will not group them.
+- The scenario should produce at least one **policy-allowed** action, so the
+  run reaches approval and a verified recovery, and ideally one **blocked**
+  action too, because the blocked path is the more interesting one to show and
+  the fixture provider is written to produce both.
+- Seeded and stable: the same seed must give the same run, or the README's
+  numbers cannot be trusted.
+
+To run it end to end today: `DEMO_ENABLED=true` in `apps/api/.env`, the API and
+worker up, `npm run db:migrate`, then run the scenario and follow one incident
+through the dashboard.
+
+**The signed webhook is receiver-only for now.** `POST /api/webhooks/mock-platform`
+is built, mutation-checked and merged-ready, but with the mock platform dropped
+nothing produces deliveries to it. Either seed the demo path through it (the
+scenario emits signed events instead of calling `ingestEvent` directly, which
+also exercises the receiver for real) or accept it as unused infrastructure for
+the moment and say so in the PR.
+
+### 13c. Record as known issues, not as defects
+
+- Everything in this demo is **simulated**. Recovery changes no real
+  infrastructure and must keep saying so on every page.
+- The `redactSecrets` depth-6 gap (§10) is reachable from the webhook.
+
