@@ -5,8 +5,8 @@ Read this first, then `CLAUDE.md`, which is the full rulebook and wins on any
 conflict. This file adds what the rulebook cannot: **how we have been working,
 what is built, what is in flight, and what to do next.**
 
-Last updated: 2026-10-14, late evening (Phase 11 merged; Phase 13 built and
-awaiting review on PR #21).
+Last updated: 2026-10-15 (all phases 0 to 15 complete; sections 8a to 8c keep
+the per-phase notes as history).
 
 ---
 
@@ -190,10 +190,11 @@ the verification event. It passes on a fresh stack and on a re-run.
 - **Local Redis is on host port 6380**, because another project owns 6379:
   root `.env` has `REDIS_HOST_PORT=6380`; `apps/api/.env` has
   `REDIS_URL=redis://localhost:6380`.
-- **Windows is the dev box; there is no Git Bash.** The only `bash.exe` is the
-  WSL launcher, which has neither this project's Node nor Docker context, so
-  `scripts/*.sh` cannot be run as written; CI's compose smoke job runs
-  `compose-smoke.sh` on every PR, so rely on that there. A native
+- **On a Windows box without Git Bash** (where Phases 11 and 13 were built),
+  `scripts/*.sh` cannot run: the only `bash.exe` is the WSL launcher, with
+  neither this project's Node nor its Docker context. CI's compose smoke job
+  runs `compose-smoke.sh` on every PR; on macOS or Linux the scripts run
+  directly. On Windows, a native
   `clean-db-check` was run by hand instead: create the throwaway database with
   `docker compose exec -T postgres psql`, export `TEST_DATABASE_URL` to it, run
   the suite twice, confirm `_prisma_migrations` exists there (that is the proof
@@ -251,19 +252,18 @@ the verification event. It passes on a fresh stack and on a re-run.
   allowlisted **by exact string** in `.gitleaks.toml` (never by pattern).
 - `scripts/audit-gate.mjs` fails on new high/critical npm advisories not in
   `.github/audit-baseline.json` (6 baselined).
-- **`apps/api/.env` currently has `LLM_PROVIDER=gemini`** and a real key, so
-  the host dev worker calls the live API. Set it back to `fixture` to work
-  offline. That `.env` also gained `TEST_DATABASE_URL` and `REDIS_URL`, without
-  which the integration suite refuses to start.
-- A root `.env` exists with `SEED_OPERATOR_USERNAME`/`SEED_OPERATOR_PASSWORD`
-  (git-ignored), created for a compose smoke attempt. Compose needs it to seed
-  the operator.
+- `apps/api/.env` needs `TEST_DATABASE_URL` and `REDIS_URL`, without which the
+  integration suite refuses to start. It sets no `LLM_*` variable, so the
+  provider is the fixture; set `LLM_PROVIDER=gemini` and a key only on purpose.
+- The root `.env` (git-ignored) holds `REDIS_HOST_PORT` and
+  `SEED_OPERATOR_PASSWORD`; compose needs the password to seed the operator,
+  and defaults the username to `operator`.
 - Main is **not** branch-protected yet (owner's settings task: require the
   api/web quality gates and the compose smoke test).
 
 ## 7. What is built (phase by phase)
 
-All phases through 13 are merged to `main` (Phase 13 is PR #21). Jira: story
+All phases are merged to `main` (Phase 15 is PR #30). Jira: story
 for Phase N is `LOC-(5+N)`.
 
 | Phase | Jira | PR | What |
@@ -276,9 +276,13 @@ for Phase N is `LOC-(5+N)`.
 | 8 | LOC-13 | #13 | Policy engine: allow-list as data, pure 7-step evaluator, recorded proposals, one starting state per proposal source |
 | 9 | LOC-14 | #14 | Approve/reject (row lock, expiry), execute (revalidate, simulate outside tx, verify all labs), expiry sweep, end-to-end backend test |
 | 12 | LOC-17 | #15 | Dashboard (run **before** 10 and 11 by agreement): BFF login, overview, incidents, incident detail with approve/reject, audit; Zod-parsed responses |
-| 10 | LOC-15 | #16 | Live updates over SSE (see section 8) |
+| 10 | LOC-15 | #16 | Live updates over SSE (see section 8a) |
 | 11 | LOC-16 | #19 | Real LLM provider, opt-in: Gemini over plain `fetch`, Zod → Gemini schema transform, bounded retry, token usage in `modelMetadata`, opt-in live test |
-| 13 | LOC-18 | #21 | Integration settings and secrets, adapter-gated: AES-256-GCM credential sealing, `ProviderAdapter`, a CloudLabs adapter claiming no capabilities, four settings routes, settings page (see section 8b) |
+| 13 | LOC-18 | #21 | Integration settings and secrets, adapter-gated: AES-256-GCM credential sealing, `ProviderAdapter`, a CloudLabs adapter claiming no capabilities, four settings routes, settings page (see section 8c) |
+| 14 | LOC-19 | #25 | Playwright journey in CI against compose; metrics derived from committed rows (`/api/metrics`) |
+| — | — | #26, #28 | UI revamp: shell, dark mode, design tokens; dashboard with KPI tiles, charts and a time window |
+| — | — | #29 | Fixes #22, #23, #24 (the fixture now shows the policy block), #27 |
+| 15 | LOC-20 | #30 | Delivery: one incident is one trace, opt-in Jaeger, README walkthrough; local-only |
 
 Key behaviours worth knowing (details in `ARCHITECTURE.md`):
 
@@ -300,11 +304,11 @@ Key behaviours worth knowing (details in `ARCHITECTURE.md`):
   one poller per API process; heartbeat re-checks the session; web relays the
   stream (`app/api/events/stream/route.ts`) and `LiveRefresh` refreshes pages.
 
-Latest verified numbers (Phase 10 branch): API unit 543, integration 170
-(twice on a fresh DB), coverage 98.3%; web 75 tests, 99.3%; fresh clone green;
-compose smoke green on a fresh build and on a re-run.
+Latest verified numbers (Phase 15 branch): API unit 665, integration 218
+(twice on a fresh DB); web 123 tests; compose smoke and the browser journey
+green on a fresh stack.
 
-## 8. Phase 10 (PR #16): merged
+## 8a. Phase 10 (PR #16): merged
 
 Merged to `main`. The self-review finding was fixed (`fix(web): keep one live
 stream per tab across navigation`): `LiveRefresh` lives once in
@@ -316,7 +320,7 @@ streams piled up; propagating `ReadableStream.cancel` upstream did not help
 (64 s). A closed tab still lingers about a minute, once per tab, which is
 acceptable.
 
-## 8. Phase 11 (PR #19): merged
+## 8b. Phase 11 (PR #19): merged
 
 Merged to `main`. Five commits plus a self-review fix.
 
@@ -366,7 +370,7 @@ variable, so the worker defaults to `fixture`; the smoke test and CI therefore
 cannot call a network provider. Verified by reading `docker-compose.yml`, not
 assumed.
 
-## 8b. Phase 13 (PR #21): merged
+## 8c. Phase 13 (PR #21): merged
 
 **Built.** `secrets/crypto.ts` seals credentials with AES-256-GCM
 (`iv | tag | ciphertext`, random IV per seal) under `CREDENTIALS_KEY`.

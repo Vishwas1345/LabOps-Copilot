@@ -7,8 +7,7 @@ Local-only by decision; the dependency graph was dropped by owner decision.
 
 **Order changed after Phase 9:** the dashboard (Phase 12) ran before live
 updates (10) and the real LLM (11), so the proven workflow became visible and
-demoable first; live updates then plug into pages that exist. Remaining order:
-11, 13, 14, 15.
+demoable first; live updates then plug into pages that exist.
 
 Phase 2 deviations, both deliberate: the demo endpoint returns 201/200, not
 202, because nothing is queued until Phase 4; and the simulator's
@@ -16,8 +15,8 @@ Phase 2 deviations, both deliberate: the demo endpoint returns 201/200, not
 them, so no unused code ships. Their outcomes are already scenario data.
 
 Phase 3 deviations: ingestion accepts only closed-enum categories, and
-raw-code mapping moves to the provider adapter (Phase 13), where raw codes
-exist; events the lab state machine forbids are stored without a transition;
+raw-code mapping was not built: only a live provider sends raw codes, and the
+integration gate is closed (Phase 13); events the lab state machine forbids are stored without a transition;
 the `traceId` column arrives with tracing (Phase 4).
 
 Phase 4 deviations: the trace header lives on the job row (`traceparent`),
@@ -143,7 +142,8 @@ generic "execute" path.
 
 ## 2. Decisions that cut across phases
 
-Each one is decided once here so phases do not relitigate it.
+Each one is decided once here so phases do not relitigate it. Decided before
+Phase 0; where a later phase changed a row, the row says so.
 
 | Decision | Choice | Why |
 |---|---|---|
@@ -152,9 +152,9 @@ Each one is decided once here so phases do not relitigate it.
 | Audit append-only | Postgres trigger that raises on `UPDATE`/`DELETE` of `AuditEntry` | One migration; a separate DB role per process is more machinery for the same guarantee |
 | Audit ordering | `AuditEntry.seq BIGSERIAL` | Gives SSE a monotonic `Last-Event-ID` for free (see Phase 10) |
 | One open incident per window | Partial unique index `UNIQUE(windowKey) WHERE status <> 'resolved'` | DB-enforced under concurrent correlation runs |
-| SSE source | Stream = tail of committed `AuditEntry` rows | Every meaningful change already writes one, so there is a single source of truth and reconnect is a `WHERE seq > $lastId` query |
+| SSE source | Stream = tail of committed `AuditEntry` rows | Every meaningful change already writes one, so there is a single source of truth. *Changed in Phase 10:* reconnect resumes from a transaction boundary (`xid8`), not `seq`, which commits out of order |
 | Deterministic randomness | A ~10-line seeded PRNG (mulberry32) in `labs/simulator` | No dependency for something this small; same seed → identical scenario |
-| Operator auth | Seeded operators, scrypt password hash (`node:crypto`), signed httpOnly session cookie via `@fastify/cookie` | Spec asks for a simple operator role; a token in `NEXT_PUBLIC_*` would violate `CLAUDE.md §4` |
+| Operator auth | Seeded operators, scrypt password hash (`node:crypto`), httpOnly session cookie via `@fastify/cookie`. *As built:* an opaque random token, stored server-side only as its SHA-256; not a signed cookie | Spec asks for a simple operator role; a token in `NEXT_PUBLIC_*` would violate `CLAUDE.md §4` |
 | API error shape | `{ error: { code, message, requestId } }` from one Fastify error handler | One envelope (`CLAUDE.md §7`); stack traces never leave the process |
 | Config | `config/env.ts` parses `process.env` with Zod at startup; the process fails fast on bad config | One place that knows every variable |
 | Integration tests | `test:integration` script, real Postgres + Redis (compose locally, service containers in CI) | Already the CI design; no extra tool |
@@ -165,18 +165,33 @@ Each one is decided once here so phases do not relitigate it.
 |---|---|---|
 | `zod` | 0 | Mandated validation library; no built-in runtime schema validation |
 | `bullmq` | 4 | Mandated queue; retries, backoff and job dedup by `jobId` |
-| `ioredis` | 4 | Pub/sub connection for SSE fan-out (already a BullMQ dependency; declared because we import it directly) |
-| `@opentelemetry/api`, `@opentelemetry/sdk-node`, `@opentelemetry/exporter-trace-otlp-http` | 4 | Mandated tracing; no built-in tracer |
+| `ioredis` | 4 | Queue connections and the login rate-limit store (already a BullMQ dependency; declared because we import it directly). *Changed in Phase 10:* no pub/sub; the stream polls committed audit rows |
+| `@opentelemetry/api`, `sdk-trace-node`, `sdk-trace-base`, `core`, `resources`, `exporter-trace-otlp-http` | 4, 15 | Mandated tracing; no built-in tracer (`sdk-node` was planned; the narrower packages were enough) |
 | `@fastify/cookie` | 6 | Signed cookie parsing; hand-rolled cookie parsing is a common source of bugs |
 | `@fastify/rate-limit` | 6 | Login and write throttling |
-| LLM SDK (provider TBD, see §5) | 11 | Structured-output calls and retries |
+| LLM SDK (provider TBD, see §5) | 11 | *As built: none.* Gemini is called over plain `fetch` |
 | `tailwindcss`, shadcn/ui components | 8 | Mandated UI stack |
-| `@xyflow/react` (React Flow) | 13 | Dependency graph; optional per spec |
+| `@xyflow/react` (React Flow) | 13 | *Dropped* with the dependency graph (owner decision) |
 | `@playwright/test` | 14 | Mandated E2E tool |
 
 ---
 
 ## 3. Phases
+
+**File names as built.** Each phase's "Files" line is the plan written before
+the code. Where the built name differs, the module is the same:
+
+| Planned | As built |
+|---|---|
+| `labs/labs.service.ts`, `labs/labs.routes.ts` | `labs/service.ts`, `labs/routes.ts` |
+| `labs/simulator/{prng,scenarios,engine}.ts`, `demo/demo.routes.ts` | `labs/simulator.ts`, `labs/recovery-simulator.ts`, `demo/routes.ts` |
+| `events/ingest.ts`, `events/events.routes.ts` | `events/service.ts`, `events/routes.ts` |
+| `jobs/enqueue.ts` | `jobs/record.ts` (outbox row and dispatch), `jobs/runner.ts` |
+| `auth/auth.routes.ts` | `auth/routes.ts` |
+| `approvals/approve.ts`, `recovery/verify.ts` | `recovery/approve.ts`, `recovery/expire.ts`; verification lives in `recovery/execute.job.ts` |
+| `events-stream/hub.ts` with a Redis subscriber, `stream.routes.ts` | `events-stream/hub.ts` polling committed rows, `feed.ts`, `routes.ts` |
+| web `lib/sse.ts` | `lib/live.ts`, `components/live-refresh.tsx`, `app/api/events/stream/route.ts` |
+| `integrations/integrations.routes.ts`, web `integrations/cloudlabs/page.tsx` | `integrations/routes.ts`, `(dashboard)/integrations/page.tsx` |
 
 Ordered by dependency: data → logic → API → UI. Every phase merges as its own PR
 with lint, typecheck, unit, integration and coverage green.
@@ -303,7 +318,7 @@ with lint, typecheck, unit, integration and coverage green.
 
 ### Phase 7 — AI investigation with the fixture provider
 
-**Endpoints:** `POST /api/incidents/:id/investigate` → `202 { jobId }` (idempotent per incident while one is running).
+**Endpoints:** `POST /api/incidents/:id/investigate` → `202 { jobId }`, or `200` with the active investigation while one is running.
 **Data / migrations:** `Investigation(id, incidentId FK, status enum pending|running|completed|error, summary, candidateCause, evidenceReferences jsonb, missingEvidence jsonb, contradictingEvidence jsonb, confidence, diagnosticChecks jsonb, recommendedAction enum?, requiresApproval, modelMetadata jsonb, createdAt)`.
 **Files:** new `investigations/provider.ts` (`LlmProvider.analyse(pack): Promise<unknown>`), `investigations/fixture-provider.ts`, `investigations/evidence.ts` (fixed query, capped at N events and M characters each, redacted, with a redaction summary), `investigations/prompt.ts` (fixed system text + delimited data block), `investigations/output-schema.ts` (strict Zod, closed enums), `investigations/investigate.job.ts`.
 **Logic:**
@@ -511,7 +526,7 @@ Phase 13 deviations, settled by building it:
 
 **Observability.**
 - Each phase adds its span from the fixed vocabulary (`event.ingest` in Phase 3, `incident.correlate` in Phase 5, `investigation.*` in Phase 7, `recovery.*` in Phases 8–9).
-- Child loggers carry `correlationId`, `traceId` and `incidentId` from Phase 4 on.
+- Worker job loggers carry the job, the queue and `traceId` from Phase 4 on; incident lines add `incidentId`.
 - "It is working" means one incident shows as one trace across the API and the worker.
 
 **Security checklist (applied in every phase's PR review):**
