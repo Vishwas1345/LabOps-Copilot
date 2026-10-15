@@ -35,7 +35,7 @@ describe('incomingEvent', () => {
     ['a far-future timestamp', { ...failed, occurredAt: '2999-01-01T00:00:00.000Z' }],
     ['an empty message', { ...failed, message: '' }],
     ['an oversized message', { ...failed, message: 'x'.repeat(2001) }],
-    ['an unknown source', { ...failed, source: 'cloudlabs-live' }],
+    ['an unknown source', { ...failed, source: 'platform-live' }],
     ['a missing lab', { ...failed, labId: undefined }],
   ])('rejects %s', (_case, event) => {
     expect(incomingEvent.safeParse(event).success).toBe(false);

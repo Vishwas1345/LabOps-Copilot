@@ -20,7 +20,7 @@ export default async function LoginPage() {
           </span>
           <div>
             <h1 className="text-xl font-semibold tracking-tight">LabOps Copilot</h1>
-            <p className="text-sm text-muted-foreground">Incident response for simulated cloud labs</p>
+            <p className="text-sm text-muted-foreground">Incident correlation and safe recovery for cloud lab operations</p>
           </div>
         </div>
         <Card>

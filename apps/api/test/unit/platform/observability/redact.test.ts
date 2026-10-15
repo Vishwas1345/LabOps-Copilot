@@ -52,9 +52,9 @@ describe('redactSecrets', () => {
   });
 
   it('censors secrets inside arrays', () => {
-    const input = { connections: [{ apiKey: 's3cret', name: 'cloudlabs' }] };
+    const input = { connections: [{ apiKey: 's3cret', name: 'lab-platform' }] };
     expect(redactSecrets(input)).toEqual({
-      connections: [{ apiKey: REDACTED, name: 'cloudlabs' }],
+      connections: [{ apiKey: REDACTED, name: 'lab-platform' }],
     });
   });
 

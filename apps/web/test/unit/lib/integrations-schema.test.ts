@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { integrationConnectionSchema, integrationsSchema } from '@/lib/schemas';
 
-const CLOUDLABS = {
-  provider: 'cloudlabs',
-  displayName: 'CloudLabs',
+const LAB_PLATFORM = {
+  provider: 'lab-platform',
+  displayName: 'External lab platform',
   state: 'not_configured',
   hasCredential: false,
   supportedEventTypes: null,
@@ -22,8 +22,8 @@ const CLOUDLABS = {
 
 describe('integrationConnectionSchema', () => {
   it('parses a provider that verified nothing', () => {
-    expect(integrationConnectionSchema.parse(CLOUDLABS)).toMatchObject({
-      provider: 'cloudlabs',
+    expect(integrationConnectionSchema.parse(LAB_PLATFORM)).toMatchObject({
+      provider: 'lab-platform',
       state: 'not_configured',
     });
   });
@@ -41,7 +41,7 @@ describe('integrationConnectionSchema', () => {
 
   it('does not surface a credential the API might have smuggled in', () => {
     const parsed = integrationConnectionSchema.parse({
-      ...CLOUDLABS,
+      ...LAB_PLATFORM,
       credential: 'sk-live-LEAK',
       encryptedCredentials: 'AAAA',
     });
@@ -51,18 +51,18 @@ describe('integrationConnectionSchema', () => {
   });
 
   it('requires the capability block, so a partial payload errors rather than rendering', () => {
-    const { capabilities: _dropped, ...withoutCapabilities } = CLOUDLABS;
+    const { capabilities: _dropped, ...withoutCapabilities } = LAB_PLATFORM;
 
     expect(() => integrationConnectionSchema.parse(withoutCapabilities)).toThrow();
   });
 
   it('renders simulator mode when the provider is reachable', () => {
     const parsed = integrationConnectionSchema.parse({
-      ...CLOUDLABS,
+      ...LAB_PLATFORM,
       provider: 'simulator',
       state: 'connected',
       hasCredential: true,
-      capabilities: { ...CLOUDLABS.capabilities, reachable: true, canReadLabs: true },
+      capabilities: { ...LAB_PLATFORM.capabilities, reachable: true, canReadLabs: true },
       supportedEventTypes: ['provision_failed'],
     });
 
@@ -74,15 +74,15 @@ describe('integrationConnectionSchema', () => {
 
 describe('integrationsSchema', () => {
   it('parses the list the settings page renders', () => {
-    const parsed = integrationsSchema.parse({ data: [CLOUDLABS] });
+    const parsed = integrationsSchema.parse({ data: [LAB_PLATFORM] });
 
     expect(parsed.data).toHaveLength(1);
-    expect(parsed.data[0].provider).toBe('cloudlabs');
+    expect(parsed.data[0].provider).toBe('lab-platform');
   });
 
   // Negative: a malformed API response is an error state, not a crash.
   it('rejects a payload that is not the expected shape', () => {
-    expect(() => integrationsSchema.parse({ data: [{ provider: 'cloudlabs' }] })).toThrow();
+    expect(() => integrationsSchema.parse({ data: [{ provider: 'lab-platform' }] })).toThrow();
     expect(() => integrationsSchema.parse({ nope: true })).toThrow();
     expect(() => integrationsSchema.parse(null)).toThrow();
   });

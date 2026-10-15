@@ -14,7 +14,7 @@ import { registerErrorHandling } from './platform/http/errors.js';
 import { closeQueues } from './platform/jobs/queues.js';
 import { registerIncidentRoutes } from './modules/incidents/routes.js';
 import { registerInvestigationRoutes } from './modules/investigations/routes.js';
-import { cloudlabsAdapter } from './modules/integrations/adapters/cloudlabs-adapter.js';
+import { labPlatformAdapter } from './modules/integrations/adapters/lab-platform-adapter.js';
 import { registerIntegrationRoutes } from './modules/integrations/routes.js';
 import { registerMetricsRoutes } from './modules/metrics/routes.js';
 import { simulatorAdapter } from './modules/integrations/adapters/simulator-adapter.js';
@@ -78,7 +78,7 @@ export async function buildApp(options: {
     approvalTtlMs: (options.config.APPROVAL_TTL_MINUTES ?? 30) * 60_000,
   });
   registerIntegrationRoutes(app, {
-    adapters: [simulatorAdapter, cloudlabsAdapter],
+    adapters: [simulatorAdapter, labPlatformAdapter],
     credentialsKey: options.config.CREDENTIALS_KEY,
   });
   app.addHook('onClose', closeQueues);
