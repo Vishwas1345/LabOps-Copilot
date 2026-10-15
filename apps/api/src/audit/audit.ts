@@ -58,16 +58,24 @@ export interface AuditEntryView {
 // footgun on an append-only table that only grows.
 const MAX_TARGET_ENTRIES = 500;
 
-/** One target's history, in insertion order. */
-export async function listAuditFor(
-  targetType: string,
-  targetId: string,
-): Promise<AuditEntryView[]> {
-  const rows = await prisma.auditEntry.findMany({
-    where: { targetType, targetId },
-    orderBy: { seq: 'asc' },
-    take: MAX_TARGET_ENTRIES,
-  });
+type AuditRow = Pick<
+  Prisma.AuditEntryGetPayload<Record<string, never>>,
+  'seq' | 'actorType' | 'actorId' | 'action' | 'outcome' | 'metadata' | 'createdAt'
+>;
+
+/**
+ * An incident's history: entries that target it, and entries that name it in
+ * metadata.incidentId (investigation through verification), by the same rule
+ * the live stream uses (feed.ts). Both branches are indexed.
+ */
+export async function listIncidentAudit(incidentId: string): Promise<AuditEntryView[]> {
+  const rows = await prisma.$queryRaw<AuditRow[]>`
+    SELECT seq, "actorType", "actorId", action, outcome, metadata, "createdAt"
+    FROM "AuditEntry"
+    WHERE ("targetType" = 'incident' AND "targetId" = ${incidentId})
+       OR metadata->>'incidentId' = ${incidentId}
+    ORDER BY seq
+    LIMIT ${MAX_TARGET_ENTRIES}`;
   return rows.map((row) => ({
     seq: row.seq.toString(),
     actorType: row.actorType,
