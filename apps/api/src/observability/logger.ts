@@ -33,12 +33,3 @@ export function createLogger(
 }
 
 export const logger = createLogger();
-
-/** Child logger carrying the correlation context every line must have. */
-export function withContext(context: {
-  correlationId?: string;
-  traceId?: string;
-  incidentId?: string;
-}): pino.Logger {
-  return logger.child(context);
-}

@@ -1,8 +1,8 @@
 # LabOps Copilot — System Architecture
 
-**Status:** Living document. Describes the target architecture and marks what is
-already implemented.
-**Last updated:** 13 October 2026
+**Status:** Describes the system as built (all phases complete). Anything not
+built is marked as such.
+**Last updated:** 15 October 2026
 **Scope:** Incident correlation, evidence-backed AI investigation, policy-gated
 recovery orchestration and verification for cloud lab operations.
 
@@ -55,29 +55,32 @@ flowchart LR
   SYS -->|"bounded evidence, structured output"| LLMP
   LLMP -->|"JSON validated by Zod"| SYS
   CL -.->|"webhook / polling<br/>only if documented + authorised"| SYS
-  SYS -->|"logs, spans, metrics"| OBS
+  SYS -->|"spans over OTLP (opt-in)"| OBS
   SYS -->|"simulated lab state"| SIM[("Lab simulator<br/>in-process")]
 ```
 
 **Trust boundaries**
 
 1. **Browser → API** — untrusted. All bodies validated, all writes authorised.
-2. **Provider → API (webhook)** — untrusted. Signature/token verified, replay
-   window enforced, size and rate limited, payload normalised then redacted.
+2. **Provider → API (webhook)** — untrusted. **Not built:** the integration gate
+   is closed (§13). When it opens: signature or token verified, replay window
+   enforced, size and rate limited, payload normalised then redacted.
 3. **Logs/event text → LLM** — untrusted *data*. Delimited, length-bounded,
    never concatenated into system instructions.
 4. **LLM → policy engine** — untrusted *proposal*. Structurally validated and
    mapped onto an allow-list of known action types.
-5. **API → simulator** — trusted internal. The only component permitted to
-   mutate simulated lab state, and only through a narrow interface.
+5. **API and worker → simulator** — trusted internal. Only the flag-gated demo
+   route (creating a scenario) and the recovery executor (a simulated retry)
+   change simulated lab state, through the labs module's narrow interface.
 
 ---
 
 ## 3. Runtime topology
 
-Four processes. `api` and `worker` share one TypeScript codebase and one Prisma
-schema; they are separate OS processes so long-running jobs never occupy the
-HTTP request lifecycle.
+Five long-running processes, plus a one-shot `migrate` that applies migrations
+and seeds the demo operator before the api starts. `api` and `worker` share one
+TypeScript codebase and one Prisma schema; they are separate OS processes so
+long-running jobs never occupy the HTTP request lifecycle.
 
 ```mermaid
 flowchart TB
@@ -95,25 +98,25 @@ flowchart TB
     REDIS[("Redis 7<br/>:6379")]
   end
 
-  WEB -->|"REST + EventSource SSE"| API
+  BROWSER["Browser"] -->|"pages, actions, EventSource"| WEB
+  WEB -->|"REST with the session cookie (BFF); SSE relay"| API
   API --> PG
-  API -->|"enqueue"| REDIS
-  API -->|"read-only status refresh"| SIM[Simulator engine]
+  API -->|"enqueue after commit"| REDIS
+  API -->|"demo scenario (DEMO_ENABLED)"| SIM[Simulator engine]
   REDIS -->|"claim job"| WRK
   WRK --> PG
-  WRK -->|"simulated action"| SIM
-  WRK -->|"investigation"| LLM["LLM API"]
-  WRK -->|"publish"| REDIS
-  REDIS -.->|"pub/sub fan-out"| API
-  API -->|"push"| WEB
+  WRK -->|"simulated retry"| SIM
+  WRK -->|"investigation (fixture or Gemini)"| LLM["LLM provider"]
+  API -->|"polls committed audit rows (1 s)"| PG
+  API -->|"SSE"| WEB
 ```
 
 **Ports and responsibilities**
 
 | Process | Port | Owns | Must not |
 |---|---|---|---|
-| `web` | 3000 | SSR shell, operator UI, SSE consumer | Hold credentials or secrets in browser storage |
-| `api` | 4000 | HTTP surface, validation, authorisation, enqueue, SSE fan-out | Execute long-running work inline |
+| `web` | 3000 | Server-rendered operator UI, session cookie (BFF), SSE relay | Let the browser call the API, or hold credentials in browser storage |
+| `api` | 4000 | HTTP surface, validation, authorisation, enqueue, SSE | Execute long-running work inline |
 | `worker` | — | Correlation, investigation, recovery execution, verification | Serve HTTP |
 | `postgres` | 5432 | All durable business state | — |
 | `redis` | 6379 | Queue transport, login rate-limit counters | Be the source of truth for business state |
@@ -161,20 +164,25 @@ apps/api/src/
   index.ts            process bootstrap, graceful shutdown
   app.ts              Fastify assembly, plugins, error handler
   config/             env parsing (Zod), feature flags
+  http/               the shared error envelope
   auth/               operators, scrypt hashing, server-side sessions,
                       deny-by-default route guard, login rate limit
-  observability/      Pino logger, OTel bootstrap, metric shapes, correlation IDs
-  secrets/            envelope encryption, redaction helpers, key rotation
+  observability/      Pino logger, key-name redaction, OTel bootstrap and span
+                      helpers, shared metric shapes
+  secrets/            AES-256-GCM sealing with a key from the environment;
+                      keyVersion on each row leaves room for rotation
   labs/               Lab model, lifecycle state machine, simulator engine
   events/             normalisation, Zod schemas, dedup, ingestion queries
-  integrations/       provider interface, simulator adapter, CloudLabs adapter,
-                      connection settings, webhook receiver, sync jobs
-  incidents/          correlation engine, incident lifecycle, evidence assembly
-  investigations/     LLM provider abstraction, prompt assembly, output schemas
-  policies/           action allow-list, preconditions, retry/cooldown limits
-  approvals/          approve/reject, staleness, revalidation at exec time
-  jobs/               BullMQ queue definitions, worker bootstrap, handlers
-  recovery/           simulated action execution + post-action verification
+  integrations/       provider interface, simulator adapter, CloudLabs adapter
+                      (no capabilities: the gate is closed), connection settings
+  incidents/          correlation engine, incident lifecycle and transitions
+  investigations/     evidence assembly, LLM providers (fixture, Gemini),
+                      prompt, strict output schema, investigate job
+  policies/           pure policy evaluator: allow-list, the seven steps,
+                      preconditions, retry and cooldown limits
+  jobs/               BullMQ queues, outbox job rows, runner, reconciler
+  recovery/           proposals, approve/reject, expiry sweep, execution with
+                      revalidation, post-action verification
   audit/              append-only audit writer + queries
   events-stream/      committed-audit feed (xid8 boundary), one poller per
                       process, SSE route with Last-Event-ID replay
@@ -188,7 +196,7 @@ apps/api/src/
 ```
 
 **Dependency rule:** modules may depend *downward* only —
-`recovery → policies → approvals → incidents → events → labs`.
+`investigations → recovery → {policies, incidents} → events → labs`.
 `investigations` sits above `recovery` (a diagnosis is proposed in the same
 transaction), and `policies` stays pure: it depends only on `labs`, and the
 caller gathers every fact it judges.
@@ -204,10 +212,16 @@ apps/web/src/
   app/
     layout.tsx            persistent "Simulated data" badge on every page
     login/                sign-in form + server action (BFF)
-    (dashboard)/          overview, incidents, incidents/[id], audit;
+    (dashboard)/          overview (KPI tiles, charts, time window), incidents,
+                          incidents/[id], audit, integrations (Settings);
                           server actions: investigate, approve, reject,
                           run demo, sign out; error state for bad responses
-  components/ui/          shadcn primitives, copied into the repo
+    api/events/stream/    SSE relay: forwards the session cookie to the API
+  components/
+    ui/                   shadcn primitives, copied into the repo
+    shell/                sidebar, breadcrumbs, theme toggle
+    dashboard/            KPI tile, failure timeline, labs donut, bar list
+    live-refresh.tsx      one event stream per tab; refreshes on relevant events
   lib/                    API access (cookie forwarding), Zod response
                           schemas, formatters, URL query building
 ```
@@ -234,60 +248,54 @@ transaction plus an audit entry; nothing depends on in-memory state surviving.
 ```mermaid
 sequenceDiagram
   autonumber
-  participant S as Simulator
+  participant O as Operator (web)
   participant API as API
   participant PG as PostgreSQL
   participant Q as Redis/BullMQ
   participant W as Worker
-  participant L as LLM
-  participant O as Operator
+  participant L as LLM (fixture or Gemini)
 
-  S->>API: POST /api/events (normalized event)
-  API->>API: Zod validate + normalize
-  API->>PG: INSERT OperationalEvent (dedup key unique)
-  API->>PG: AuditEntry(event.received)
-  API->>Q: enqueue correlate:{windowKey}
-  API-->>O: SSE event.received
+  O->>API: POST /api/demo/scenarios/training-event (DEMO_ENABLED)
+  API->>API: create simulated labs; per event: Zod validate, redact
+  API->>PG: OperationalEvent (dedup key unique) + AuditEntry(event.received) + job row correlate:{window}
+  API->>Q: enqueue after commit (2 s delay collapses a burst)
 
-  W->>PG: read ungrouped failures in window
-  W->>W: score signals → cluster
-  W->>PG: INSERT Incident + IncidentLab(reason, score)
-  W->>PG: AuditEntry(incident.created)
-  W->>Q: enqueue investigate:{incidentId}
-  W-->>O: SSE incident.created
+  Q->>W: correlate job
+  W->>PG: read failures in the window, score against the anchor
+  W->>PG: Incident (+ its traceparent) + IncidentLab(reason, score) + AuditEntry(incident.created)
+  API-->>O: SSE: committed audit rows, polled from PG; the page refreshes
 
-  W->>PG: assemble bounded evidence pack
-  W->>L: structured-output request
-  L-->>W: JSON diagnosis
-  W->>W: Zod parse → reject malformed
-  W->>PG: INSERT Investigation
-  W->>Q: enqueue recovery-proposal:{incidentId}
-  W-->>O: SSE investigation.completed
-
-  W->>W: policies.evaluate(proposal)
-  alt policy denies
-    W->>PG: RecoveryAction(status=rejected) + AuditEntry(policy.failed)
-  else policy allows
-    W->>PG: RecoveryAction(status=pending_approval, idempotencyKey)
-    W-->>O: SSE recovery.proposed
-    O->>API: POST /api/recovery-actions/:id/approve
-    API->>PG: record approver + timestamp
+  O->>API: POST /api/incidents/:id/investigate
+  API->>PG: incident → investigating, Investigation, job row, AuditEntry(investigation.requested)
+  API-->>O: 202 with the job id
+  Q->>W: investigate job (in the incident's trace)
+  W->>PG: assemble the bounded, redacted evidence pack
+  W->>L: delimited prompt
+  L-->>W: JSON answer
+  W->>W: strict Zod parse
+  alt timeout, refusal, malformed or rejected output
+    W->>PG: Investigation(error, failure) + incident → open + AuditEntry(investigation.failed)
+  else valid diagnosis with a recommended action
+    W->>W: policies.evaluate, proposal steps (same transaction)
+    alt blocked
+      W->>PG: RecoveryAction(rejected_by_policy, blockedAt) + incident → manual_review + AuditEntry(recovery.proposed)
+    else allowed
+      W->>PG: RecoveryAction(awaiting_approval, expiresAt) + incident → awaiting_approval + AuditEntry(recovery.proposed)
+    end
   end
 
-  O->>API: (worker) picks approved action
-  W->>PG: revalidate preconditions (fresh read)
-  alt stale or changed state
-    W->>PG: AuditEntry(policy.blocked_at_execution)
-  else valid
-    W->>Q: enqueue execute (dedup by idempotencyKey)
-    W->>PG: RecoveryAction(running) + lab status=recovering
-    W->>S: perform simulated action
-    W->>PG: capture before/after state
-    W->>W: verify(result)
-    W->>PG: RecoveryAction(succeeded|failed)
-    W->>PG: Incident(resolved | manual_review) + AuditEntry
+  O->>API: POST /api/recovery-actions/:id/approve
+  API->>PG: lock the action (FOR UPDATE), check expiry, approved + job row execute:{action} + AuditEntry(recovery.approved)
+  API-->>O: 202 with the job id
+  Q->>W: execute job (in the incident's trace)
+  W->>PG: re-run policy steps 3-7 on fresh state
+  alt blocked at execution
+    W->>PG: RecoveryAction(blocked) + incident → manual_review + AuditEntry(recovery.blocked)
+  else still allowed
+    W->>PG: RecoveryAction(running) + labs → recovering + AuditEntry(recovery.started)
+    W->>W: simulated retry, outside any transaction
+    W->>PG: re-read every incident lab: all ready → succeeded, incident resolved; else failed, manual_review + AuditEntry(recovery.verified)
   end
-  W-->>O: SSE recovery.completed + verification result
 ```
 
 ---
@@ -304,10 +312,6 @@ erDiagram
   LAB ||--o{ INCIDENT_LAB : affected
   INCIDENT ||--o{ INVESTIGATION : "has"
   INCIDENT ||--o{ RECOVERY_ACTION : "proposes"
-  INCIDENT ||--o{ AUDIT_ENTRY : records
-  RECOVERY_ACTION ||--o| JOB_EXECUTION : "runs as"
-  INTEGRATION_CONNECTION ||--o{ WEBHOOK_DELIVERY : receives
-  INTEGRATION_CONNECTION ||--o{ INTEGRATION_SYNC_RUN : "syncs via"
 
   LAB {
     string id PK
@@ -344,6 +348,7 @@ erDiagram
     string anchorEventId FK "earliest failure"
     float confidenceScore "correlation strength; null when alone"
     json correlationReason "summary, threshold, weights, near miss"
+    string traceparent "the trace it was born in; later steps join it"
     datetime resolvedAt
   }
   INCIDENT_LAB {
@@ -376,12 +381,13 @@ erDiagram
     string evidenceFor "text[]; event ids in the pack only"
     string evidenceAgainst "text[]"
     string missingEvidence "text[]"
+    string diagnosticChecks "text[]"
     float confidence
     string recommendedAction "ActionType allow-list, nullable"
     string targetLabIds "text[]; cut to the incident's labs"
     string droppedTargets "text[]; what the model invented"
     json evidenceSummary "included, omitted, truncated, redacted"
-    string failure "TIMEOUT|MALFORMED_OUTPUT|SCHEMA_REJECTED|REFUSED|PROVIDER_ERROR|JOB_EXHAUSTED"
+    string failure "TIMEOUT|MALFORMED_OUTPUT|SCHEMA_REJECTED|TRUNCATED_OUTPUT|REFUSED|PROVIDER_ERROR|JOB_EXHAUSTED"
     json modelMetadata "provider, model, latency; no prompt, no secrets"
   }
   RECOVERY_ACTION {
@@ -403,8 +409,11 @@ erDiagram
   JOB_EXECUTION {
     string id PK
     string queue
-    string status
+    string jobKey "UNIQUE; also the BullMQ job id"
+    string status "queued|running|succeeded|failed"
+    int generation "bumped on every re-arm"
     int attempts
+    string traceparent "the trace the job continues"
     string errorSummary "redacted"
   }
   AUDIT_ENTRY {
@@ -423,16 +432,10 @@ erDiagram
     string id PK
     string provider "cloudlabs"
     string state "not_configured|connecting|connected|error|needs_attention"
-    string encryptedCredentials "never returned to client"
-    string supportedEventTypes "json"
+    string encryptedCredentials "AES-256-GCM; never returned to a client"
+    int keyVersion "which key sealed it"
+    string supportedEventTypes "json; only what a test confirmed"
     datetime lastSuccessfulTestAt
-  }
-  WEBHOOK_DELIVERY {
-    string id PK
-    string providerEventId "UNIQUE"
-    string status
-    int retryCount
-    string errorSummary "redacted"
   }
 ```
 
@@ -441,16 +444,20 @@ erDiagram
 | Invariant | Mechanism |
 |---|---|
 | One effect per logical event | `UNIQUE(OperationalEvent.deduplicationKey)` |
-| One execution per approved action | `UNIQUE(RecoveryAction.idempotencyKey)` + partial unique index on in-flight job |
+| One execution per approved action | `UNIQUE(RecoveryAction.idempotencyKey)`, `UNIQUE(JobExecution.jobKey)` keyed by the action, and `FOR UPDATE` on approve |
 | One incident per correlation window key | `UNIQUE(Incident.windowKey)` for unresolved incidents (partial index), behind an advisory lock that serialises correlation |
 | One active investigation per incident | `UNIQUE(Investigation.incidentId)` while `pending`/`running` (partial index), behind the incident's compare-and-set move to `investigating` |
-| Audit history is append-only | No `UPDATE`/`DELETE` path on `AuditEntry`; role restricted |
-| State transitions are legal | Guarded transition function + `CHECK`-constrained status enums |
+| Audit history is append-only | Triggers reject `UPDATE`, `DELETE` and `TRUNCATE` on `AuditEntry` |
+| State transitions are legal | Guarded transition functions over Postgres `ENUM` statuses; a `CHECK` ties `errorCategory` to failed events |
 | Concurrent approvals cannot both win | `SELECT ... FOR UPDATE` on the action row inside the transaction |
 
 Durability note: `JobExecution` rows mirror queue state so that a Redis flush
-does not erase the business history, and the worker reconciles orphaned
-`running` rows on startup.
+does not erase the business history. The worker's reconciler runs at startup and
+every 60 s, and re-sends `queued` or `running` rows idle past a 2-minute lease.
+
+Not foreign keys: a recovery action finds its job by `jobKey`
+(`execute:<actionId>`), and an incident's history is the audit rows that target
+it or name it in `metadata.incidentId` (an expression index serves both).
 
 ---
 
@@ -463,15 +470,18 @@ transaction that also writes an audit entry.
 stateDiagram-v2
   direction LR
   [*] --> provisioning
-  provisioning --> ready: health check passed
+  provisioning --> ready: provision_succeeded event
   provisioning --> failed: error event ingested
   failed --> recovering: approved action executed
   recovering --> ready: verification passed
   recovering --> failed: verification failed
-  ready --> stopped: operator stop
-  failed --> stopped: operator stop
-  stopped --> provisioning: restart
+  ready --> stopped: declared, no caller
+  failed --> stopped: declared, no caller
+  stopped --> provisioning: declared, no caller
 ```
+
+The `stopped` transitions are declared in `LAB_TRANSITIONS` so the state space is
+complete, but no route or job uses them yet.
 
 ```mermaid
 stateDiagram-v2
@@ -523,7 +533,7 @@ Link candidates are generated by inverted indices on `(errorCategory)` and
 `(dependencyId)` — so cost is near-linear in events rather than quadratic. No
 time-bucket index is needed: the correlate job already loads a bounded window. Candidate pairs are scored, then agglomerated into clusters by
 a deterministic threshold, with **single-link chaining blocked**: a lab joins a
-cluster only if it scores above the threshold against the cluster's anchor, not
+cluster only if it scores at or above the threshold against the cluster's anchor, not
 merely against one member. That rule is what stops unrelated failures from
 chaining into one meaningless mega-incident.
 
@@ -583,8 +593,9 @@ flowchart LR
    system policy and tool allow-list are not model-controlled.
 3. Output is validated against a strict Zod schema. Unknown fields are
    rejected, not coerced. Enums are closed sets.
-4. The returned `recommendedAction` is a **string enum**. Anything outside the
-   allow-list is dropped before it reaches the policy engine.
+4. The returned `recommendedAction` is a **closed enum**. An answer naming an
+   action outside the allow-list fails validation as a whole (`SCHEMA_REJECTED`)
+   and never reaches the policy engine; the incident goes back to `open`.
 5. The model cannot name a target outside the incident's own affected labs;
    targets are intersected with server-side truth, so a hallucinated lab ID is
    discarded rather than executed.
@@ -761,9 +772,9 @@ automatically.
 |---|---|
 | Duplicate event delivery | Dedup key insert conflicts → acknowledged as duplicate, no second processing |
 | Duplicate API request | Idempotency key conflict → returns original result |
-| Worker crash mid-job | Row stays `running`; startup reconciliation re-queues or marks `failed` after a lease timeout |
+| Worker crash mid-job | Row stays `running`; the reconciler (at startup, then every 60 s) re-sends `queued` or `running` rows idle past a 2-minute lease, or marks them `failed` once attempts are spent |
 | Queue job exceeds retries | Marked `failed` with an audit entry; the queue's `onExhausted` hook runs in the same transaction (from the runner's last attempt and from the reconciler), so an investigation goes to `error` and its incident to `manual_review` |
-| LLM timeout / malformed output | Investigation marked `error`; incident unchanged; retried with backoff |
+| LLM timeout / malformed output | Investigation marked `error` with the reason; the incident goes back to `open` with an audit entry; nothing from the failed answer is stored. Not retried by the queue (a model's bad answer is a result); only Gemini's HTTP 429/5xx are retried, inside the provider |
 | DB unavailable | API reports `degraded` via `/health`; writes fail closed rather than silently dropping events |
 | SSE client disconnects | No effect on processing; stream resumes from last event ID |
 
@@ -778,19 +789,21 @@ SSE, so a request never blocks on investigation or recovery.
 
 ## 12. Observability
 
-Three signals, one correlation ID.
+Three signals, joined by the trace id.
 
 **Logs** — Pino, JSON, request-scoped; Fastify shares the same instance.
 Secrets are removed where data enters the system (principle 7). The logger adds
 a safety net behind that: a key-name redaction step (any depth, any casing)
 catches a forgotten `logger.info(payload)` that carries a secret-named key. It
 cannot catch a secret under an innocuous key or inside a message string, which
-is why it is the net and not the control. Child loggers carry `correlationId`,
-`traceId`, `incidentId`.
+is why it is the net and not the control. Fastify request lines carry the
+request id; worker job lines carry `jobId`, `jobKey`, `queue` and `traceId`,
+and incident lines add `incidentId`.
 
 **Traces** — OpenTelemetry spans per the spec's vocabulary, propagated across
-the API→queue→worker boundary via span context embedded in job payloads, so one
-incident is a single trace even though it spans processes and minutes.
+the API→queue→worker boundary through the `traceparent` stored on each job row,
+and rejoined by later steps through `Incident.traceparent`, so one incident is a
+single trace even though it spans processes, operator actions and minutes.
 
 ```
 event.ingest → incident.correlate → investigation.queue → investigation.llm
@@ -822,44 +835,30 @@ All demo numbers come from real runs. No fabricated dashboards.
 ## 13. Integration gate — CloudLabs
 
 The adapter interface exists; the live implementation does not, and will not
-be written speculatively.
-
-```ts
-interface ProviderAdapter {
-  testConnection(cfg: ProviderConfig): Promise<ConnectionResult>;
-  fetchLabs?(cfg: ProviderConfig): Promise<NormalizedLab[]>;
-  fetchStatuses?(cfg: ProviderConfig, cursor?: string): Promise<Page<NormalizedLab>>;
-  registerWebhook?(cfg: ProviderConfig, target: WebhookTarget): Promise<void>;
-  normalizeIncomingEvent(raw: unknown, headers: Headers): NormalizedEvent;
-  readonly supportedEventTypes: string[];
-  readonly capabilities: ProviderCapabilities;
-}
-```
-
-Optional methods are genuinely optional. `capabilities` is queried at runtime,
-and the UI renders only what the adapter reports — unverified event types are
-never shown as available.
+be written speculatively. `capabilities` is read at runtime, and the UI renders
+only what the adapter reports: unverified event types are never shown as
+available.
 
 **Gate before any live code:** official API documentation obtained, auth scheme
 and scopes confirmed, sandbox tenant or sample payloads supplied, webhook
 security model documented, rate limits known, permitted operations confirmed.
-Absent that, the adapter stays in `simulated` mode and the connection reads
-`not_configured`. The product never claims a connection it has not tested.
+Absent that, the CloudLabs adapter claims no capabilities and its connection
+reads `not_configured`. The product never claims a connection it has not tested.
 
-**Credential handling:** submitted server-side over HTTPS → envelope-encrypted
-at rest with a key from the environment → never returned by any endpoint →
-never logged → redacted from all AI context. Least privilege and read-only by
-default; real recovery actions remain disabled behind a separately reviewed,
-sandboxed flag.
+**Credential handling:** submitted server-side over HTTPS → sealed at rest with
+AES-256-GCM under a key from the environment → never returned by any endpoint →
+never logged → never in an AI context. Real recovery against a live provider is
+impossible by type: `canExecuteRecovery` is the literal `false`.
 
-External payloads enter the *same* normalisation path as simulator events, so
-the correlation, investigation and recovery pipeline is identical whether data
-is simulated or live. That is the whole point of the adapter boundary.
+Once built, external events would enter the *same* ingestion path
+(`ingestEvent`) as simulator events, so correlation, investigation and recovery
+are identical whether data is simulated or live. That is the point of the
+adapter boundary.
 
 **How Phase 13 implements it** (`integrations/`, `secrets/`)
 
-The interface above is narrower than it was drafted, and the difference is the
-point. Only two methods exist:
+The interface is narrower than it was first drafted, and the difference is the
+point. It has one method:
 
 ```ts
 interface ProviderAdapter {
@@ -911,14 +910,14 @@ sent; a field added to a view by mistake fails the request with a 500.
 | Prompt injection via log text | Delimited data block, fixed system policy, closed action enum, server-side target intersection |
 | Model-invented action | Zod schema + allow-list + policy engine; executor accepts only enum values |
 | Secrets in logs / prompts / responses | Redaction at serializer and assembly boundaries; no endpoint returns credentials |
-| Forged webhook | Documented signature/token verification, timestamp replay window, rate and size limits |
+| Forged webhook | No webhook receiver exists (the gate is closed). When built: documented signature or token verification, timestamp replay window, rate and size limits |
 | Duplicate or replayed write | Unique dedup and idempotency keys; duplicate returns prior result |
 | Stale approval replay | TTL + precondition revalidation inside the execution transaction |
 | Unauthorised access | Deny by default: a global guard requires a session on every route unless it opts out (`config.public`); a test requests every registered route anonymously |
 | Stolen or leaked session | Random 32-byte token; only its SHA-256 is stored; httpOnly, SameSite=Lax, Secure cookie; 8 h absolute expiry; logout and password reset revoke server-side |
 | Credential guessing | scrypt hashing; login rate limited per IP through Redis (fails closed); unknown user and wrong password answer identically and cost the same hash time |
 | Unauthorised approval | Audit `actorId` comes from the session, never the request body; RBAC if time permits |
-| Resource exhaustion | Body size limits, per-route rate limits, bounded queues, bounded retries, timeouts on all outbound calls |
+| Resource exhaustion | Body size limits, a login rate limit (5 a minute per IP), bounded evidence, bounded queues and retries, timeouts on all outbound calls |
 | Demo endpoints in production | `/api/demo/*` gated behind a flag that is off outside local/demo environments |
 
 ---
@@ -930,11 +929,11 @@ Tests mirror the boundaries, so a failure points at a boundary.
 | Layer | Scope | Doubles |
 |---|---|---|
 | Unit | Normalisation, dedup, correlation scoring, state transitions, policy decisions, retry/idempotency, AI schema validation | None — pure functions |
-| Integration | Event ingestion → DB, ingestion → enqueue, worker retry/failure, approval + policy enforcement, execution + verification, audit writes | Real Postgres + Redis via testcontainers/compose |
-| Contract | Adapter `capabilities` reporting, LLM output schema, webhook normalisation | Fixture payloads |
-| E2E (Playwright) | Full operator journey, plus the negative cases | Mock LLM provider, seeded scenario |
+| Integration | Event ingestion → DB, ingestion → enqueue, worker retry/failure, approval + policy enforcement, execution + verification, audit writes, metrics, one incident one trace | Real Postgres + Redis (compose) |
+| E2E (Playwright) | Full operator journey, plus the negative cases visible in the UI | Fixture model, seeded scenario, the built compose stack |
 
-Determinism rules: a fixed seed produces an identical 30-failure scenario
+Determinism rules: a fixed seed produces an identical scenario (40 labs, 19
+failures, one redelivery)
 every run; the LLM is mocked in all CI tests with one opt-in job against a real
 model; no test asserts on wall-clock timings or generated prose.
 
@@ -948,7 +947,8 @@ incident, and no test output may contain a secret.
 
 ## 16. Deployment topology
 
-**Local development** — `docker compose up`: postgres, redis, api, worker, web.
+**Local development** — `docker compose up --build`: postgres, redis, a one-shot
+migrate, api, worker, web. `compose.tracing.yml` adds Jaeger on request.
 Web and api also run hot-reload outside containers for the dev loop; compose is
 the reproducible baseline and the CI environment.
 
@@ -957,10 +957,12 @@ flowchart LR
   subgraph compose["docker compose (local / CI)"]
     PGS[("postgres + healthcheck")]
     RDS[("redis")]
+    MIG["migrate (one-shot)"]
     APIS["api"]
     WRKS["worker"]
     WEBS["web"]
   end
+  MIG --> PGS
   APIS --> PGS
   APIS --> RDS
   WRKS --> PGS
@@ -968,7 +970,7 @@ flowchart LR
   WEBS --> APIS
 ```
 
-**CI (GitHub Actions)** — three workflows:
+**CI (GitHub Actions)** — four workflows:
 
 `changes.yml` is the only entry point. It uses `dorny/paths-filter` to decide
 whether a commit touched `apps/web`, `apps/api`, or shared root tooling, then
@@ -979,7 +981,10 @@ map to **both** services, because a shared-tooling change can break either.
 `api.yml` — build (`tsc` plus `prisma validate`), lint, unit tests, integration
 tests against real PostgreSQL and Redis service containers, coverage with
 thresholds, quality gate. `web.yml` — build, lint, unit tests, coverage with
-thresholds, quality gate.
+thresholds, quality gate. `changes.yml` also runs the **compose smoke and e2e**
+job: it builds both images, boots the stack, runs the smoke script, then resets
+the stack and runs the Playwright journey. `llm-live.yml` is manual only: the
+one job that calls a real model.
 
 Two design points worth calling out, because the obvious version of both is
 broken:
@@ -1068,7 +1073,7 @@ end-to-end workflow exists before breadth is added.
 | Data access | Prisma | Raw SQL / Kysely | Type-safe schema-first, single migration story; raw SQL still allowed for reporting queries. |
 | AI orchestration | Explicit state machine | LangGraph.js | The workflow is linear with two conditional branches; a framework would add indirection without capability. Revisit only if multi-step branching with persistence becomes real. |
 | Model access | Plain `fetch` to one provider | Vendor SDKs | One call site does not justify a dependency, and the safety boundary is Zod rather than the vendor. `LLM_BASE_URL` keeps the choice reversible; adopting an SDK later is a contained change. |
-| Secrets | Envelope encryption with env-held key | Plaintext in DB, external KMS | No external dependency for a local demo, while keeping a clean upgrade path to a KMS. |
+| Secrets | AES-256-GCM with an env-held key, versioned per row | Plaintext in DB, external KMS | No external dependency for a local demo, while keeping a clean upgrade path to a KMS. |
 | Migrations | Checked-in `prisma migrate` migrations everywhere, plus a CI drift check | `prisma db push` | Partial unique indexes, CHECK constraints and the append-only audit trigger need raw SQL that `db push` cannot express; one schema path for local, CI and compose. |
 
 ---
@@ -1079,11 +1084,10 @@ end-to-end workflow exists before breadth is added.
    rate limits. Blocks F2a beyond the adapter interface.
 2. **Sandbox access** — a test tenant or sample payloads. Until then the
    simulator is the only data source.
-3. **AI provider and budget** — provider choice plus a quota-safe local mode so
-   development never depends on a paid subscription.
+3. **AI provider and budget** — *resolved:* Gemini over `fetch`, opt-in; the
+   deterministic fixture is the default, so nothing depends on a paid key.
 4. **Authentication depth** — a simple operator identity is sufficient for the
    MVP; explicit RBAC is a stretch goal.
 5. **Retention** — how long to keep raw event payloads. Default is metadata and
    redacted excerpts only, with raw retention opt-in and time-boxed.
-6. **Deployment target** — decides whether the pipeline deploys or only builds
-   and publishes images.
+6. **Deployment target** — *resolved:* local-only by decision (§17).
