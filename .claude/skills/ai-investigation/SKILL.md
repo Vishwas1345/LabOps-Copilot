@@ -28,7 +28,7 @@ apps/api/src/investigations/
 
 ## Procedure
 
-1. **Provider behind an interface.** `LlmProvider.analyse(input)` with at least
+1. **Provider behind an interface.** `LlmProvider.analyse(prompt, signal)` with at least
    a fixture implementation used by every test. No test may depend on a live
    model call. See `CLAUDE.md §8`.
 
@@ -73,8 +73,9 @@ apps/api/src/investigations/
    }).strict();
    ```
 
-   Evidence ids not in the pack and labs outside the incident are dropped and
-   reported; anything else that fails is a rejection.
+   Evidence ids not in the pack are dropped; labs outside the incident are
+   dropped and reported as `droppedTargets`; anything else that fails is a
+   rejection.
 
 6. **Intersect targets with server-side truth.** If the model names a lab that
    is not in the incident's own affected labs, discard it. A hallucinated

@@ -70,7 +70,8 @@ Metrics are **derived from committed Postgres rows**, not kept in process
 counters: one query counts both the api and the worker, the figures survive a
 restart, and they cannot disagree with the audit trail. Each module that owns a
 table computes its own figures in `<module>/stats.ts`; `metrics/service.ts`
-only combines them for `GET /api/metrics` and `GET /api/metrics/series`.
+combines them for `GET /api/metrics`, and `GET /api/metrics/series` reads
+`events/stats.ts` directly.
 
 - Durations are percentiles (`percentile_cont`) over the window; one with no
   samples is `null`, never `0`.

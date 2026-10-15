@@ -69,9 +69,10 @@ flowchart LR
    never concatenated into system instructions.
 4. **LLM → policy engine** — untrusted *proposal*. Structurally validated and
    mapped onto an allow-list of known action types.
-5. **API and worker → simulator** — trusted internal. Only the flag-gated demo
-   route (creating a scenario) and the recovery executor (a simulated retry)
-   change simulated lab state, through the labs module's narrow interface.
+5. **API and worker → simulator** — trusted internal. Only event ingestion (a
+   validated event moves its lab), the flag-gated demo route (creating a
+   scenario) and the recovery executor (a simulated retry) change simulated lab
+   state, all through the labs module's guarded transitions.
 
 ---
 
@@ -157,7 +158,9 @@ entries; it needs no publisher, so no code path can forget to publish.
 ## 4. Backend module map
 
 Logical modules inside the API/worker codebase. Each owns its tables and
-exposes behaviour, not tables, to other modules.
+exposes behaviour, not tables, to other modules. Two read-only exceptions, both
+for reporting: the live stream reads `AuditEntry` rows directly (it is the tail
+of that table), and incident metrics join the events they cite.
 
 ```
 apps/api/src/
@@ -257,7 +260,7 @@ sequenceDiagram
 
   O->>API: POST /api/demo/scenarios/training-event (DEMO_ENABLED)
   API->>API: create simulated labs; per event: Zod validate, redact
-  API->>PG: OperationalEvent (dedup key unique) + AuditEntry(event.received) + job row correlate:{window}
+  API->>PG: OperationalEvent (dedup key unique) + AuditEntry(event.received) + job row correlate-<windowMs>
   API->>Q: enqueue after commit (2 s delay collapses a burst)
 
   Q->>W: correlate job
@@ -285,7 +288,7 @@ sequenceDiagram
   end
 
   O->>API: POST /api/recovery-actions/:id/approve
-  API->>PG: lock the action (FOR UPDATE), check expiry, approved + job row execute:{action} + AuditEntry(recovery.approved)
+  API->>PG: lock the action (FOR UPDATE), check expiry, approved + job row execute-<actionId> + AuditEntry(recovery.approved)
   API-->>O: 202 with the job id
   Q->>W: execute job (in the incident's trace)
   W->>PG: re-run policy steps 3-7 on fresh state
@@ -456,7 +459,7 @@ does not erase the business history. The worker's reconciler runs at startup and
 every 60 s, and re-sends `queued` or `running` rows idle past a 2-minute lease.
 
 Not foreign keys: a recovery action finds its job by `jobKey`
-(`execute:<actionId>`), and an incident's history is the audit rows that target
+(`execute-<actionId>`), and an incident's history is the audit rows that target
 it or name it in `metadata.incidentId` (an expression index serves both).
 
 ---
@@ -522,7 +525,7 @@ auditable function. Keeping these apart is what makes the system explainable.
 | Temporal proximity | 0.20 | Burst failures correlate: full within 5 min, half within 15, none beyond |
 | Identical preceding event sequence | 0.10 | Corroborating, weak alone. *Not yet scored:* simulated labs have one event each |
 | Same state transition pattern | 0.05 | Weak. *Not yet scored*, for the same reason |
-| Same lab type / image version | 0.05 | Weak |
+| Same lab type | 0.05 | Weak |
 
 A failure joins at **0.70 or more** (`incidents/scoring.ts`), which takes
 category, dependency and closeness in time together; category alone, or
@@ -682,7 +685,7 @@ The only executable actions are predefined, parameterised operations:
 
 | Action | Preconditions | Guards |
 |---|---|---|
-| `RETRY_PROVISIONING` | lab in `failed`; no in-flight job for that lab; attempts < max; cooldown elapsed | idempotency key per incident+action+attempt-window |
+| `RETRY_PROVISIONING` | lab in `failed`; no in-flight job for that lab; attempts < max; cooldown elapsed | idempotency key: incident, action, targets hash, attempt number |
 | `RECHECK_DEPENDENCY` | dependency referenced by the incident's labs | read-only, always safe |
 | `RERUN_VALIDATION` | lab in `failed` or `ready` | bounded retries |
 | `ESCALATE_MANUAL` | none | always allowed, no side effects |
@@ -778,8 +781,9 @@ automatically.
 | DB unavailable | API reports `degraded` via `/health`; writes fail closed rather than silently dropping events |
 | SSE client disconnects | No effect on processing; stream resumes from last event ID |
 
-BullMQ jobs carry a stable `jobId` derived from the idempotency key, so
-duplicate enqueues collapse into one job rather than racing.
+BullMQ jobs carry a stable `jobId`, the job key (`correlate-<windowMs>`,
+`investigate-<id>`, `execute-<actionId>`), so duplicate enqueues collapse into
+one job rather than racing.
 
 Long-running work is never inline: HTTP handlers validate, persist and enqueue,
 then return `202 Accepted` with the job id. The dashboard follows progress over
@@ -819,7 +823,8 @@ They are **derived from committed Postgres rows**, served by `GET /api/metrics`
 and shown on the overview. `GET /api/metrics/series` adds the failure timeline:
 failures received in the window, bucketed by event time per error category,
 at most 60 buckets, with empty buckets filled so a chart never invents a line. Each module computes its own figures from its own
-table (`<module>/stats.ts`); `metrics/` only combines them. Chosen over an
+table (`<module>/stats.ts`; incident metrics also join the events they cite);
+`metrics/` combines them, and the series route reads `events/stats.ts`. Chosen over an
 in-process OTel meter because the API and the worker both write the rows, so
 one query counts both processes; the figures survive a restart; and they cannot
 disagree with the audit trail. The cost: no time series and no history beyond

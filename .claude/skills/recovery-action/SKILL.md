@@ -72,8 +72,8 @@ Reordering these is a behaviour change. Do not do it casually.
 ## Idempotency
 
 `UNIQUE(RecoveryAction.idempotencyKey)` in the database, not an application
-check. Derive the BullMQ `jobId` from the same key so duplicate enqueues collapse
-into one job. See the `background-job` skill.
+check. The execute job's key, and so its BullMQ `jobId`, is `execute-<actionId>`,
+so repeated or concurrent approvals collapse into one job. See the `background-job` skill.
 
 ## Mandatory negative tests
 

@@ -7,7 +7,7 @@ description: Use when building or changing the deterministic lab simulator, fail
 
 ## Preconditions
 
-Read `CLAUDE.md §1` (framing) and `ARCHITECTURE.md §3` (trust boundaries). All
+Read `CLAUDE.md §1` (framing) and `ARCHITECTURE.md §2` (trust boundaries). All
 lab infrastructure is simulated. The simulator exists so the whole pipeline is
 demonstrable without touching real cloud resources.
 

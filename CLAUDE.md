@@ -167,7 +167,8 @@ a bug; ESLint's `import/no-cycle` rule fails the build on one.
   committed row in PostgreSQL.
 - **The worker never serves HTTP.**
 - **Modules expose behaviour, not tables.** Do not reach into another module's
-  Prisma model.
+  Prisma model. The two read-only reporting exceptions (the live stream reads
+  `AuditEntry`; incident metrics join events) are noted in `ARCHITECTURE.md §4`.
 
 ### Adding a module
 
@@ -251,8 +252,9 @@ not application logic:
 ### Idempotency
 
 Every command that causes a side effect carries an idempotency key. On conflict,
-**return the prior result** — never re-execute. BullMQ `jobId` is derived from
-that key so duplicate enqueues collapse into one job.
+**return the prior result** — never re-execute. BullMQ `jobId` is the job's own
+stable key (for an execution, `execute-<actionId>`), so duplicate enqueues
+collapse into one job.
 
 ### Transactions
 

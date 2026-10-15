@@ -19,7 +19,9 @@ two apart is what makes this system explainable and testable.
 apps/api/src/incidents/
   scoring.ts       signal extraction, weight table and pair scoring
   clustering.ts    candidate generation + agglomeration
-  service.ts       incident lifecycle, persistence
+  correlate.job.ts the correlate job: loads the window, clusters, creates
+                   incidents and their audit entries
+  service.ts       incident reads, transitions, scope locking
 ```
 
 ## Procedure
@@ -61,9 +63,10 @@ apps/api/src/incidents/
    `signalScore`. The UI renders this rationale verbatim. A correlation result
    an operator cannot interrogate is not an explainable correlation result.
 
-6. **Correlation must be re-runnable without duplicating incidents.** Upsert
-   against the correlation window key. Re-processing the same events must be a
-   no-op, not a second incident.
+6. **Correlation must be re-runnable without duplicating incidents.** A run
+   skips failures already in an incident, under an advisory lock, and a partial
+   unique index on the window key backs it. Re-processing the same events must
+   be a no-op, not a second incident.
 
 7. **Keep the possibility of false correlation visible.** `confidenceScore` is
    labelled correlation strength. Never render it as certainty, and never show
