@@ -72,8 +72,8 @@ export async function buildApp(options: {
 }) {
 const trustedHops = options.config.TRUST_PROXY_HOPS;
 
-// How many trusted reverse proxies sit in front of this process. Behind Caddy
-  // or nginx this must be set, or every request looks like it came from the
+// How many trusted reverse proxies sit in front of this process. Behind a
+  // reverse proxy this must be set, or every request looks like it came from the
   // proxy: the rate limit stops being per-client and audit logs record the wrong
   // address. Fastify takes a trust function rather than a hop count, so the
   // count becomes "trust everything except the last hop".

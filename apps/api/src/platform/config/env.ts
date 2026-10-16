@@ -30,7 +30,7 @@ const envSchema = z
     // Secure by default; only local http development turns it off.
     SESSION_COOKIE_SECURE: z.stringbool().default(true),
     // How many reverse proxies sit in front of this process. Unset trusts
-    // nothing, which is correct locally and wrong behind Caddy or nginx: the
+    // nothing, which is correct locally and wrong behind a reverse proxy: the
     // rate limit keys on the client IP, so it must be the real one.
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).optional(),
     LLM_PROVIDER: z.enum(['fixture', 'gemini']).default('fixture'),

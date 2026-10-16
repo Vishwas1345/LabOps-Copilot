@@ -1,8 +1,8 @@
 // Plain JavaScript on purpose: the runtime image omits dev dependencies, so a
 // next.config.ts would make `next start` try to install TypeScript at boot.
 
-// Set here, not only at a proxy, so every host sends them: the single-container
-// deploy has no Caddy in front. The same set as deploy/Caddyfile.
+// Set by the app itself, so they do not depend on a proxy in front of it: the
+// deploy is a single container with none.
 const securityHeaders = [
   // Never framed: a framed dashboard lets another page trick a click on Approve.
   { key: 'X-Frame-Options', value: 'DENY' },

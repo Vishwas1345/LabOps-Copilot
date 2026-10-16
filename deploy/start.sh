@@ -4,7 +4,7 @@
 set -eu
 
 # Fixed here, after the platform's environment, so a dashboard setting cannot
-# contradict the production checks (the same rule docker-compose.prod.yml keeps).
+# contradict the production checks.
 export APP_ENV=production
 export SESSION_COOKIE_SECURE=true
 export DEMO_ENABLED=false

@@ -1,5 +1,5 @@
 // One-shot entrypoint for a demo host: wipes the database so the boot can
-// migrate and seed it fresh (deploy/render/start.sh). See modules/demo/reset.ts.
+// migrate and seed it fresh (deploy/start.sh). See modules/demo/reset.ts.
 
 import { prisma } from './db.js';
 import { resetAllowed, resetDemoDatabase } from './modules/demo/reset.js';
