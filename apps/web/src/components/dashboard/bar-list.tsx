@@ -12,7 +12,10 @@ export function BarList({ items, colourFor }: { items: [string, number][]; colou
             <span className="font-medium tabular-nums">{count}</span>
           </div>
           <div className="h-2 rounded-full bg-muted">
-            <div className="h-2 rounded-full" style={{ width: `${(count / max) * 100}%`, background: colourFor(key) }} />
+            <div
+              className="animate-grow-x h-2 rounded-full"
+              style={{ width: `${(count / max) * 100}%`, background: colourFor(key) }}
+            />
           </div>
         </li>
       ))}
