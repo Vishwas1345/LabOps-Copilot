@@ -138,7 +138,8 @@ prompt to run the demo scenario; if demo mode is off, trying it says so.
 - AI investigation with structured, uncertainty-aware output.
 - Fixed safety checks, human approval, background execution and verification.
 - Audit history and live updates.
-- Operator sign-in.
+- Operator sign-in (password, and optional Google sign-in for allow-listed
+  emails; see `docs/specs/google-sign-in/`).
 - Integration settings page with simulator mode and secure credential storage.
 - Automated tests, containers and a CI pipeline.
 
@@ -158,34 +159,37 @@ prompt to run the demo scenario; if demo mode is off, trying it says so.
 
 ## Acceptance criteria
 
-- [ ] Running the same demo scenario twice produces the same labs, failures and incidents.
-- [ ] When a scenario runs, failures sharing one dependency appear as one incident.
-- [ ] When a scenario runs, unrelated permission failures do not join that incident.
-- [ ] Opening an incident shows, for every affected lab, why it was included and its link strength.
-- [ ] When the same event is sent twice, it appears once and creates no extra incident.
-- [ ] When an investigation is requested, the result shows a likely cause, supporting evidence, missing or contradicting evidence, and uncertainty.
-- [ ] When the AI returns malformed output or times out, the incident is unchanged and the failure appears in the audit history.
-- [ ] When an event contains text instructing the AI to approve or ignore rules, the outcome is the same as without that text.
-- [ ] When the AI recommends an action not on the allowed list, or a lab outside the incident, it is not offered for approval.
-- [ ] When a retry is recommended for a permission failure, it is blocked and the blocking rule is shown.
-- [ ] When an operator approves an allowed action, it runs in the background and the screen updates without a refresh.
-- [ ] When approve is clicked twice, or two operators approve at once, the action runs once.
-- [ ] When lab state changes after approval, the action is blocked at execution and the reason is shown.
-- [ ] When an approval is older than its expiry, it cannot run.
-- [ ] When a recovery runs but verification fails, the incident is not marked resolved.
-- [ ] When verification passes, the incident is resolved and before/after state is shown.
-- [ ] The audit history lists every step of the incident with actor and time.
-- [ ] A signed-out visitor cannot investigate, approve or reject.
-- [ ] Saving integration credentials never shows them again in any screen or response.
-- [ ] Every simulated lab and screen is visibly labelled as simulated.
-- [ ] Demo controls are unavailable outside local and demo environments.
-- [ ] One incident can be followed from first event to verified recovery through logs and a single trace.
+**Status:** all met. [ACCEPTANCE.md](./ACCEPTANCE.md) names the test or
+screen that proves each one.
+
+- [x] Running the same demo scenario twice produces the same labs, failures and incidents.
+- [x] When a scenario runs, failures sharing one dependency appear as one incident.
+- [x] When a scenario runs, unrelated permission failures do not join that incident.
+- [x] Opening an incident shows, for every affected lab, why it was included and its link strength.
+- [x] When the same event is sent twice, it appears once and creates no extra incident.
+- [x] When an investigation is requested, the result shows a likely cause, supporting evidence, missing or contradicting evidence, and uncertainty.
+- [x] When the AI returns malformed output or times out, the incident is unchanged and the failure appears in the audit history.
+- [x] When an event contains text instructing the AI to approve or ignore rules, the outcome is the same as without that text.
+- [x] When the AI recommends an action not on the allowed list, or a lab outside the incident, it is not offered for approval.
+- [x] When a retry is recommended for a permission failure, it is blocked and the blocking rule is shown.
+- [x] When an operator approves an allowed action, it runs in the background and the screen updates without a refresh.
+- [x] When approve is clicked twice, or two operators approve at once, the action runs once.
+- [x] When lab state changes after approval, the action is blocked at execution and the reason is shown.
+- [x] When an approval is older than its expiry, it cannot run.
+- [x] When a recovery runs but verification fails, the incident is not marked resolved.
+- [x] When verification passes, the incident is resolved and before/after state is shown.
+- [x] The audit history lists every step of the incident with actor and time.
+- [x] A signed-out visitor cannot investigate, approve or reject.
+- [x] Saving integration credentials never shows them again in any screen or response.
+- [x] Every simulated lab and screen is visibly labelled as simulated.
+- [x] Demo controls are unavailable outside local and demo environments.
+- [x] One incident can be followed from first event to verified recovery through logs and a single trace.
 
 ## Open questions
 
 | Question | Recommendation |
 |---|---|
-| Which AI provider? | Choose before the real-provider phase; everything earlier runs on a fixed test provider so it is not blocked. |
+| Which AI provider? | *Decided (PLAN Phase 11):* a fixed test provider by default; Gemini, opt-in, over plain `fetch`. |
 | How long should an approval stay valid? | 30 minutes by default, configurable — long enough to review, short enough that state is unlikely to have drifted. |
 | How long are raw event details kept? | Keep metadata and redacted excerpts only; raw retention opt-in and time-boxed. |
-| Is there a deployment target? | Decide at the delivery phase; nothing earlier depends on it. |
+| Is there a deployment target? | *Decided after Phase 15:* a free single-container deploy (Render with Neon PostgreSQL), live at https://labops.onrender.com; a self-hosted compose stack behind Caddy is also provided. See `docs/infra/DEPLOYMENT.md`. |

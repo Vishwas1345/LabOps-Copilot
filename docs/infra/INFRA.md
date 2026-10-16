@@ -21,6 +21,11 @@ operational reference.
 
 Runtime: Node.js 22 (`.nvmrc`), npm workspaces (`apps/api`, `apps/web`).
 
+The live Render deploy differs: one container runs the api, worker and web as
+three processes; the API binds `127.0.0.1:4000` (unreachable from outside), the
+web app listens on Render's `$PORT` (10000), Redis is Render Key Value and
+PostgreSQL is Neon (18). See §7.
+
 ---
 
 ## 2. Local development
@@ -55,6 +60,7 @@ production dependencies only, running as the non-root `node` user.
 |---|---|---|
 | api | `apps/api/Dockerfile` | Generates the Prisma client at build time and copies it into the runtime stage |
 | web | `apps/web/Dockerfile` | Copies `.next`, `public/` and `next.config.mjs`; runs `next start`. The config is plain JS because the runtime image has no TypeScript: a `.ts` config made `next start` try to install it at boot and crash |
+| render | `deploy/render/Dockerfile` | The live deploy's single image: builds both apps, carries the Prisma CLI for boot-time migrations, runs `deploy/render/start.sh` under `tini -g`. Not built in CI |
 
 The worker reuses the api image with `node dist/worker.js` (same codebase,
 different entrypoint), so there is no third Dockerfile.
@@ -95,7 +101,7 @@ reach another project's instance.
 | `LLM_MODEL` | worker | `gemini-3.1-flash-lite` | Chosen by measurement, not preference. The most volatile value here; override it |
 | `LLM_BASE_URL` | worker | `https://generativelanguage.googleapis.com/v1beta` | Must be https, or http on a loopback host, because the key rides in a header |
 | `LLM_MAX_ATTEMPTS` | worker | `3` | Total attempts against 429/5xx. The free tier throttles hard; a 400 is never retried |
-| `CREDENTIALS_KEY` | api | unset | base64 of exactly 32 bytes: the AES-256 key for integration credentials. Optional; when absent the settings page works and saving a credential returns 503 `CREDENTIALS_KEY_MISSING` rather than storing anything in the clear. Rotating it means re-sealing every stored credential; `keyVersion` on each row is what keeps that contained |
+| `CREDENTIALS_KEY` | api | unset (empty counts as unset) | base64 of exactly 32 bytes: the AES-256 key for integration credentials. Optional; when absent the settings page works and saving a credential returns 503 `CREDENTIALS_KEY_MISSING` rather than storing anything in the clear. Rotating it means re-sealing every stored credential; `keyVersion` on each row is what keeps that contained |
 | `SESSION_COOKIE_SECURE` | api | `true` (`false` in compose and `.env.example`) | Session cookie only over https; off only for local http |
 | `GOOGLE_CLIENT_ID` | api | unset | Optional Google sign-in. All four `GOOGLE_*` or none, else startup fails; empty counts as unset (compose passes them from the root `.env`) |
 | `GOOGLE_CLIENT_SECRET` | api | unset | Sent only to Google's token endpoint; never returned, logged or sent to the web |
@@ -104,7 +110,7 @@ reach another project's instance.
 | `SEED_OPERATOR_USERNAME` | migrate (seed) | `operator` | Operator the seed creates or resets |
 | `SEED_OPERATOR_PASSWORD` | migrate (seed) | unset: seeds nobody | 12+ characters; root `.env` for compose, a masked random value in CI; never committed |
 | `DEMO_ENABLED` | api | `false` (`true` in the development compose and `.env.example`) | Registers `/api/demo/*`; when off the routes do not exist (404). `APP_ENV=production` refuses to start if this is true |
-| `TRUST_PROXY_HOPS` | api, worker | unset | Trusted reverse-proxy hops, 0-10. Set to 1 behind Caddy. Unset locally, which is correct: nothing proxies there |
+| `TRUST_PROXY_HOPS` | api, worker | unset | Trusted reverse-proxy hops, 0-10. `1` in both deploys (the VM compose; forced by `deploy/render/start.sh`), required by `APP_ENV=production`. It has nothing to act on today: the API is called only by the web server, which forwards no client address (§6 known gaps) |
 | `APP_ENV` | api, worker | `development` | `production` enables the startup refusals: Secure cookie required, proxy hops required, demo routes must be off |
 | `REDIS_URL` | api, worker | required; `redis://redis:6379` in compose | BullMQ transport |
 | `QUEUE_PREFIX` | api, worker | `labops` | Namespaces queue keys; test runs use a unique `labops-test-*` prefix and clean it up |
@@ -112,6 +118,10 @@ reach another project's instance.
 | `NEXT_PUBLIC_API_URL` | web | `http://localhost:4000` | API URL fallback (URLs only, never tokens) |
 | `SESSION_COOKIE_SECURE` | web | `true` (`false` in compose) | The web origin's session cookie only over https; off only for local http |
 | `API_INTERNAL_URL` | web | falls back to `NEXT_PUBLIC_API_URL` | API URL for server-side rendering |
+| `DEMO_RESET_ON_BOOT` | Render boot | unset | `true` in `render.yaml` only: each boot drops and reseeds the demo database. Also needs `APP_ENV=production`; refuses non-simulated data |
+| `API_HEAP_MB`, `WORKER_HEAP_MB`, `WEB_HEAP_MB` | Render boot | `128`, `128`, `160` | Per-process heap caps so three Node processes fit in 512 MB |
+| `PORT`, `RENDER_EXTERNAL_URL` | Render boot | set by Render | The web app listens on `PORT`; `CORS_ORIGIN` falls back to `RENDER_EXTERNAL_URL` |
+| `SITE_DOMAIN`, `POSTGRES_PASSWORD`, `POSTGRES_USER`, `POSTGRES_DB` | VM compose | see `DEPLOYMENT.md` §7 | Hostname for the certificate and the self-hosted database's credentials |
 
 The api parses and validates its variables at startup (`apps/api/src/platform/config/env.ts`),
 so the process fails fast on bad configuration, and the error names the variable
@@ -139,7 +149,8 @@ than the code: the free tier returns 503 under load, and retired models answer
 
 - Schema changes are checked-in migrations in `apps/api/prisma/migrations`,
   applied with `prisma migrate deploy` everywhere: `npm run db:migrate` locally,
-  the `integration-test` CI job, and the compose `migrate` service.
+  the `integration-test` CI job, the compose `migrate` service, and
+  `deploy/render/start.sh` on every boot of the live deploy.
 - New migration: edit `schema.prisma`, then
   `npm run prisma:migrate:dev -w @labops/api -- --name <change>`. Raw SQL for
   partial unique indexes, `CHECK` constraints and triggers goes in the
@@ -176,9 +187,9 @@ requests to `main`; it calls `api.yml` and `web.yml`. `llm-live.yml` is manual.
 
 | Workflow | Role |
 |---|---|
-| `changes.yml` | The only entry point. Uses `dorny/paths-filter` to decide which service changed, then calls only the matching pipeline. Root manifests and the ESLint config fan out to both; a change only to workflows or top-level docs runs neither. Also runs the **compose smoke and e2e** job whenever api or web changed: build the images, run `scripts/compose-smoke.sh`, then reset the stack (`down -v`, `up`) and run the Playwright journey (`npm run test:e2e -w @labops/web`); screenshots are uploaded only on failure, never traces, which hold cookies. |
-| `api.yml` | build (`tsc` + `prisma validate`), lint and unit tests in parallel; then integration tests (real Postgres + Redis) and coverage; then the quality gate. Images are built by the compose smoke job on every change |
-| `web.yml` | build, lint and unit tests in parallel; then coverage; then the quality gate. Images are built by the compose smoke job on every change |
+| `changes.yml` | The only entry point. Uses `dorny/paths-filter` to decide which service changed, then calls only the matching pipeline. The root `package.json`, lockfile and ESLint config fan out to both; `docker-compose.yml` counts for the api; a change only to workflows, top-level docs or the deploy files (`deploy/`, `render.yaml`, `docker-compose.prod.yml`, `scripts/`) runs neither. Also runs the **compose smoke and e2e** job whenever api or web changed: build the images, run `scripts/compose-smoke.sh`, then reset the stack (`down -v`, `up`) and run the Playwright journey (`npm run test:e2e -w @labops/web`); screenshots are uploaded only on failure, never traces, which hold cookies. |
+| `api.yml` | build (`tsc` + `prisma validate`), lint and unit tests in parallel; then integration tests (real Postgres + Redis) and coverage; then the quality gate. Images are built by the compose smoke job whenever api or web changed |
+| `web.yml` | build, lint and unit tests in parallel; then coverage; then the quality gate. Images are built by the compose smoke job whenever api or web changed |
 | `llm-live.yml` | Manual only (`workflow_dispatch`): the one job that calls a real model; needs the `GEMINI_API_KEY` repository secret |
 
 **Quality gate** (each pipeline, `if: always()` so it runs even after a failure):
@@ -215,7 +226,7 @@ a running stack with `scripts/compose-smoke.sh`.
 The api coverage job runs unit and integration specs together against a
 migrated Postgres service container, so database code is measured, not
 excluded; only the process entrypoints (`src/index.ts`, `src/worker.ts`,
-`src/seed-operator.ts`) are left out. The web job
+`src/seed-operator.ts`, `src/seed-demo.ts`, `src/reset-demo.ts`) are left out. The web job
 excludes server components, which only E2E can reach.
 
 **Known gaps**
@@ -223,8 +234,8 @@ excludes server components, which only E2E can reach.
 | Gap | Fix | Phase |
 |---|---|---|
 | A transaction left open on the database holds back every live update until it finishes (the stream reads below the oldest running transaction) | Keep transactions short (they are). `oldestOpenTransactionMs` in `/api/metrics` now shows it; nothing alerts on it yet | Before production |
-| Dashboard logins all reach the API from the web server's IP, so the per-IP login limit is effectively global (5/min) | Forward the client IP from the web server and trust it only from that host, once the API is no longer reachable directly | Before production |
-| Login rate limit keys on the socket IP (`trustProxy` off) | Behind a load balancer every client would share one IP, so set `trustProxy` to the real proxy hops only (a blanket `true` lets clients spoof `X-Forwarded-For`) | Before production |
+| Sign-in (5/min) and investigation (10/min) limits are global: every call reaches the API from the web server, which forwards no client address, so `TRUST_PROXY_HOPS` has nothing to act on | Forward `X-Forwarded-For` from the web server and count it as the trusted hop (a blanket trust lets clients spoof it). The API is already unreachable from outside on both deploys | Before production |
+| CI never builds `deploy/render/Dockerfile`, and a change only to `deploy/`, `render.yaml`, `docker-compose.prod.yml` or `scripts/` runs no pipeline; Render redeploys every push to `main` | Add those paths to the filters and build the Render image in CI | Before production |
 | `main` has no branch protection | Require the quality gates before merge | Owner's settings change |
 | Docs-only changes trigger no pipeline | Intended: `docs/**` is not in any filter | — |
 
@@ -232,19 +243,20 @@ excludes server components, which only E2E can reach.
 
 ## 7. Deployment
 
-**See `DEPLOYMENT.md` in this folder** for the full runbook: why a single VM and
-not Vercel or Netlify, every configuration variable, the free-tier risks, the
-hostname options, what has and has not been verified, and the order of work
-before it is genuinely public. The summary:
+**See `DEPLOYMENT.md` in this folder** for the full runbook: the live Render
+path and the VM path, why not Vercel or Netlify, every configuration variable,
+the free-tier risks, the hostname options, what has and has not been verified,
+and the order of work before it is genuinely public. The summary:
 
-**Without a card: Render and Neon** (`render.yaml`, `deploy/render/`). One
-container runs the API, worker and web app as three processes, with Redis on
-Render Key Value and PostgreSQL on Neon. It boots by resetting the demo
+**Live: Render and Neon** (`render.yaml`, `deploy/render/`), at
+https://labops.onrender.com. One container runs the API, worker and web app as
+three processes, with Redis on Render Key Value and PostgreSQL on Neon. It boots by resetting the demo
 database (`DEMO_RESET_ON_BOOT`), migrating, seeding the
 `demo` operator and ingesting the demo scenario (`dist/seed-demo.js`), and it
 sleeps after 15 minutes idle. `DEPLOYMENT.md` §0 has the costs and the steps.
 
-**A single VM, deployed by hand.** `docker-compose.prod.yml` is a standalone
+**A single VM, deployed by hand** (run end to end locally, never on a real
+host). `docker-compose.prod.yml` is a standalone
 file, not an overlay on the development one, and the reason is recorded in its
 header: compose merges sequences, so an overlay inherited the development file's
 `ports:` on postgres, redis and web and published the database to the internet
@@ -253,17 +265,16 @@ only `proxy` publishes a port.
 
 | Piece | What it does |
 |---|---|
-| `proxy` (Caddy) | The only published ports (80, 443). Issues and renews the certificate. Sets real client addresses. Disables response buffering on `/api/events/stream`, because a stream sending one event at a time would otherwise sit in the buffer indefinitely |
+| `proxy` (Caddy) | The only published ports (80, 443). Issues and renews the certificate. Routes everything, the live stream included, to `web`. Disables response buffering on `/api/events/stream`, because a stream sending one event at a time would otherwise sit in the buffer indefinitely |
 | `api`, `worker`, `web` | Built from the existing Dockerfiles, reachable from the compose network only |
 | `postgres`, `redis` | No ports. Persistent volume for the database, in-memory for Redis with `noeviction` (every key is a queue entry or a rate-limit counter, and both rebuild from Postgres) |
 | `migrate` | One-shot, `restart: "no"` so a broken migration cannot loop and hold up every dependent service |
 
 **`APP_ENV=production` changes what the API accepts.** It refuses to boot if
 `SESSION_COOKIE_SECURE` is not true (a Secure cookie over http is never sent,
-so nobody could sign in), if `TRUST_PROXY_HOPS` is unset (the rate limits key on
-the client IP, and behind Caddy that must be the real one), or if `DEMO_ENABLED`
-is true. Set by compose, not by `.env.production`, so a deploy cannot contradict
-its own production checks.
+so nobody could sign in), if `TRUST_PROXY_HOPS` is unset, or if `DEMO_ENABLED`
+is true. Set by compose (and by `deploy/render/start.sh` on Render), not by
+`.env.production`, so a deploy cannot contradict its own production checks.
 
 **Deploying**, over SSH on the host:
 
@@ -272,22 +283,26 @@ git pull && ./scripts/deploy.sh          # backup, build, migrate, up, health-ch
 ./scripts/deploy.sh --no-build           # roll out existing images
 ```
 
-`deploy.sh` backs up before it builds and applies migrations before the new
-containers start. That order is safe only because every migration so far is
-additive; a migration that drops or renames a column needs expand-contract
-instead. Roll back by checking out the previous sha and re-running it.
+`deploy.sh` backs up before it builds (skipped on a first deploy, when no
+database is running), applies migrations before the new containers start, then
+checks the API and the proxy separately. That order is safe only because every
+migration since the first deploy target existed is additive; a migration that
+drops or renames a column needs expand-contract instead. Roll back by checking
+out the previous sha and re-running it.
 
 **Backups.** `scripts/backup.sh` writes a plain `pg_dump` to `./backups/` before
 every deploy and keeps the seven newest, so a long-lived host cannot fill its own
-disk. `scripts/restore.sh <dump>` proves a dump by restoring it into a scratch
-database and counting rows, never into `labops` itself. **Run it once before you
-need it:** an untested backup is not a backup. There is no off-host copy, so
-losing the VM loses everything on it.
+disk. `scripts/restore.sh <dump>` proves a dump by replaying it with `psql` into
+a scratch database and counting rows, never into `labops` itself; both ran end
+to end locally. **Run it once before you need it:** an untested backup is not a
+backup. There is no off-host copy, so losing the VM loses everything on it. The
+Render deploy has no backups: every boot wipes and reseeds its demo database.
 
 **Secrets.** `.env.production` on the host, mode 600, git-ignored along with
 `backups/`. `.env.production.example` is placeholders only and is committed.
-CI still builds both images on every change; there is no image registry and no
-automated rollout, deliberately.
+On Render, secrets are service variables in its dashboard and Render generates
+`CREDENTIALS_KEY`. There is no image registry and no automated VM rollout,
+deliberately.
 
 **`SITE_DOMAIN`, and why a domain is needed at all.** Automatic TLS works by
 verifying control of a hostname over port 80, and browsers reject a certificate
@@ -308,7 +323,7 @@ instance changes the IP, and therefore the hostname.
 Oracle's free tier also requires a card for verification, and free-tier capacity
 is often unavailable in busy regions, so provisioning can need several attempts.
 
-**Still not done for a public deployment:** no second host or failover, no
+**Still not done for a public deployment:** no second instance or failover, no
 off-host backup, no uptime monitoring, and access control is a single shared
 operator password until Google sign-in with an allow-list is configured
 (`AGENTS.md` §13a). `docs/GAPS.md` §8 has the full list.

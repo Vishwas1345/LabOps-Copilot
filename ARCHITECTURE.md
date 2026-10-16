@@ -46,6 +46,7 @@ flowchart LR
 
   subgraph external["External"]
     LLMP["LLM provider<br/>structured outputs"]
+    IDP["Identity provider<br/>Google OIDC (opt-in)"]
     CL["External lab platform<br/>(conditional, access-gated)"]
     OBS["Observability backend<br/>OTel collector"]
   end
@@ -54,6 +55,7 @@ flowchart LR
   ADMIN -->|"REST (never returns secrets)"| SYS
   SYS -->|"bounded evidence, structured output"| LLMP
   LLMP -->|"JSON validated by Zod"| SYS
+  SYS -->|"code exchange, signing keys"| IDP
   CL -.->|"webhook / polling<br/>only if documented + authorised"| SYS
   SYS -->|"spans over OTLP (opt-in)"| OBS
   SYS -->|"simulated lab state"| SIM[("Lab simulator<br/>in-process")]
@@ -69,7 +71,11 @@ flowchart LR
    never concatenated into system instructions.
 4. **LLM → policy engine** — untrusted *proposal*. Structurally validated and
    mapped onto an allow-list of known action types.
-5. **API and worker → simulator** — trusted internal. Only event ingestion (a
+5. **Identity provider → API** — untrusted until verified. Optional Google
+   sign-in: the API alone holds the client secret and exchanges the code; the
+   ID token's signature, issuer, audience, expiry and nonce are verified, then
+   `email_verified` and an exact-email allow-list decide.
+6. **API and worker → simulator** — trusted internal. Only event ingestion (a
    validated event moves its lab), the flag-gated demo route (creating a
    scenario) and the recovery executor (a simulated retry) change simulated lab
    state, all through the labs module's guarded transitions.
@@ -120,7 +126,11 @@ flowchart TB
 | `api` | 4000 | HTTP surface, validation, authorisation, enqueue, SSE | Execute long-running work inline |
 | `worker` | — | Correlation, investigation, recovery execution, verification | Serve HTTP |
 | `postgres` | 5432 | All durable business state | — |
-| `redis` | 6379 | Queue transport, login rate-limit counters | Be the source of truth for business state |
+| `redis` | 6379 | Queue transport, sign-in and investigation rate-limit counters | Be the source of truth for business state |
+
+This is the local layout. The two production shapes differ: the VM stack adds
+a Caddy proxy in front of `web`, and the Render deploy runs `api`, `worker` and
+`web` as three processes in one container (§16).
 
 ### Why SSE and not WebSockets
 
@@ -171,12 +181,18 @@ apps/api/
     app.ts              Fastify assembly: plugins, error handler, routes
     db.ts               the Prisma client
     seed-operator.ts    one-shot: creates or resets the demo operator
+    seed-demo.ts        one-shot: ingests the demo scenario where the demo
+                        routes are off (APP_ENV=production); replay-safe
+    reset-demo.ts       one-shot, demo hosts only: drops the schema before a
+                        boot migrates and seeds again (modules/demo/reset.ts)
 
     platform/           cross-cutting plumbing; holds no business rules
       config/           env parsing (Zod), feature flags
       http/             the shared error envelope
       auth/             operators, scrypt hashing, server-side sessions,
-                        deny-by-default route guard, login rate limit
+                        optional Google sign-in (OIDC code flow, PKCE, ID token
+                        verified with jose), deny-by-default route guard,
+                        sign-in rate limit
       audit/            append-only audit writer + queries
       observability/    Pino logger, key-name redaction, OTel bootstrap and
                         span helpers, shared metric shapes
@@ -203,7 +219,8 @@ apps/api/
       integrations/     adapters/ (simulator, lab platform with no capabilities:
                         the gate is closed), connection settings
       metrics/          GET /api/metrics: combines each module's stats.ts
-      demo/             flag-gated scenario trigger (DEMO_ENABLED)
+      demo/             flag-gated scenario trigger (DEMO_ENABLED); reset.ts,
+                        the guarded demo-database reset
 
   test/                 every test, never next to source; mirrors src/
     unit/               pure logic, no database (npm test)
@@ -231,7 +248,10 @@ apps/web/src/
   middleware.ts           no session cookie -> /login (the API still decides)
   app/
     layout.tsx            persistent "Simulated data" badge on every page
-    login/                sign-in form + server action (BFF)
+    login/                sign-in form + server action (BFF); Google button when
+                          the API offers it
+    auth/google/          start + callback route handlers: state, PKCE verifier
+                          and nonce in an httpOnly flow cookie, then the session
     (dashboard)/          overview (KPI tiles, charts, time window), incidents,
                           incidents/[id], audit, integrations (Settings);
                           server actions: investigate, approve, reject,
@@ -243,7 +263,9 @@ apps/web/src/
     dashboard/            KPI tile, failure timeline, labs donut, bar list
     live-refresh.tsx      one event stream per tab; refreshes on relevant events
   lib/                    API access (cookie forwarding), Zod response
-                          schemas, formatters, URL query building
+                          schemas, formatters, URL query building, the Google
+                          flow helpers (constant-time state check)
+apps/web/next.config.mjs  security headers on every response
 apps/web/test/
   unit/                   Vitest, mirroring src/
   e2e/journey.spec.ts     the Playwright operator journey
@@ -427,6 +449,7 @@ erDiagram
     string investigationId "null when an operator proposed it"
     string actionType "ActionType allow-list"
     string targetIds "text[]; GIN index"
+    json parameters "strict per-action schema; no action takes any yet"
     string status "rejected_by_policy|awaiting_approval|approved|rejected|expired|running|succeeded|failed|blocked"
     string idempotencyKey "UNIQUE: incident, action, targets hash, attempt"
     string proposedBy
@@ -434,7 +457,9 @@ erDiagram
     string blockedAt "the policy step that stopped it"
     datetime expiresAt "approval deadline"
     string approvedBy
+    datetime approvedAt
     datetime executedAt
+    json result "execution-time policy decisions, lab states before"
     json verificationResult
   }
   JOB_EXECUTION {
@@ -458,6 +483,8 @@ erDiagram
     string outcome
     string correlationId
     json metadata "redacted"
+    datetime createdAt
+    string txid "xid8, set by the database; the live-stream boundary (§3)"
   }
   INTEGRATION_CONNECTION {
     string id PK
@@ -571,7 +598,9 @@ chaining into one meaningless mega-incident.
 ### Guard rails
 
 - Raw error strings are **never** used alone; only normalised categories
-  (`PROVISION_TIMEOUT`, `PERMISSION_DENIED`, `NETWORK_CONFIG`, …).
+  (`PROVISION_TIMEOUT`, `NETWORK_CONFIG`, `PERMISSION_DENIED`,
+  `DEPENDENCY_UNAVAILABLE`, `QUOTA_EXCEEDED`, `VALIDATION_FAILED`; the
+  `ErrorCategory` enum, mirrored by `ERROR_CATEGORIES` in `labs/failures.ts`).
 - Every `IncidentLab` row stores *why* it was included and with what score, and
   the UI renders that rationale verbatim.
 - `confidenceScore` is labelled as correlation strength, never as certainty.
@@ -699,7 +728,8 @@ Other decisions worth recording:
 - **Retry covers 429 and 5xx only.** A 400 is a malformed request; resending it
   burns quota and delays the incident, so it fails on the first attempt.
 - **`modelMetadata` records model, latency and token counts** — never the key.
-- **CI never calls a model.** `vitest.config.ts` excludes `*.live.test.ts`, and
+- **CI never calls a model.** `vitest.config.ts` includes only `test/unit/**`;
+  live specs run only under `vitest.live.config.ts` (`npm run test:live`), and
   `.github/workflows/llm-live.yml` is `workflow_dispatch` only, with no push or
   pull-request trigger. Provider throttling cannot break a merge.
 
@@ -861,6 +891,27 @@ the window's rows. That is cheap at demo volume; at real volume the windowed
 columns need indexes or a rollup table. A duration with no samples is null and
 shows a dash, never "0 ms".
 
+**Audit actions** — every state change writes one of these in the same
+transaction (`platform/audit/audit.ts`), and the live stream and the audit page
+show them:
+
+| Action | Written by |
+|---|---|
+| `event.received` | Event ingestion (`events/service.ts`) |
+| `lab.transition` | Every guarded lab status change (`labs/service.ts`) |
+| `incident.created`, `incident.lab_added` | The correlate job (`incidents/jobs/correlate.job.ts`) |
+| `incident.transition` | Every guarded incident status change (`incidents/service.ts`) |
+| `investigation.requested` | An operator asking for an investigation (`investigations/service.ts`) |
+| `investigation.completed`, `investigation.failed` | The investigate job |
+| `recovery.proposed` | A proposal and its policy decision (`recovery/services/propose.ts`) |
+| `recovery.approved`, `recovery.rejected`, `recovery.expired` | Approval, rejection and the expiry sweep (`recovery/services/approve.ts`) |
+| `recovery.blocked`, `recovery.started`, `recovery.verified` | The execute job: revalidation, the run, verification |
+| `job.failed` | A job out of attempts (`platform/jobs/runner.ts`, `reconcile.ts`) |
+| `auth.login`, `auth.logout` | Sign-in (password or Google, success or refusal) and sign-out |
+| `operator.seeded` | `seed-operator` creating or resetting the operator |
+| `integration.updated`, `integration.disconnected`, `integration.tested` | Integration settings (`integrations/service.ts`) |
+| `scenario.run` | A demo scenario run (`demo/service.ts`) |
+
 All demo numbers come from real runs. No fabricated dashboards.
 
 ---
@@ -949,10 +1000,13 @@ sent; a field added to a view by mistake fails the request with a 500.
 | Unauthorised access | Deny by default: a global guard requires a session on every route unless it opts out (`config.public`); a test requests every registered route anonymously |
 | Stolen or leaked session | Random 32-byte token; only its SHA-256 is stored; httpOnly, SameSite=Lax, Secure cookie; 8 h absolute expiry; logout and password reset revoke server-side |
 | Forged or replayed Google sign-in | Authorization code flow with PKCE; `state` in an httpOnly cookie scoped to `/auth/google`, compared in constant time; the API verifies the ID token's signature against Google's keys, issuer, audience and expiry, then the `nonce`, `email_verified` and an exact-email allow-list. The client secret never leaves the API; a refusal audits the reason, never the email |
-| Credential guessing | scrypt hashing; login rate limited per IP through Redis (fails closed); unknown user and wrong password answer identically and cost the same hash time |
+| Credential guessing | scrypt hashing; password and Google sign-in each limited to 5 a minute through Redis (fails closed); unknown user and wrong password answer identically and cost the same hash time. The limit keys on the client IP, but every sign-in reaches the API from the web server, which forwards no client address, so in practice the limit is shared by all operators |
 | Unauthorised approval | Audit `actorId` comes from the session, never the request body; RBAC if time permits |
-| Resource exhaustion | Body size limits, a login rate limit (5 a minute per IP), bounded evidence, bounded queues and retries, timeouts on all outbound calls |
-| Demo endpoints in production | `/api/demo/*` gated behind a flag that is off outside local/demo environments |
+| Resource exhaustion | Body size limits; sign-in limited to 5 a minute and investigations (the only route that can spend money) to 10 a minute, both through Redis and failing closed, and both shared by all operators in practice (see above); bounded evidence, bounded queues and retries, timeouts on all outbound calls |
+| Wrong client address | `TRUST_PROXY_HOPS` sets how many proxy hops Fastify trusts for the client IP (unset trusts none). Both deploys set 1 |
+| Clickjacking, sniffing, downgrade | The web app sends `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`, `nosniff`, `Referrer-Policy` and HSTS on every response, and no `X-Powered-By` (`next.config.mjs`), so every host sends them, not only one behind a proxy |
+| Demo endpoints in production | `/api/demo/*` gated behind a flag that is off outside local/demo environments. `APP_ENV=production` refuses to start if `DEMO_ENABLED` is true, the session cookie is not Secure, or `TRUST_PROXY_HOPS` is unset |
+| Demo reset wiping a real database | `reset-demo` runs only with both `DEMO_RESET_ON_BOOT=true` and `APP_ENV=production`, and refuses any database holding a lab or event that is not simulated (`modules/demo/reset.ts`) |
 
 ---
 
@@ -1011,6 +1065,9 @@ whether a commit touched `apps/web`, `apps/api`, or shared root tooling, then
 dispatches only the matching pipeline via `workflow_call`. A frontend-only
 change never starts the backend pipeline. Root manifests and the ESLint config
 map to **both** services, because a shared-tooling change can break either.
+Deploy files (`deploy/`, `render.yaml`, `docker-compose.prod.yml`, `scripts/`)
+match no filter, so they start no pipeline, and CI never builds
+`deploy/render/Dockerfile`.
 
 `api.yml` — build (`tsc` plus `prisma validate`), lint, unit tests, integration
 tests against real PostgreSQL and Redis service containers, coverage with
@@ -1030,7 +1087,7 @@ broken:
   reports the pipeline's state, and lets it own the checks that span jobs.
 - **The dependency audit is a baseline gate, not a boolean.** `npm audit` cannot
   reach zero here: prisma 7, vitest 5 and next 16 are all major upgrades. The
-  six known advisories are recorded in `.github/audit-baseline.json` with a
+  six accepted entries (one per package) are recorded in `.github/audit-baseline.json` with a
   reason and a review date, and the gate fails on anything *new*. A non-blocking
   audit step would be a gate in name only.
 
@@ -1038,12 +1095,26 @@ Gates are split by ownership: checks that belong to one job run in that job
 (lint, coverage thresholds), and checks that span the pipeline run in the gate
 (secret scan, dependency audit, required-script contract).
 
-Deploy only from protected `main`, and only if a target exists.
+**Production shapes** — two, both with `APP_ENV=production` (Secure cookie,
+`TRUST_PROXY_HOPS=1`, demo routes off). `docs/infra/DEPLOYMENT.md` has the
+steps and the costs.
 
-**Production shape** — same containers, managed Postgres and Redis, TLS
-terminated at the edge, secrets injected from the platform's secret store,
-observability backend receiving OTel export, demo endpoints disabled, database
-role for the app restricted to its own schema.
+- **Render (live at https://labops.onrender.com).** One free web service runs
+  `deploy/render/Dockerfile`: `start.sh` resets the demo database
+  (`DEMO_RESET_ON_BOOT`), migrates, seeds the operator, starts the worker, the
+  API (on 127.0.0.1 only) and the web app as three processes under `tini`, then
+  ingests the demo scenario (`seed-demo`). Any process exiting stops the
+  container, so all three restart together. Redis is Render Key Value
+  (private, `noeviction`); PostgreSQL is Neon. TLS and the hostname are
+  Render's. Every push to `main` redeploys it.
+- **Single VM (`docker-compose.prod.yml`).** Caddy is the only published port
+  and proxies everything, the live stream included, to `web`; postgres, redis
+  (`noeviction`) and the API have no ports. Deployed by hand with
+  `scripts/deploy.sh`, backed up by `backup.sh`. Run end to end locally only;
+  never on a public host.
+
+Not configured in either: an OTel export backend, a platform secret store, or
+a database role restricted to the app's schema.
 
 ---
 
@@ -1065,7 +1136,7 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Compose: postgres, redis, migrate, api, worker, web; opt-in Jaeger override | Done, verified end to end | — |
 | Pino with shared Fastify instance and key-name redaction | Done | Trace id on API request logs (needs HTTP spans) |
 | Vitest unit + integration suites, Playwright journey, CI gates | Done (Phase 14) | — |
-| CI: change detection, build, lint, tests, coverage, quality gate, compose smoke + e2e | Done | No release pipeline: local-only by decision (Phase 15) |
+| CI: change detection, build, lint, tests, coverage, quality gate, compose smoke + e2e | Done | No deploy step: Render redeploys from `main` on its own, and CI never builds the Render image |
 | Deterministic simulator (`modules/labs/simulator.ts`), `training-event` scenario | Done (Phase 2) | — |
 | Demo scenario endpoint, flag-gated and idempotent | Done (Phase 2) | — |
 | Event ingestion: validation, redaction at entry, DB dedup, lab transitions | Done (Phase 3) | — |
@@ -1085,6 +1156,11 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Integrations (adapter, settings, sealed secrets) | Done (Phase 13) | A live connector once the gate opens (§13) |
 | Measured metrics (`/api/metrics`, `/api/metrics/series`) | Done (Phase 14) | — |
 | React Flow dependency graph | Dropped (owner decision) | — |
+| Optional Google sign-in: OIDC code flow, PKCE, exact-email allow-list, `OperatorIdentity` | Done (after Phase 15) | Never run against a real Google client |
+| Hardening: `APP_ENV=production` startup checks, `TRUST_PROXY_HOPS`, investigation rate limit, security headers from the web app | Done (after Phase 15) | Forward the client address from the web server, so rate limits are per operator |
+| Production stack on one VM: `docker-compose.prod.yml`, Caddy, deploy, backup and restore scripts | Done; run end to end locally | Never stood up on a public host |
+| Free deploy on Render + Neon, single container, live | Done (after Phase 15) | — |
+| Demo reset on every boot of the live deploy (`reset-demo`, guarded) | Done (after Phase 15) | — |
 
 Build order follows the spec's phases: vertical slice first — simulator →
 events → correlation → investigation → recovery → verification — so a working
@@ -1124,4 +1200,6 @@ end-to-end workflow exists before breadth is added.
    MVP; explicit RBAC is a stretch goal.
 5. **Retention** — how long to keep raw event payloads. Default is metadata and
    redacted excerpts only, with raw retention opt-in and time-boxed.
-6. **Deployment target** — *resolved:* local-only by decision (§17).
+6. **Deployment target** — *resolved:* Phase 15 shipped local-only; afterwards
+   a free Render + Neon deploy went live, and a single-VM stack behind Caddy is
+   documented (§16).

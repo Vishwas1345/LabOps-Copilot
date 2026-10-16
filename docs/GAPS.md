@@ -18,7 +18,8 @@ has never read a lab inventory from one, never received an event from one, and
 never created, modified or deleted a lab on one.
 
 Every lab it shows is one **its own simulator created**
-(`modules/labs/simulator.ts`, driven by `POST /api/demo/scenarios/:name`).
+(`modules/labs/simulator.ts`, driven by `POST /api/demo/scenarios/:name`, or on
+the live deploy by `dist/seed-demo.js` at boot).
 There is no adapter with live capabilities. The integrations module has a
 `ProviderAdapter` interface, but the lab platform adapter reports
 `NO_CAPABILITIES`, makes no network call, and a test asserts it can never reach
@@ -52,7 +53,7 @@ in this database and completely unreal outside it.
 **This is not an oversight.** `canExecuteRecovery` is typed as the literal type
 `false` in `ProviderAdapter`, so no adapter can enable live recovery without a
 visible type change. That was a deliberate design decision, recorded in
-`AGENTS.md` §4 as the highest-risk surface in the repository. The alternative, a
+`.claude/skills/recovery-action` as the highest-risk surface in the repository. The alternative, a
 configurable recovery that could fire at real infrastructure, is the thing worth
 being afraid of.
 
@@ -71,28 +72,33 @@ platform. The *action* would not.
   RBAC, no admin/operator split and no audit of who-did-what-beyond-identity.
   For a single-operator prototype this is fine; it is not fine the moment two
   people use it, and four-eyes approval would need roles before it could exist.
-- **The login rate limit is effectively global.** It is 5 attempts per minute
-  per client IP, and every dashboard sign-in arrives from the web server's IP
-  because the browser talks only to the BFF. One person's typo lockouts
-  everyone. It fails safe, so this is a usability limit rather than a security
-  one.
+- **The rate limits are global, not per person.** Sign-in (password and
+  Google) allows 5 attempts a minute and investigations 10, keyed on the
+  caller's address. Every call reaches the API from the web server, which
+  forwards no client address, so every operator shares one budget on every
+  host: one person's typos lock everyone out of sign-in for a minute. It fails
+  safe, so this is a usability limit rather than a security one.
 - **Google sign-in has never been run against Google.** Every test signs an ID
   token with a locally generated key and stubs the token endpoint. The flow has
   never completed against a real OAuth client.
-- **Google sign-in has no login-CSRF protection.** `authorization-url` accepts
-  `state` and `nonce` from the request body and stores nothing, and the callback
-  compares the token's nonce against that same client-supplied value. That
-  proves only that the client repeated a value, not that this browser started
-  the flow. PKCE still protects against an interposer, which is a different
-  attack. A proper fix is server-side state in Redis.
-- **`trustProxy` is set in production** (`TRUST_PROXY_HOPS=1`, matching the one
-  Caddy hop), so the client IP behind the proxy is correct and the rate limits
-  are per-client. It is unset locally, which is right: nothing proxies there.
+- **Google sign-in's flow cookie is unsigned.** The web server binds `state`,
+  the PKCE verifier and `nonce` to the browser in an httpOnly cookie scoped to
+  `/auth/google`, and the callback compares `state` in constant time, so the
+  browser flow is protected against login CSRF. The cookie is plain base64
+  JSON, though, so an attacker able to set cookies on this site could pre-seed
+  it. The API's own Google endpoints store nothing and trust the values they are
+  sent; that matters only where the API is directly reachable (the dev compose
+  on port 4000).
+- **`TRUST_PROXY_HOPS` is required in production but has nothing to act on.**
+  Both deploys set it to 1 to pass the startup check, but the API sits behind
+  the web server, which sends no `X-Forwarded-For`, so the address it sees is
+  always the web server's. Making the limits per person means forwarding the
+  client address from the web server and trusting that hop.
 
 ## 3. Cost and abuse
 
-- **Investigations are rate limited, at ten a minute per client.** Redis-backed
-  and failing closed, in the namespace `investigation-limit`. Reading results
+- **Investigations are rate limited, at ten a minute shared by every operator**
+  (§2). Redis-backed and failing closed, in the namespace `investigation-limit`. Reading results
   is deliberately unmetered, so paging back through findings is never punished
   for having investigated something. Sign-in keeps its own, stricter limit.
 - **Event ingestion is still not rate limited.** `POST /api/events` accepts
@@ -100,10 +106,11 @@ platform. The *action* would not.
 - **No alerting or notification of any kind.** No email, no chat integration, no
   webhook outbound. An incident created at 2am is visible only to whoever opens
   the dashboard. `/api/metrics` reports a long open transaction if someone looks.
-- **Backups exist but are only as good as the last verified one.** `scripts/backup.sh`
-  dumps before every deploy and prunes to the seven newest; `scripts/restore.sh`
-  proves a dump into a scratch database. There is no second copy off the host,
-  so losing the VM loses everything in it.
+- **Backups exist only on the VM path.** `scripts/backup.sh` dumps before every
+  deploy and prunes to the seven newest; `scripts/restore.sh` proves a dump into
+  a scratch database (both run end to end locally). There is no second copy off
+  the host, so losing the VM loses everything in it. The live Render deploy has
+  no backup at all, by design: every boot wipes and reseeds its demo database.
 
 ## 4. Data handling
 
@@ -143,8 +150,9 @@ platform. The *action* would not.
   returned 503 under load and one 429, repeatedly. A demonstration can be
   blocked by provider-side demand rather than by anything in this codebase.
 - **A bad diagnosis is a supported outcome, not a bug.** Model output is
-  untrusted and bounded by strict schema validation, and a failed or
-  policy-blocked investigation moves the incident to `manual_review`. That path
+  untrusted and bounded by strict schema validation. A failed investigation
+  returns the incident to `open`; a blocked proposal, an escalation or exhausted
+  retries move it to `manual_review`. That path
   is correct and is covered, but it means the interesting outcome is not
   guaranteed on any given run.
 
@@ -162,27 +170,38 @@ platform. The *action* would not.
 
 ## 8. Scope and deployment
 
-- **Deployed to a single VM.** One host runs Postgres, Redis, the API, the
-  worker, the web server and the reverse proxy. It is a single point of failure:
-  a restart takes everything down, and losing the disk takes the audit trail
-  with it. `docker-compose.prod.yml` caps each service's memory and logs, which
-  limits how far one component can damage the others, but there is no second
-  host and no failover.
-- **No CI deploy path.** Deploying is `git pull && ./scripts/deploy.sh` over
-  SSH by hand. There is no image registry, no image publishing and no automated
-  rollout, which is deliberate: a registry would add a credential surface for
-  something that is ultimately a six-service restart.
+- **The live deploy is one free container.** `https://labops.onrender.com` runs
+  the API, the worker and the web app as three processes in one Render free
+  service, with Redis on Render Key Value and PostgreSQL on Neon. Any process
+  exiting restarts all three; there is no second instance and no failover.
+- **It sleeps after 15 minutes without a request**, worker included. The first
+  visit after that waits for a cold boot (about 2.5 minutes, measured locally
+  under the same 0.1 CPU cap, not on the host).
+- **The demo resets on every boot.** Each boot (a wake from sleep or a redeploy)
+  drops and reseeds the demo database (`DEMO_RESET_ON_BOOT`), so anything a
+  visitor did is gone after the service sleeps. Every visitor shares the one
+  `demo` login.
+- **The demo's AI is the fixture**, not a model (`LLM_PROVIDER=fixture`), so
+  every investigation on the live site is identical by design.
+- **Render redeploys on every push to `main`**, gated only by what CI checks,
+  and CI never builds `deploy/render/Dockerfile`.
+- **The VM path is documented and run end to end locally, never on a real
+  host.** `docker-compose.prod.yml` runs everything on one machine behind Caddy,
+  deployed by hand with `./scripts/deploy.sh`; no image registry and no
+  automated rollout. A real host, a public certificate and public traffic are
+  untested.
 - **A production boot refuses unsafe configuration.** `APP_ENV=production`
   makes the API fail at startup if the session cookie is not Secure, if no proxy
   hop count is given, or if demo routes are enabled. A Secure cookie over plain
   http is never sent, so that combination means nobody can sign in at all.
-- **Secrets live in one environment file on the host**, `.env.production`, mode
-  600 and git-ignored. A secret in the environment is readable by anything that
-  can read the process, and rotating `CREDENTIALS_KEY` means re-sealing every
-  stored credential.
-- **The hostname may be a shared one.** With no purchased domain, the certificate
-  is issued for an IP-based hostname from a free resolver, which thousands of
-  sites share; a certificate can occasionally fail to issue as a result.
+- **Secrets live in the environment.** On Render they are service variables in
+  its dashboard, and Render generates `CREDENTIALS_KEY`; on the VM path they sit
+  in `.env.production`, mode 600 and git-ignored. A secret in the environment
+  is readable by anything that can read the process, and rotating
+  `CREDENTIALS_KEY` means re-sealing every stored credential.
+- **VM path only: the hostname may be a shared one.** With no purchased domain,
+  the certificate is issued for an IP-based hostname from a free resolver, which
+  thousands of sites share; a certificate can occasionally fail to issue.
 - **Branch protection on `main` is off.**
 - **No incident list "likely cause" column.** The detail page shows the AI
   diagnosis; the list does not, because it would need an upward import or a
@@ -198,8 +217,9 @@ should not be "fixed":
 - **The proposal-not-authority boundary.** The model proposes, deterministic
   code decides, a human approves. No path from model output to an executor skips
   schema validation, policy and approval.
-- **Every rejected webhook and failed sign-in is audited** without ever storing
-  the typed username or the raw input, because `AuditEntry` is append-only.
+- **Every failed sign-in is audited** without ever storing the typed username
+  or the raw input, because `AuditEntry` is append-only. (No webhook receiver
+  exists.)
 - **Dev databases can hold old incidents stuck in `investigating`.** Local data
   only, from before the policy phase existed.
 
@@ -211,8 +231,8 @@ should not be "fixed":
 |---|---|
 | Integration gate closed | `ARCHITECTURE.md` §13 |
 | Recovery is simulated | `ARCHITECTURE.md` §10 |
-| Login rate limit is global | `AGENTS.md` §10, `INFRA.md` |
-| Redaction depth limit | `AGENTS.md` §10 |
-| Google sign-in untested, no login-CSRF | `AGENTS.md` §13a |
+| Rate limits are global | `AGENTS.md` §10, `INFRA.md` |
+| Redaction depth limit | `platform/observability/redact.ts` |
+| Google sign-in untested against a real client | `AGENTS.md` §13a |
 | No RBAC | `AGENTS.md` §10 |
 | Deployment gaps | `docs/dev/QUALITY.md` "Before production" |
