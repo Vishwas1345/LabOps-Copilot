@@ -3,7 +3,9 @@
 **Status:** Complete. Phases 0–15 are done (LOC-5 to LOC-20): the workflow runs
 end to end in a browser and in CI, with live updates, an opt-in real model,
 honest integration settings, measured metrics, and one incident as one trace.
-Local-only by decision; the dependency graph was dropped by owner decision.
+Phase 15 shipped local-only; a live deploy and hardening followed (see
+"After Phase 15" at the end of §3). The dependency graph was dropped by owner
+decision.
 
 **Order changed after Phase 9:** the dashboard (Phase 12) ran before live
 updates (10) and the real LLM (11), so the proven workflow became visible and
@@ -154,7 +156,7 @@ Phase 0; where a later phase changed a row, the row says so.
 | One open incident per window | Partial unique index `UNIQUE(windowKey) WHERE status <> 'resolved'` | DB-enforced under concurrent correlation runs |
 | SSE source | Stream = tail of committed `AuditEntry` rows | Every meaningful change already writes one, so there is a single source of truth. *Changed in Phase 10:* reconnect resumes from a transaction boundary (`xid8`), not `seq`, which commits out of order |
 | Deterministic randomness | A ~10-line seeded PRNG (mulberry32) in `labs/simulator` | No dependency for something this small; same seed → identical scenario |
-| Operator auth | Seeded operators, scrypt password hash (`node:crypto`), httpOnly session cookie via `@fastify/cookie`. *As built:* an opaque random token, stored server-side only as its SHA-256; not a signed cookie | Spec asks for a simple operator role; a token in `NEXT_PUBLIC_*` would violate `CLAUDE.md §4` |
+| Operator auth | Seeded operators, scrypt password hash (`node:crypto`), httpOnly session cookie via `@fastify/cookie`. *As built:* an opaque random token, stored server-side only as its SHA-256; not a signed cookie. *Extended after Phase 15:* optional Google sign-in (OIDC with PKCE) for allow-listed emails, `docs/specs/google-sign-in/` | Spec asks for a simple operator role; a token in `NEXT_PUBLIC_*` would violate `CLAUDE.md §4` |
 | API error shape | `{ error: { code, message, requestId } }` from one Fastify error handler | One envelope (`CLAUDE.md §7`); stack traces never leave the process |
 | Config | `platform/config/env.ts` parses `process.env` with Zod at startup; the process fails fast on bad config | One place that knows every variable |
 | Integration tests | `test:integration` script, real Postgres + Redis (compose locally, service containers in CI) | Already the CI design; no extra tool |
@@ -168,7 +170,8 @@ Phase 0; where a later phase changed a row, the row says so.
 | `ioredis` | 4 | Queue connections and the login rate-limit store (already a BullMQ dependency; declared because we import it directly). *Changed in Phase 10:* no pub/sub; the stream polls committed audit rows |
 | `@opentelemetry/api`, `sdk-trace-node`, `sdk-trace-base`, `core`, `resources`, `exporter-trace-otlp-http` | 4, 15 | Mandated tracing; no built-in tracer (`sdk-node` was planned; the narrower packages were enough) |
 | `@fastify/cookie` | 6 | Cookie parsing and setting; hand-rolled cookie parsing is a common source of bugs (the token is opaque, not a signed cookie) |
-| `@fastify/rate-limit` | 6 | Login throttling (only login is limited) |
+| `@fastify/rate-limit` | 6 | Throttles password and Google sign-in (5 a minute) and, after Phase 15, investigation requests (10 a minute). Every call reaches the API from the web server, which forwards no client address, so each limit is shared by all operators |
+| `jose` | after 15 | Verifies Google's signed ID token: key rotation, accepted algorithms and claim checks are where hand-rolled JWT verification goes wrong |
 | LLM SDK (provider TBD, see §5) | 11 | *As built: none.* Gemini is called over plain `fetch` |
 | `tailwindcss`, shadcn/ui components | 8 | Mandated UI stack |
 | `@xyflow/react` (React Flow) | 13 | *Dropped* with the dependency graph (owner decision) |
@@ -406,26 +409,24 @@ with lint, typecheck, unit, integration and coverage green.
 
 Phase 11 deviations, settled by measurement rather than by the docs:
 
-- **Provider is Gemini over plain `fetch`; no SDK dependency.** The SDKs
-  (`@anthropic-ai/sdk`, `openai`, `@google/genai`) all work, but each would be a
-  new dependency for a single call site, and `CLAUDE.md` asks why the standard
+- **Provider is Gemini over plain `fetch`; no SDK dependency.** A provider SDK
+  would work, but it would be a new dependency for a single call site, and `CLAUDE.md` asks why the standard
   toolchain cannot do the job. Google documents the REST endpoint for exactly
   this case. `LLM_BASE_URL` makes the choice reversible.
-- **The published schema rules are wrong in two places, found by calling the
-  API.** The docs show `type: [x, null]` for a nullable field and the endpoint
-  rejects it in favour of `nullable: true`; the docs list
-  `additionalProperties` as supported and this endpoint rejects it. Raw REST also
-  requires UPPERCASE type names, which the SDK maps and plain fetch does not.
-  `gemini-schema.ts` carries all four rules and says where each came from.
+- **The endpoint accepts a different schema dialect than we first assumed,
+  found by calling it.** It takes `nullable: true` rather than
+  `type: [x, null]`, does not take `additionalProperties`, and over raw REST
+  wants UPPERCASE type names. `gemini-schema.ts` carries all four rules and
+  says where each came from.
 - **Structured output is shape, not values — the finding that mattered.** On a
   live run the model returned a full sentence where an event id belonged and
   another where one of four enum values belonged, and the schema was accepted
   throughout. Had this pipeline trusted `responseSchema` as its safety
   boundary, a model would have handed it a free-text action. Zod rejected both,
   which is the argument for Phase 7's boundary restated with evidence.
-  `maxLength`, `minLength`, `minimum` and `maximum` are dropped from the request
-  because Gemini does not enforce them here; Zod re-checks every one on the way
-  back in, so nothing is lost, only double-enforced.
+  `maxLength`, `minLength`, `minimum` and `maximum` are left out of the request
+  because they are not enforced on this path; Zod re-checks every one on the
+  way back in, so nothing is lost.
 - **`analyse()` now returns `{ raw, usage? }`.** Token counts have nowhere to go
   otherwise, and the alternative — a mutable field on the provider instance —
   would race between concurrent jobs.
@@ -513,8 +514,31 @@ Phase 13 deviations, settled by building it:
 ### Phase 15 — Delivery
 
 **Delivered:** `Incident.traceparent`, joined by the investigation and the approval, so one incident is one trace (`test/integration/modules/recovery/incident-trace.int.test.ts`); the service name on every span; `compose.tracing.yml` (opt-in Jaeger); the README walkthrough with real screenshots and real numbers from `/api/metrics`; the unused CI `deploy` path removed.
-**Decisions (owner):** local-only, no hosted instance (a public deploy adds attack surface and makes the proxy-IP gaps live, for nothing a reviewer can check); the React Flow dependency graph dropped (optional, and correlation is explained per lab on the incident page).
+**Decisions (owner):** local-only, no hosted instance (a public deploy adds attack surface and makes the proxy-IP gaps live, for nothing a reviewer can check); the React Flow dependency graph dropped (optional, and correlation is explained per lab on the incident page). *Reversed after Phase 15:* the project is now hosted; see below.
 **Done when:** a reviewer can start the stack from the README, run the scenario, and follow one incident through logs and a trace.
+
+### After Phase 15
+
+Work that followed the phases, one pull request each:
+
+- **#34 Google sign-in:** OIDC with PKCE behind the web server, an exact-email
+  allow-list, `OperatorIdentity`. Spec and plan: `docs/specs/google-sign-in/`.
+- **#38 Self-hosted production stack:** `docker-compose.prod.yml` behind Caddy,
+  the investigation rate limit, the `APP_ENV=production` startup refusals,
+  `TRUST_PROXY_HOPS`, and `scripts/deploy.sh`, `backup.sh`, `restore.sh`.
+- **#39 Free live deploy:** one Render container running the API, worker and
+  web app, Render Key Value for Redis and Neon for PostgreSQL; boot seeds the
+  demo (`seed-demo.ts`). Live at https://labops.onrender.com.
+- **#40 Security headers** sent by the web app itself (`next.config.mjs`), so
+  every host has them.
+- **#41 Documentation split:** a plain-language README; developer detail in
+  `docs/dev/`.
+- **#42 Demo reset on every Render boot:** `reset-demo.ts`, so a shared demo
+  never stays resolved or ages out of the dashboard.
+- **#43 The self-hosted stack made to work:** run end to end locally for the
+  first time; six blocking bugs fixed.
+
+`docs/infra/DEPLOYMENT.md` records how each deploy runs and what is unverified.
 
 ---
 
@@ -547,8 +571,8 @@ Phase 13 deviations, settled by building it:
 | # | Item | Recommendation |
 |---|---|---|
 | 1 | **Deadline unknown.** 16 phases is roughly the full spec. | If time is short, Phases 0–9 + 12 are the minimum credible demo; 13–15 are cut first, in reverse order. |
-| 2 | **LLM provider not chosen.** | Decide before Phase 11. Phases 0–10 do not depend on it (fixture provider). |
+| 2 | **LLM provider not chosen.** | *Resolved in Phase 11:* Gemini over plain `fetch`, opt-in; the fixture provider stays the default. |
 | 3 | **Correlation window boundaries.** A burst that straddles two time buckets could split into two incidents. | Correlate against the current and previous bucket; anchor the window key on the earliest event. Covered by a dedicated test in Phase 5. |
-| 4 | **Auth depth.** Session auth for seeded operators covers the spec's "simple operator role". | RBAC only if time remains after Phase 15. |
-| 5 | **Deployment target.** | Decided in Phase 15: local-only, no hosted instance. |
+| 4 | **Auth depth.** Session auth for seeded operators covers the spec's "simple operator role". | RBAC only if time remains after Phase 15. Google sign-in was added after Phase 15; RBAC is still not built. |
+| 5 | **Deployment target.** | Decided in Phase 15: local-only. *Reversed after Phase 15:* Render with Neon (live), plus a self-hosted compose stack behind Caddy; see `docs/infra/DEPLOYMENT.md`. |
 | 6 | **Scope creep from the "nice to have" items** (React Flow, Grafana, RBAC). | Keep them in Phase 15 or later; none is in the §21 success criteria. |

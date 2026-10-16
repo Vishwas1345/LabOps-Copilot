@@ -1,14 +1,17 @@
 # DEPLOYMENT.md: deploying LabOps Copilot
 
-Everything needed to stand this up on a server and every decision behind it.
-Written to be handed to someone who has not seen this conversation.
+Everything needed to stand this up and every decision behind it. Two paths:
+the **live** one, Render and Neon (§0, at https://labops.onrender.com), and a
+self-hosted VM behind Caddy (§1 to §11), run end to end locally but never on a
+real host. Written to be handed to someone who has not seen this conversation.
 
 Read `docs/GAPS.md` first: it says what the system does not do, and two of those
 things shape every decision here.
 
-**If you are resuming this work:** §4a is the host provisioning and is where
-people get stuck, §5 is the deploy itself, §11 is what has never been verified,
-and §12 is what must happen before the site is genuinely public.
+**If you are resuming this work:** §0 is the live deploy. For the VM path, §4a
+is the host provisioning and is where people get stuck, §5 is the deploy itself,
+§11 is what has and has not been verified, and §12 is what must happen before
+the site is genuinely public.
 
 ---
 
@@ -24,11 +27,23 @@ Hugging Face Docker Spaces need a paid plan. Without a card, this is the path:
 | PostgreSQL | Neon, free | Permanent. Render's free Postgres is deleted after 30 days plus a 14-day grace period |
 | HTTPS, hostname | Render, `<service>.onrender.com` | Included |
 
-`render.yaml` describes it; `deploy/render/start.sh` boots it: migrate, seed the
-demo operator (`SEED_OPERATOR_USERNAME=demo`), start the three processes, then
-ingest the demo scenario through the real ingestion path
-(`dist/seed-demo.js`). Both seeds are idempotent, so every boot runs them. The
-demo routes stay off; nothing on the internet can trigger a scenario.
+`render.yaml` describes it; `deploy/render/start.sh` boots it: reset the demo
+database (below), migrate, seed the demo operator
+(`SEED_OPERATOR_USERNAME=demo`), start the three processes, then ingest the
+demo scenario through the real ingestion path (`dist/seed-demo.js`). The demo
+routes stay off; nothing on the internet can trigger a scenario. The script
+fixes `APP_ENV`, `SESSION_COOKIE_SECURE`, `DEMO_ENABLED`, `TRUST_PROXY_HOPS`,
+`API_HOST` (127.0.0.1, so the API is unreachable from outside), `API_PORT` and
+`API_INTERNAL_URL` after the platform's environment, so the dashboard cannot
+contradict the production checks; `CORS_ORIGIN` falls back to Render's
+`RENDER_EXTERNAL_URL`, and Next.js listens on Render's `PORT`. Render's health
+check is `GET /login`. CI never builds `deploy/render/Dockerfile`; Render
+builds it on every push to `main`.
+
+**Verified live** (2026-10-16): the login page answers 200 over HTTPS and
+reports `API: ok · PostgreSQL: up`, the five security headers are present, and
+a warm page took about 0.27 s, measured from one client. The cold-boot and
+memory figures below were measured locally under the same caps, not on the host.
 
 **What this costs, plainly:**
 
@@ -54,9 +69,9 @@ demo routes stay off; nothing on the internet can trigger a scenario.
 **Standing it up:**
 
 1. Neon: create a project in AWS Asia Pacific (Singapore), next to
-   `render.yaml`'s `singapore`, the closest region to the audience in India
-   (change both together if not; a Neon project cannot change region). Neon runs PostgreSQL 18; the
-   integration suite passes on 18.6 as well as 16. Copy the **direct**
+   `render.yaml`'s `singapore`, the closest region to the expected audience
+   (change both together if not; a Neon project cannot change region). Neon
+   runs PostgreSQL 18; the integration suite passes on 18.6 as well as 16. Copy the **direct**
    connection string, not the pooled one: `prisma migrate deploy` takes an
    advisory lock.
 2. Render: **New, Blueprint**, pick this repository. Enter `DATABASE_URL` and
@@ -70,20 +85,20 @@ demo routes stay off; nothing on the internet can trigger a scenario.
 
 ## 1. Where it runs, and why
 
-**One VM running the whole compose stack, behind Caddy.**
-
-This was chosen among four options. The reasoning is recorded because it is the
-question most likely to be re-litigated later.
+**Live on Render and Neon (§0); a single VM behind Caddy is the documented
+alternative.** The VM was the first choice, but every free VM needs a card. The
+reasoning is recorded because it is the question most likely to be re-litigated
+later.
 
 | Option | Verdict | Why |
 |---|---|---|
-| **Single VM (chosen)** | Yes | One host, one compose file, the existing Dockerfiles unchanged, no cross-origin auth |
+| **Render + Neon** | **Live (§0)** | No card. Free web services sleep after 15 minutes idle and the free Postgres expires, so it runs as one container with Neon for the database |
+| Single VM | Documented, run end to end locally, never on a real host | One host, one compose file, the existing Dockerfiles unchanged, no cross-origin auth; free VMs need a card |
 | Vercel / Netlify | **Rejected** | They can host the Next.js app and nothing else. See §2 |
-| Render | **The no-card path (§0)** | Free web services sleep after 15 minutes idle and the free Postgres expires, so it runs as one container with Neon for the database |
 | Fly.io | Rejected | No free allowance for new accounts since October 2024: a short trial, then billing |
 
-The intended host is a cloud free tier, because this is a prototype with no
-budget. See §9 for the free-tier risks, which are real.
+Both paths are free tiers, because this is a prototype with no budget. See
+§9 for the VM path's free-tier risks, and §0 for Render's.
 
 ---
 
@@ -113,22 +128,26 @@ reason that only matters once a stranger can reach the site.
 **Investigation rate limiting.** `POST /api/incidents/:id/investigate` queues a
 model call. It is the only route that can spend money. Unbounded, one signed-in
 operator exhausts a free-tier key and it starts returning 503. It is now limited
-to 10/minute per client, in Redis, **failing closed** so a Redis outage refuses
-rather than allowing unlimited calls. Reading results is deliberately *not*
+to 10 a minute, in Redis, **failing closed** so a Redis outage refuses rather
+than allowing unlimited calls. The limit is shared by every operator: the API
+sees only the web server's address (see the next paragraph). Reading results is deliberately *not*
 metered: an operator paging back through findings must not be throttled for
 having investigated something.
 
-**`TRUST_PROXY_HOPS`.** Behind a reverse proxy every request otherwise looks like
-it came from the proxy. Two consequences: the rate limits stop being per-client,
-and every logged IP is wrong. Set to `1` in the production stack, matching the
-single Caddy hop. Fastify takes a trust *function* rather than a count, so the
-count is translated to "trust everything except the last hop".
+**`TRUST_PROXY_HOPS`.** Tells Fastify how many proxies to trust for the client
+address. Fastify takes a trust *function* rather than a count, so the count is
+translated to "trust everything except the last hop". Both deploys set it to
+`1`, but it has nothing to act on today: the browser reaches only the web
+server, which calls the API without forwarding the client address. So the
+login and investigation limits are global on every host (`docs/GAPS.md` §2).
+Making them per person means forwarding `X-Forwarded-For` from the web server.
 
 **`APP_ENV=production` refusals.** The API now fails at startup on:
 
 - `SESSION_COOKIE_SECURE` not true — a Secure cookie over plain http is **never
   sent**, so nobody could sign in at all
-- `TRUST_PROXY_HOPS` unset — the rate limits would key on the proxy's address
+- `TRUST_PROXY_HOPS` unset — required so a deploy states its proxy hops
+  explicitly
 - `DEMO_ENABLED` true — demo routes must never ship
 
 Cheaper to catch at startup than to discover during an incident.
@@ -235,13 +254,15 @@ On the host, with the repository cloned:
 ```bash
 cp .env.production.example .env.production
 chmod 600 .env.production
-$EDITOR .env.production        # SITE_DOMAIN and POSTGRES_PASSWORD are required
+$EDITOR .env.production        # SITE_DOMAIN, POSTGRES_PASSWORD, SEED_OPERATOR_PASSWORD
 ./scripts/deploy.sh
 ```
 
-`deploy.sh` backs up, builds, applies migrations, starts everything, then polls
-`/health` for 30 attempts before reporting success. It fails loudly rather than
-returning early.
+`deploy.sh` backs up (skipped on a first deploy, when no database is running),
+builds, applies migrations and starts everything. It then checks the API's
+`/health` from inside its own container and the proxy's route to the web app,
+30 attempts each, and a failure names the part that failed. It fails loudly
+rather than returning early.
 
 To roll back:
 
@@ -250,7 +271,8 @@ git checkout <previous-sha> && ./scripts/deploy.sh
 ```
 
 Migrations run **before** the new containers start. That is safe only because
-every migration so far is additive. A migration that drops or renames a column
+every migration since the first deploy target existed is additive (one early
+migration changed `Lab.status`'s type in place, before there was any host). A migration that drops or renames a column
 needs the expand-contract sequence instead, and `deploy.sh` does not handle it.
 
 ---
@@ -267,8 +289,9 @@ needs the expand-contract sequence instead, and `deploy.sh` does not handle it.
   live events back, and for a stream that sends one event at a time that means
   never
 - Sets `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`
-  (the web app sends the same set itself, from `next.config.mjs`, so the
-  Render deploy without Caddy has them too)
+  and `Referrer-Policy`, and strips `Server`. The web app sends these itself
+  plus `Content-Security-Policy: frame-ancestors 'none'` (`next.config.mjs`), so
+  the Render deploy without Caddy has them too
 - Logs requests only, never bodies: a body can carry an operator's password
 
 ---
@@ -281,7 +304,10 @@ Set in `.env.production` on the host:
 |---|---|---|
 | `SITE_DOMAIN` | yes | The hostname the certificate is for. No default on purpose — compose refuses to start without it |
 | `POSTGRES_PASSWORD` | yes | `openssl rand -base64 32` |
-| `CREDENTIALS_KEY` | no | Base64 of exactly 32 bytes, for integration credentials. Without it, saving a credential fails by name instead of storing it in the clear |
+| `SEED_OPERATOR_PASSWORD` | yes, unless Google sign-in is configured | 12+ characters; `migrate` seeds the operator with it. Without it nobody can sign in |
+| `SEED_OPERATOR_USERNAME` | no | Defaults to `operator` |
+| `POSTGRES_USER`, `POSTGRES_DB` | no | Both default to `labops`; `backup.sh` and `restore.sh` read them too |
+| `CREDENTIALS_KEY` | no | Base64 of exactly 32 bytes, for integration credentials. Empty counts as unset. Without it, saving a credential fails by name instead of storing it in the clear |
 | `GOOGLE_*` (4) | no | All four or none. The redirect must match the OAuth client exactly: `https://$SITE_DOMAIN/auth/google/callback` |
 | `LLM_PROVIDER` / `LLM_API_KEY` | no | `fixture` is the default and is free and offline. `gemini` calls the real API. Rate limited either way |
 
@@ -330,8 +356,10 @@ IP, and therefore the hostname.
 
 `scripts/backup.sh` writes a plain `pg_dump` to `./backups/` before every deploy
 and keeps the seven newest, so a long-lived host cannot fill its own disk.
-`scripts/restore.sh <dump>` verifies one by restoring into a **scratch** database
-and counting rows — never into `labops`, which would destroy live data.
+`scripts/restore.sh <dump>` verifies one by replaying it with `psql` into a
+**scratch** database and counting tables and audit rows — never into `labops`,
+which would destroy live data. `KEEP=1` leaves the scratch database for
+inspection. Both ran end to end locally (§11).
 
 **Run a restore once before you need one. An untested backup is not a backup.**
 
@@ -342,9 +370,10 @@ backups. Adding an off-host sync is the single highest-value next step.
 
 ## 11. What has and has not been verified
 
-**Verified:** lint, typecheck, 684 API unit tests, 235 integration tests, 139 web
-tests, 98.39% coverage, `prisma:drift` clean, `docker compose config` valid, port
-exposure audited, and the `APP_ENV=production` guard mutation-checked.
+**Verified:** lint, typecheck, 693 API unit tests, 238 integration tests, 141 web
+tests, coverage 98.4% (api) and 93.2% (web), `prisma:drift` clean,
+`docker compose config` valid, port exposure audited, and the
+`APP_ENV=production` guard mutation-checked.
 
 **Run end to end locally (2026-10-16), with `SITE_DOMAIN=localhost`:** a first
 `deploy.sh` on an empty host, a second with its backup, HTTPS through Caddy
@@ -381,8 +410,7 @@ The rest is in `docs/GAPS.md`.
 
 1. Read `AGENTS.md` and `CLAUDE.md`. `AGENTS.md` §13 is the current task list.
 2. `docs/GAPS.md` before describing this project's capabilities to anyone.
-3. Start the server: `./scripts/deploy.sh`.
-4. The next piece of *feature* work is `AGENTS.md` §13b: a demo scenario where
-   **two or more labs fail on one shared dependency**, which is the strongest
-   correlation signal the schema names. Independent failures will not group
-   convincingly. It needs no infrastructure and is unblocked.
+3. The live deploy is Render (§0): it redeploys on every push to `main`.
+   `./scripts/deploy.sh` is the VM path.
+4. The open item is Google sign-in against a real OAuth client (`AGENTS.md`
+   §13a): every test so far stubs Google.

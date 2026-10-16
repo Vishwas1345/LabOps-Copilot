@@ -10,7 +10,7 @@
       "advisory": "no direct advisory (transitive)",
       "url": null,
       "direct": true,
-      "reason": "Fixed in prisma 7. The project is pinned to prisma 6 per ARCHITECTURE.md 2. 6.19.3 is the newest 6.x."
+      "reason": "Fixed in prisma 7. The project is pinned to prisma 6 per CLAUDE.md §2. 6.19.3 is the newest 6.x."
     },
     {
       "key": "package:@prisma/config",
