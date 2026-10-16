@@ -8,7 +8,7 @@ services:
     runtime: docker
     plan: free
     # Keep this and the Key Value region the same as the Neon project's.
-    region: singapore
+    region: ohio
     dockerfilePath: ./deploy/render/Dockerfile
     dockerContext: .
     healthCheckPath: /login
@@ -36,7 +36,7 @@ services:
   - type: keyvalue
     name: labops-redis
     plan: free
-    region: singapore
+    region: ohio
     # Empty: reachable only over Render's private network.
     ipAllowList: []
     # BullMQ needs every key kept; the default policy would evict queued jobs.
