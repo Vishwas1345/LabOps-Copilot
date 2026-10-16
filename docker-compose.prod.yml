@@ -61,7 +61,8 @@ services:
     logging: *default-logging
     image: redis:7-alpine
     # No persistence: every key is a queue entry or a rate-limit counter, and
-    # both rebuild from Postgres. Losing them costs in-flight jobs, not data.
+    # both rebuild from Postgres. noeviction, because BullMQ must never lose a
+    # queued job to memory pressure: a full Redis refuses writes instead.
     command:
       - redis-server
       - --save
@@ -71,7 +72,7 @@ services:
       - --maxmemory
       - 256mb
       - --maxmemory-policy
-      - allkeys-lru
+      - noeviction
     # No ports, same as postgres.
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -197,7 +198,6 @@ services:
       # Server-side calls leave the container. The browser still talks only to
       # the web server, which holds the session in its own httpOnly cookie.
       API_INTERNAL_URL: http://api:4000
-      API_PUBLIC_URL: https://${SITE_DOMAIN:?set SITE_DOMAIN in .env.production}
     expose:
       - "3000"
     depends_on:
