@@ -42,8 +42,14 @@ demo routes stay off; nothing on the internet can trigger a scenario.
 - **Any process exiting stops the container**, so the platform restarts all
   three together rather than serving a site whose worker is dead.
 - **750 free hours a month**, shared: exactly one always-on service fits.
-- **Data persists in Neon**, so an incident a visitor resolves stays resolved;
-  the seed only adds what is missing.
+- **Every boot starts from an empty database** (`DEMO_RESET_ON_BOOT=true` in
+  `render.yaml`): `dist/reset-demo.js` drops the schema, then the boot migrates
+  and seeds. A shared demo would otherwise stay resolved after its first
+  visitor and age out of the dashboard's 7-day window. Anything a visitor did
+  is gone after the service sleeps. The reset needs both `DEMO_RESET_ON_BOOT`
+  and `APP_ENV=production`, and refuses, failing the boot, if any lab or event
+  is not simulated; it drops the schema because the audit trail's triggers
+  block deleting rows (`apps/api/src/modules/demo/reset.ts`).
 
 **Standing it up:**
 
