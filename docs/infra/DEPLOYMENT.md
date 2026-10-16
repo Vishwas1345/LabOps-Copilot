@@ -260,8 +260,9 @@ needs the expand-contract sequence instead, and `deploy.sh` does not handle it.
 `deploy/Caddyfile` is the only thing exposed to the internet.
 
 - Issues and renews the TLS certificate automatically
-- Sets real client addresses, matching `TRUST_PROXY_HOPS=1`
-- Routes everything to `web`; the browser never talks to the API
+- Routes everything, the live stream included, to `web`; the browser never
+  talks to the API. The API's rate limits therefore see the web server's
+  address and are shared by every operator (`docs/GAPS.md`)
 - **`flush_interval -1` on `/api/events/stream`** — response buffering would hold
   live events back, and for a stream that sends one event at a time that means
   never
@@ -345,14 +346,19 @@ backups. Adding an off-host sync is the single highest-value next step.
 tests, 98.39% coverage, `prisma:drift` clean, `docker compose config` valid, port
 exposure audited, and the `APP_ENV=production` guard mutation-checked.
 
-**Not verified — this stack has never been stood up:**
+**Run end to end locally (2026-10-16), with `SITE_DOMAIN=localhost`:** a first
+`deploy.sh` on an empty host, a second with its backup, HTTPS through Caddy
+(its internal certificate for `localhost`), the redirect from http, the
+security headers, an operator sign-in, the live stream through the web relay,
+and `restore.sh` on a real dump (and refusing one with no tables). That run
+found six bugs, all fixed: the scripts were not executable; the first deploy
+tried to back up a database that was not running; Caddy refused its own config
+(`trusted_proxies` belongs under `servers`); an empty `CREDENTIALS_KEY` stopped
+the API; `restore.sh` read a plain-SQL dump with `pg_restore`; and the stream
+bypassed the web relay to reach the API.
 
-- The compose file has never been started on a real host
-- Caddy has never issued a certificate
-- `deploy.sh`, `backup.sh` and `restore.sh` have never run end to end
-- No HTTPS, no public traffic, no real login against it
-
-Treat the first deploy as the real test of all of it.
+**Not verified:** a real host, a public certificate from Let's Encrypt, and
+public traffic. Treat the first real deploy as the test of those.
 
 ---
 

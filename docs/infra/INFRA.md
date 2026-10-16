@@ -255,7 +255,7 @@ only `proxy` publishes a port.
 |---|---|
 | `proxy` (Caddy) | The only published ports (80, 443). Issues and renews the certificate. Sets real client addresses. Disables response buffering on `/api/events/stream`, because a stream sending one event at a time would otherwise sit in the buffer indefinitely |
 | `api`, `worker`, `web` | Built from the existing Dockerfiles, reachable from the compose network only |
-| `postgres`, `redis` | No ports. Persistent volume for the database, in-memory for Redis (every key is a queue entry or a rate-limit counter, and both rebuild from Postgres) |
+| `postgres`, `redis` | No ports. Persistent volume for the database, in-memory for Redis with `noeviction` (every key is a queue entry or a rate-limit counter, and both rebuild from Postgres) |
 | `migrate` | One-shot, `restart: "no"` so a broken migration cannot loop and hold up every dependent service |
 
 **`APP_ENV=production` changes what the API accepts.** It refuses to boot if
