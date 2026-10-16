@@ -47,9 +47,11 @@ demo routes stay off; nothing on the internet can trigger a scenario.
 
 **Standing it up:**
 
-1. Neon: create a project in the region matching `render.yaml` (`singapore`;
-   change both if not) and copy the **direct** connection string, not the
-   pooled one: `prisma migrate deploy` takes an advisory lock.
+1. Neon: create a project in AWS US East 2 (Ohio), next to `render.yaml`'s
+   `ohio` (change both together if not). Neon runs PostgreSQL 18; the
+   integration suite passes on 18.6 as well as 16. Copy the **direct**
+   connection string, not the pooled one: `prisma migrate deploy` takes an
+   advisory lock.
 2. Render: **New, Blueprint**, pick this repository. Enter `DATABASE_URL` and
    `SEED_OPERATOR_PASSWORD` (12+ characters) when prompted.
 3. Wait for the deploy, open `https://<service>.onrender.com`, sign in as
