@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "start:worker": "node dist/worker.js",
     "seed:operator": "tsx --env-file=.env src/seed-operator.ts",
+    "seed:demo": "tsx --env-file=.env src/seed-demo.ts",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src test",
