@@ -260,6 +260,8 @@ needs the expand-contract sequence instead, and `deploy.sh` does not handle it.
   live events back, and for a stream that sends one event at a time that means
   never
 - Sets `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`
+  (the web app sends the same set itself, from `next.config.mjs`, so the
+  Render deploy without Caddy has them too)
 - Logs requests only, never bodies: a body can carry an operator's password
 
 ---
