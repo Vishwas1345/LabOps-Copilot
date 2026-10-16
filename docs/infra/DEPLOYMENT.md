@@ -47,8 +47,9 @@ demo routes stay off; nothing on the internet can trigger a scenario.
 
 **Standing it up:**
 
-1. Neon: create a project in AWS US East 2 (Ohio), next to `render.yaml`'s
-   `ohio` (change both together if not). Neon runs PostgreSQL 18; the
+1. Neon: create a project in AWS Asia Pacific (Singapore), next to
+   `render.yaml`'s `singapore`, the closest region to the audience in India
+   (change both together if not; a Neon project cannot change region). Neon runs PostgreSQL 18; the
    integration suite passes on 18.6 as well as 16. Copy the **direct**
    connection string, not the pooled one: `prisma migrate deploy` takes an
    advisory lock.
