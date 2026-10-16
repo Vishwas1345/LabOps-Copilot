@@ -57,21 +57,25 @@ $COMPOSE run --rm migrate
 echo "==> starting"
 $COMPOSE up -d --remove-orphans
 
-echo "==> waiting for the API"
-for attempt in $(seq 1 30); do
-  # From inside the network: the proxy only answers for SITE_DOMAIN, so a
-  # request to 127.0.0.1 proves nothing about the API.
-  if $COMPOSE exec -T proxy wget -qO- --timeout=3 "http://api:4000/health" >/dev/null 2>&1; then
-    echo "    healthy after ${attempt} attempt(s)"
-    break
-  fi
-  if [[ "$attempt" == "30" ]]; then
-    echo "    API never became healthy; recent logs follow" >&2
-    $COMPOSE logs --tail=40 api web proxy >&2
-    exit 1
-  fi
-  sleep 2
-done
+echo "==> waiting for the API, then the proxy"
+# Checked from inside the network: the proxy answers only for SITE_DOMAIN, so a
+# request to 127.0.0.1 proves nothing. Two checks, so a failure names its part.
+wait_for() {
+  local label="$1"; shift
+  for attempt in $(seq 1 30); do
+    if "$@" >/dev/null 2>&1; then
+      echo "    ${label} healthy after ${attempt} attempt(s)"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "    ${label} never became healthy; recent logs follow" >&2
+  $COMPOSE logs --tail=40 api web proxy >&2
+  exit 1
+}
+wait_for "API" $COMPOSE exec -T api node -e \
+  "fetch('http://127.0.0.1:4000/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+wait_for "proxy to web" $COMPOSE exec -T proxy wget -qO- --timeout=3 "http://web:3000/login"
 
 echo "==> done"
 echo "    check the site over https://${SITE_DOMAIN:?SITE_DOMAIN is not set}"
