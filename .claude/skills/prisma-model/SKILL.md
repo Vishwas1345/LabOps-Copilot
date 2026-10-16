@@ -70,7 +70,7 @@ This is an integration test against real Postgres. See `CLAUDE.md §8`.
 
 - `ARCHITECTURE.md §6` — add the model to the ER diagram
 - `ARCHITECTURE.md §17` — if it changes what is implemented
-- `README.md` — only if it changes setup or the API surface
+- `docs/dev/` — only if it changes setup or the API surface
 
 ## Verify
 

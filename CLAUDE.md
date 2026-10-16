@@ -37,7 +37,8 @@ never an execution authority. If a change would let model output reach an
 executor without passing schema validation, a policy check and a human approval,
 that change is wrong. See §5.
 
-Read `ARCHITECTURE.md` for the full design and `README.md` for setup and scope.
+Read `ARCHITECTURE.md` for the full design, `README.md` for the plain-language
+overview, and `docs/dev/` for setup, the API and testing.
 
 ### Docs folder
 
@@ -491,7 +492,7 @@ A change is complete when:
 - [ ] Every state transition writes an audit entry in the same transaction.
 - [ ] Any new external input is validated with Zod and redacted if sensitive.
 - [ ] Any new side effect is idempotent.
-- [ ] `ARCHITECTURE.md` and/or `README.md` updated if a boundary, endpoint or
+- [ ] `ARCHITECTURE.md` and/or `docs/dev/` updated if a boundary, endpoint or
       decision changed.
 - [ ] Nothing user-visible describes simulated data as live, or implies an
       existing platform has a capability gap.
