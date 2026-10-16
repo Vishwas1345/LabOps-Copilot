@@ -24,7 +24,8 @@ npm run db:up
 ```
 
 This starts PostgreSQL on `localhost:5432` and Redis on `localhost:6379` (set
-`REDIS_HOST_PORT` in a root `.env` if another project holds that port).
+`REDIS_HOST_PORT` in a root `.env` if another project holds that port, and
+`WEB_HOST_PORT` for the web app's 3000 under Docker Compose).
 
 ### 3. Configure the environment
 
@@ -88,8 +89,8 @@ docker compose up --build
 Open `http://localhost:3000` and sign in as `operator` with that password.
 With no data yet, the overview offers **Run demo scenario**; then open the
 12-lab incident, **Investigate**, read the diagnosis and the policy decisions,
-**Approve**, and watch it verify and resolve. Every `/api/*` route except login
-and the demo trigger needs a session.
+**Approve**, and watch it verify and resolve. Every `/api/*` route except
+sign-in (password and Google) and the demo trigger needs a session.
 
 For the faster dev loop, run `npm run db:up` for infrastructure only and
 `npm run dev` for the API and web app with hot reload.
@@ -126,6 +127,11 @@ password. The web app needs no new variables: the secret never leaves the API.
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | required (`.env.example`: `postgresql://labops:labops@localhost:5432/labops`) | PostgreSQL connection string |
+| `REDIS_URL` | required (`.env.example`: `redis://localhost:6379`) | BullMQ queues and the rate-limit store |
+| `QUEUE_PREFIX` | `labops` | Namespaces queue keys; test runs use their own |
+| `APP_ENV` | `development` | `production` refuses to start unless the cookie is Secure, `TRUST_PROXY_HOPS` is set and demo routes are off |
+| `TRUST_PROXY_HOPS` | unset (trusts no proxy) | Proxy hops in front of the API; required in production |
+| `DEMO_ENABLED` | `false` (`true` in `.env.example` and compose) | Registers `/api/demo/*`; when off those routes do not exist |
 | `TEST_DATABASE_URL` | `postgresql://labops:labops@localhost:5432/labops_test` | Integration tests only; must differ from `DATABASE_URL` |
 | `API_HOST` | `127.0.0.1` | API bind address |
 | `API_PORT` | `4000` | API port |
@@ -138,6 +144,10 @@ password. The web app needs no new variables: the secret never leaves the API.
 | `LLM_MODEL` | `gemini-3.1-flash-lite` | Override this; it is the most volatile value in the project |
 | `LLM_BASE_URL` | Gemini's REST endpoint | Must be https, or http on loopback: the key rides in a header |
 | `LLM_MAX_ATTEMPTS` | `3` | Total attempts against 429/5xx |
+| `LLM_TIMEOUT_MS` | `30000` | Per model call, enforced by our code |
+| `APPROVAL_TTL_MINUTES` | `30` | How long an approval stays valid before it expires |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset (no export) | Where spans are sent, e.g. the opt-in Jaeger |
+| `LOG_LEVEL` | `info` | Pino log level |
 | `GOOGLE_CLIENT_ID` | unset | Optional Google sign-in; all four `GOOGLE_*` or none, empty counts as unset |
 | `GOOGLE_CLIENT_SECRET` | unset | Stays on the API: sent only to Google's token endpoint, never returned or logged |
 | `GOOGLE_REDIRECT_URI` | unset | `http://localhost:3000/auth/google/callback` locally; https, or http on loopback |
@@ -164,9 +174,14 @@ header only — never in a URL, a log, a prompt, or `modelMetadata`.
 | `API_INTERNAL_URL` | falls back to `NEXT_PUBLIC_API_URL` | API base URL the web server uses; `http://api:4000` in Docker Compose |
 | `SESSION_COOKIE_SECURE` | `true` | Send the web session cookie over https only; `false` for local http |
 
-The full list, including `REDIS_URL`, `DEMO_ENABLED` and `LOG_LEVEL`, is in
-[`docs/infra/INFRA.md`](../infra/INFRA.md) §4. Real secrets are never committed; `.env` is
-git-ignored.
+Per-process detail, and the deploy-only variables, are in
+[`docs/infra/INFRA.md`](../infra/INFRA.md) §4. Real secrets are never committed;
+`.env` is git-ignored.
+
+Two limits are fixed in code rather than configured: sign-in (password and
+Google) at 5 attempts a minute, and investigations at 10 a minute. Both are
+effectively shared by every operator, because the browser only talks to the
+web server and the web server forwards no client address to the API.
 
 ---
 
@@ -179,20 +194,32 @@ labops-copilot/
 │   │   ├── prisma/              Data model and migrations
 │   │   ├── src/
 │   │   │   ├── index.ts, worker.ts, app.ts   Entrypoints: start here
+│   │   │   ├── seed-operator.ts, seed-demo.ts, reset-demo.ts  One-shot jobs
 │   │   │   ├── platform/        Cross-cutting: config, http, auth, audit,
 │   │   │   │                    observability, secrets, jobs, events-stream
 │   │   │   └── modules/         One folder per feature: labs, events,
 │   │   │                        incidents, investigations, policies, recovery,
-│   │   │                        integrations, metrics, demo. Each has routes.ts,
-│   │   │                        schemas.ts, service.ts (or services/), jobs/
+│   │   │                        integrations, metrics, demo. Most have
+│   │   │                        routes.ts, schemas.ts, service.ts (or
+│   │   │                        services/), and jobs/ where they run background
+│   │   │                        work; policies/ is pure decision logic
 │   │   └── test/                unit/, integration/, live/, fixtures/
 │   └── web/                     Next.js operator dashboard
-│       ├── src/                 app/ (pages), components/, lib/
+│       ├── src/                 app/ (pages), components/, lib/, middleware.ts
 │       └── test/                unit/ (Vitest), e2e/ (Playwright journey)
-├── docs/                        Spec, plan, acceptance map, infra notes, images
+├── deploy/                      Caddyfile (VM path); render/ Dockerfile and
+│                                start.sh for the single-container deploy
+├── docs/                        Overview docs, dev/, infra/, specs/, images
+├── scripts/                     compose-smoke, clean-db-check, audit-gate,
+│                                check-required-scripts, deploy, backup, restore
+├── .github/workflows/           CI pipelines
 ├── ARCHITECTURE.md              System architecture and trade-offs
-├── docker-compose.yml           The full stack
+├── CLAUDE.md, AGENTS.md         Rules and context for changing the code
+├── docker-compose.yml           The full stack, for development
+├── docker-compose.prod.yml      The VM production stack behind Caddy
 ├── compose.tracing.yml          Opt-in Jaeger trace viewer
+├── render.yaml                  The live deploy (Render Blueprint)
+├── .env.production.example      Placeholders for the VM stack
 └── package.json                 npm workspaces + root scripts
 ```
 
@@ -214,6 +241,10 @@ labops-copilot/
 | `npm run test:integration -w @labops/api` | API integration tests against their own PostgreSQL database (`TEST_DATABASE_URL`), migrated automatically |
 | `npm run coverage` | Vitest with v8 coverage and 70% thresholds |
 | `npm run test:e2e -w @labops/web` | Playwright journey against a running, freshly reset compose stack |
+| `npm run test:live -w @labops/api` | The one opt-in test that calls a real model |
+| `npm run seed:operator -w @labops/api` | Create or reset the operator from `SEED_OPERATOR_*` |
+| `npm run seed:demo -w @labops/api` | Ingest the demo scenario where demo routes are off; safe to re-run |
+| `scripts/clean-db-check.sh` | Integration tests twice on a throwaway database, then drop it |
 
 ### Checks before you commit
 
