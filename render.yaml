@@ -1,0 +1,43 @@
+# Render Blueprint: the free, no-card deployment. One web service runs the
+# API, worker and web app (deploy/render/); Redis is Render Key Value on the
+# private network; PostgreSQL is Neon, set by hand. See docs/infra/DEPLOYMENT.md.
+
+services:
+  - type: web
+    name: labops
+    runtime: docker
+    plan: free
+    # Keep this and the Key Value region the same as the Neon project's.
+    region: singapore
+    dockerfilePath: ./deploy/render/Dockerfile
+    dockerContext: .
+    healthCheckPath: /login
+    envVars:
+      # Neon's direct (unpooled) connection string, with sslmode=require.
+      # Migrations take an advisory lock, which a pooled connection drops.
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: labops-redis
+          property: connectionString
+      - key: SEED_OPERATOR_USERNAME
+        value: demo
+      # 12+ characters. Shared privately with reviewers, never committed.
+      - key: SEED_OPERATOR_PASSWORD
+        sync: false
+      # Base64 of 32 random bytes, which is what generateValue produces.
+      - key: CREDENTIALS_KEY
+        generateValue: true
+      - key: LLM_PROVIDER
+        value: fixture
+
+  - type: keyvalue
+    name: labops-redis
+    plan: free
+    region: singapore
+    # Empty: reachable only over Render's private network.
+    ipAllowList: []
+    # BullMQ needs every key kept; the default policy would evict queued jobs.
+    maxmemoryPolicy: noeviction
