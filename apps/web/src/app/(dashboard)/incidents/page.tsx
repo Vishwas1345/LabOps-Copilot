@@ -10,6 +10,14 @@ import { apiGet } from '@/lib/api';
 import { formatDateTime, formatScore } from '@/lib/format';
 import { INCIDENT_SEVERITIES, INCIDENT_STATUSES, incidentQuery } from '@/lib/queries';
 import { incidentListSchema } from '@/lib/schemas';
+import { cn } from '@/lib/utils';
+
+// Severity at a glance down the left edge, matching the severity badge colours.
+const SEVERITY_ACCENT: Record<string, string> = {
+  high: 'border-l-danger',
+  medium: 'border-l-warning',
+  low: 'border-l-border',
+};
 
 export default async function IncidentsPage({
   searchParams,
@@ -67,7 +75,7 @@ export default async function IncidentsPage({
           </TableHeader>
           <TableBody>
             {incidents.map((incident) => (
-              <TableRow key={incident.id}>
+              <TableRow key={incident.id} className={cn('border-l-2', SEVERITY_ACCENT[incident.severity] ?? 'border-l-transparent')}>
                 <TableCell>
                   <Link href={`/incidents/${incident.id}`} className="font-medium hover:underline">
                     {incident.title}
@@ -80,7 +88,19 @@ export default async function IncidentsPage({
                   <StatusBadge status={incident.status} />
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{incident.labCount}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatScore(incident.correlationStrength)}</TableCell>
+                <TableCell>
+                  <span className="flex items-center justify-end gap-2">
+                    {incident.correlationStrength !== null && (
+                      <span aria-hidden className="h-1.5 w-14 overflow-hidden rounded-full bg-muted">
+                        <span
+                          className="animate-grow-x block h-full rounded-full bg-info"
+                          style={{ width: `${Math.round(incident.correlationStrength * 100)}%` }}
+                        />
+                      </span>
+                    )}
+                    <span className="w-8 text-right tabular-nums">{formatScore(incident.correlationStrength)}</span>
+                  </span>
+                </TableCell>
                 <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(incident.createdAt)}</TableCell>
               </TableRow>
             ))}

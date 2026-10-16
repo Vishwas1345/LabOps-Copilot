@@ -1,9 +1,10 @@
 // shadcn/ui Card: a border plus a light shadow, title and description stacked.
+// Every card rises in on render (globals.css; off under reduced motion).
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 
 export function Card({ className, ...props }: ComponentProps<'div'>) {
-  return <div className={cn('rounded-xl border bg-card text-card-foreground shadow-sm', className)} {...props} />;
+  return <div className={cn('animate-rise rounded-xl border bg-card text-card-foreground shadow-sm', className)} {...props} />;
 }
 
 export function CardHeader({ className, ...props }: ComponentProps<'div'>) {
