@@ -28,6 +28,11 @@ stop() { kill $worker $api $web 2>/dev/null || true; }
 trap 'stop; wait; exit 0' TERM INT
 
 cd /repo/apps/api
+# A shared demo stays resolved after its first visitor and ages out of the
+# dashboard's windows, so a demo host starts every boot from an empty database.
+if [ "${DEMO_RESET_ON_BOOT:-}" = true ]; then
+  node dist/reset-demo.js
+fi
 node /repo/node_modules/prisma/build/index.js migrate deploy
 node dist/seed-operator.js
 

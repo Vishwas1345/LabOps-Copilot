@@ -239,7 +239,8 @@ before it is genuinely public. The summary:
 
 **Without a card: Render and Neon** (`render.yaml`, `deploy/render/`). One
 container runs the API, worker and web app as three processes, with Redis on
-Render Key Value and PostgreSQL on Neon. It boots by migrating, seeding the
+Render Key Value and PostgreSQL on Neon. It boots by resetting the demo
+database (`DEMO_RESET_ON_BOOT`), migrating, seeding the
 `demo` operator and ingesting the demo scenario (`dist/seed-demo.js`), and it
 sleeps after 15 minutes idle. `DEPLOYMENT.md` §0 has the costs and the steps.
 
