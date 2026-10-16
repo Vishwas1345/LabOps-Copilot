@@ -29,6 +29,7 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       api: ${{ steps.filter.outputs.api }}
       tooling: ${{ steps.filter.outputs.tooling }}
+      deploy: ${{ steps.filter.outputs.deploy }}
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -54,6 +55,9 @@ jobs:
               - 'docker-compose.yml'
               - 'db/**'
               - 'prisma/**'
+            deploy:
+              - 'deploy/**'
+              - 'render.yaml'
             tooling:
               - '.github/workflows/**'
               - 'CLAUDE.md'
@@ -69,6 +73,7 @@ jobs:
             echo "| ------- | ----- |"
             echo "| web (apps/web) | ${{ steps.filter.outputs.web }} |"
             echo "| api (apps/api) | ${{ steps.filter.outputs.api }} |"
+            echo "| deploy image | ${{ steps.filter.outputs.deploy }} |"
             echo ""
             echo "Shared tooling changed: ${{ steps.filter.outputs.tooling }}"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -84,6 +89,21 @@ jobs:
     needs: detect
     if: needs.detect.outputs.api == 'true'
     uses: ./.github/workflows/api.yml
+
+  # The image the live site runs holds both apps, so any change to either, or to
+  # the deploy files, must still build and boot it. Render waits for this check
+  # (autoDeployTrigger: checksPass in render.yaml).
+  deploy-image:
+    name: deploy image smoke
+    needs: detect
+    if: needs.detect.outputs.api == 'true' || needs.detect.outputs.web == 'true' || needs.detect.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and boot deploy/Dockerfile under the host's limits
+        run: scripts/deploy-image-smoke.sh
 
   # Builds both images and boots the real stack, so a Dockerfile or startup
   # bug fails here instead of on the first `docker compose up`.
