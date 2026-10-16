@@ -35,9 +35,10 @@ services:
         generateValue: true
       - key: LLM_PROVIDER
         value: fixture
-      # Wipes the database on every boot (deploy/start.sh), so each
-      # session after the service sleeps starts from a fresh demo. Demo only:
-      # the reset refuses any database holding non-simulated data.
+      # Each boot resets the demo if it has been idle 10 minutes, so every wake
+      # from sleep starts fresh while a deploy beside a running container keeps
+      # it; boots take a lock (deploy/start.sh). Demo only: the reset refuses
+      # any database holding non-simulated data.
       - key: DEMO_RESET_ON_BOOT
         value: "true"
 

@@ -28,13 +28,16 @@ stop() { kill $worker $api $web 2>/dev/null || true; }
 trap 'stop; wait; exit 0' TERM INT
 
 cd /repo/apps/api
-# A shared demo stays resolved after its first visitor and ages out of the
-# dashboard's windows, so a demo host starts every boot from an empty database.
+# A demo host resets an idle demo, migrates and seeds under one boot lock, so a
+# deploy's overlapping containers cannot interleave (dist/prepare-demo.js).
 if [ "${DEMO_RESET_ON_BOOT:-}" = true ]; then
-  node dist/reset-demo.js
+  node dist/prepare-demo.js
+else
+  node /repo/node_modules/prisma/build/index.js migrate deploy
+  node dist/seed-operator.js
+  # Replays add nothing; a failure leaves the site serving without the demo.
+  node dist/seed-demo.js || echo 'demo seed failed; serving without it' >&2
 fi
-node /repo/node_modules/prisma/build/index.js migrate deploy
-node dist/seed-operator.js
 
 node --max-old-space-size="$WORKER_HEAP" dist/worker.js &
 worker=$!
@@ -43,9 +46,6 @@ api=$!
 (cd /repo/apps/web && exec node --max-old-space-size="$WEB_HEAP" \
   /repo/node_modules/next/dist/bin/next start -p "${PORT:-10000}" -H 0.0.0.0) &
 web=$!
-
-# Replays add nothing, so every boot seeds; a failure leaves the site serving.
-node dist/seed-demo.js || echo 'demo seed failed; serving without it' >&2
 
 # Any one process stopping takes the container down, so the platform restarts
 # all three together rather than serving a site with a dead worker.
