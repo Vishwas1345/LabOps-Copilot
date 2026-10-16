@@ -3,13 +3,6 @@ dist
 .next
 .env
 .env.local
-# The production environment holds the database password, the credentials key,
-# the model key and the Google client secret. The example file beside it is
-# placeholders only and is committed; this one never can be.
-.env.production
-# pg_dump output: the audit trail and every lab, incident and session. Ignored
-# so a backup cannot be committed by accident; the host is where these live.
-backups/
 *.log
 apps/api/generated
 coverage

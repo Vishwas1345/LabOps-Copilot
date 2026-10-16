@@ -40,7 +40,7 @@ COPY --from=build /repo/node_modules/prisma node_modules/prisma
 COPY --from=build /repo/apps/web/.next apps/web/.next
 COPY --from=build /repo/apps/web/public apps/web/public
 COPY --from=build /repo/apps/web/next.config.mjs apps/web/next.config.mjs
-COPY deploy/render/start.sh /usr/local/bin/start.sh
+COPY deploy/start.sh /usr/local/bin/start.sh
 
 USER node
 EXPOSE 10000

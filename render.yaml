@@ -1,5 +1,5 @@
 # Render Blueprint: the free, no-card deployment. One web service runs the
-# API, worker and web app (deploy/render/); Redis is Render Key Value on the
+# API, worker and web app (deploy/); Redis is Render Key Value on the
 # private network; PostgreSQL is Neon, set by hand. See docs/infra/DEPLOYMENT.md.
 
 services:
@@ -9,7 +9,7 @@ services:
     plan: free
     # Keep this and the Key Value region the same as the Neon project's.
     region: singapore
-    dockerfilePath: ./deploy/render/Dockerfile
+    dockerfilePath: ./deploy/Dockerfile
     dockerContext: .
     healthCheckPath: /login
     envVars:
@@ -32,7 +32,7 @@ services:
         generateValue: true
       - key: LLM_PROVIDER
         value: fixture
-      # Wipes the database on every boot (deploy/render/start.sh), so each
+      # Wipes the database on every boot (deploy/start.sh), so each
       # session after the service sleeps starts from a fresh demo. Demo only:
       # the reset refuses any database holding non-simulated data.
       - key: DEMO_RESET_ON_BOOT
