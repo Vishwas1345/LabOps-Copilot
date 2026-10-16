@@ -143,7 +143,7 @@ function InvestigationCard({
 }) {
   const both = investigation.evidenceFor.length > 0 && investigation.evidenceAgainst.length > 0;
   return (
-    <Card className="animate-rise overflow-hidden">
+    <Card className="overflow-hidden">
       <CardHeader className="border-b bg-gradient-to-r from-info-bg/60 to-transparent">
         <CardTitle className="flex items-center gap-2">
           <Sparkles className="size-4 text-info" />
@@ -222,7 +222,7 @@ function InvestigationCard({
 function ActionCard({ incidentId, action }: { incidentId: string; action: RecoveryAction }) {
   const verification = action.verificationResult;
   return (
-    <Card className="animate-rise">
+    <Card>
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
           <ShieldCheck className="size-4 text-muted-foreground" />
