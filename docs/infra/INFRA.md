@@ -234,7 +234,7 @@ excludes server components, which only E2E can reach.
 |---|---|---|
 | A transaction left open on the database holds back every live update until it finishes (the stream reads below the oldest running transaction) | Keep transactions short (they are). `oldestOpenTransactionMs` in `/api/metrics` now shows it; nothing alerts on it yet | Before production |
 | Sign-in (5/min) and investigation (10/min) limits are global: every call reaches the API from the web server, which forwards no client address, so `TRUST_PROXY_HOPS` has nothing to act on | Forward `X-Forwarded-For` from the web server and count it as the trusted hop (a blanket trust lets clients spoof it). The API is already unreachable from outside on Render | Before production |
-| CI never builds `deploy/Dockerfile`, and a change only to `deploy/`, `render.yaml` or `scripts/` runs no pipeline; Render redeploys every push to `main` | Add those paths to the filters and build the Render image in CI | Before production |
+| `main` has no branch protection, so a PR can be merged before or despite failing checks | Require the CI checks in GitHub's branch rules; Render already refuses to deploy a failing commit (`checksPass`) | Owner |
 | `main` has no branch protection | Require the quality gates before merge | Owner's settings change |
 | Docs-only changes trigger no pipeline | Intended: `docs/**` is not in any filter | — |
 
@@ -259,8 +259,9 @@ so nobody could sign in), if `TRUST_PROXY_HOPS` is unset, or if `DEMO_ENABLED`
 is true. `deploy/start.sh` sets all four after the platform's environment, so
 a dashboard setting cannot contradict the production checks.
 
-**Deploying.** Render redeploys on every push to `main`; there is no manual
-step and no image registry. Migrations run at boot, before the processes start,
+**Deploying.** Render deploys a push to `main` once every CI check on it
+passes, the deploy image smoke included; there is no manual step and no image
+registry. Migrations run at boot, before the processes start,
 which is safe because every boot also starts from an empty demo database.
 
 **Backups and secrets.** There are no backups: every boot wipes and reseeds the

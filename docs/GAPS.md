@@ -180,8 +180,10 @@ platform. The *action* would not.
   `demo` login.
 - **The demo's AI is the fixture**, not a model (`LLM_PROVIDER=fixture`), so
   every investigation on the live site is identical by design.
-- **Render redeploys on every push to `main`**, gated only by what CI checks,
-  and CI never builds `deploy/Dockerfile`.
+- **Render deploys from `main` only after every CI check passes**, including a
+  build and boot of `deploy/Dockerfile`. Merging is not gated: `main` has no
+  branch protection, so a failing PR can still be merged; it just never goes
+  live.
 - **A production boot refuses unsafe configuration.** `APP_ENV=production`
   makes the API fail at startup if the session cookie is not Secure, if no proxy
   hop count is given, or if demo routes are enabled. A Secure cookie over plain

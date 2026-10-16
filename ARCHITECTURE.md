@@ -1064,8 +1064,10 @@ whether a commit touched `apps/web`, `apps/api`, or shared root tooling, then
 dispatches only the matching pipeline via `workflow_call`. A frontend-only
 change never starts the backend pipeline. Root manifests and the ESLint config
 map to **both** services, because a shared-tooling change can break either.
-Deploy files (`deploy/`, `render.yaml`, `scripts/`) match no filter, so they
-start no pipeline, and CI never builds `deploy/Dockerfile`.
+A change to `deploy/` or `render.yaml`, or to either app, runs the deploy
+image smoke: it builds `deploy/Dockerfile` and boots it under 512 MB against a
+throwaway database. Render deploys only once every check passes
+(`autoDeployTrigger: checksPass`).
 
 `api.yml` — build (`tsc` plus `prisma validate`), lint, unit tests, integration
 tests against real PostgreSQL and Redis service containers, coverage with
@@ -1130,7 +1132,7 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Compose: postgres, redis, migrate, api, worker, web; opt-in Jaeger override | Done, verified end to end | — |
 | Pino with shared Fastify instance and key-name redaction | Done | Trace id on API request logs (needs HTTP spans) |
 | Vitest unit + integration suites, Playwright journey, CI gates | Done (Phase 14) | — |
-| CI: change detection, build, lint, tests, coverage, quality gate, compose smoke + e2e | Done | No deploy step: Render redeploys from `main` on its own, and CI never builds the Render image |
+| CI: change detection, build, lint, tests, coverage, quality gate, compose smoke + e2e | Done | Render deploys from `main` only after every check passes, including the deploy image smoke |
 | Deterministic simulator (`modules/labs/simulator.ts`), `training-event` scenario | Done (Phase 2) | — |
 | Demo scenario endpoint, flag-gated and idempotent | Done (Phase 2) | — |
 | Event ingestion: validation, redaction at entry, DB dedup, lab transitions | Done (Phase 3) | — |

@@ -273,6 +273,11 @@ projects. That rule was broken once, and it is not optional.
    project otherwise runs stale images (this once produced a false
    "verified"). Check image build times if in doubt.
 
+7b. **The live image**, whenever an app, `deploy/` or `render.yaml` changed:
+   `scripts/deploy-image-smoke.sh` builds `deploy/Dockerfile` and boots it
+   twice under 512 MB against a throwaway database. CI runs the same, and
+   Render deploys only once every check passes (`checksPass`).
+
 8. **The browser journey** on a fresh stack (the smoke run used the demo, so
    reset first):
    ```
