@@ -53,10 +53,10 @@ const envSchema = z
     APPROVAL_TTL_MINUTES: z.coerce.number().int().min(1).max(1440).default(30),
     // AES-256 key for integration credentials. Optional: without it, saving a
     // credential fails by name instead of storing anything in the clear.
-    CREDENTIALS_KEY: z
-      .string()
-      .refine((value) => Buffer.from(value, 'base64').length === 32, 'must be base64 of exactly 32 bytes')
-      .optional(),
+    // Empty counts as unset: the production compose passes `${CREDENTIALS_KEY:-}`.
+    CREDENTIALS_KEY: unsetIfEmpty(
+      z.string().refine((value) => Buffer.from(value, 'base64').length === 32, 'must be base64 of exactly 32 bytes'),
+    ),
     // Google sign-in: all four or none. The secret stays on the API; the
     // redirect must be https except on loopback, like the LLM base URL.
     GOOGLE_CLIENT_ID: unsetIfEmpty(z.string().max(256)),

@@ -36,8 +36,13 @@ set +a
 
 COMPOSE="docker compose -f docker-compose.prod.yml"
 
-echo "==> backing up before changing anything"
-./scripts/backup.sh
+# A first deploy has no running database, and nothing to lose.
+if $COMPOSE ps --status running --services | grep -qx postgres; then
+  echo "==> backing up before changing anything"
+  ./scripts/backup.sh
+else
+  echo "==> no running database yet (first deploy): nothing to back up"
+fi
 
 echo "==> building"
 if [[ "$BUILD" == "1" ]]; then
@@ -54,8 +59,9 @@ $COMPOSE up -d --remove-orphans
 
 echo "==> waiting for the API"
 for attempt in $(seq 1 30); do
-  if curl --fail --silent --max-time 3 "http://127.0.0.1/health" >/dev/null 2>&1 \
-     || $COMPOSE exec -T proxy wget -qO- --timeout=3 "http://api:4000/health" >/dev/null 2>&1; then
+  # From inside the network: the proxy only answers for SITE_DOMAIN, so a
+  # request to 127.0.0.1 proves nothing about the API.
+  if $COMPOSE exec -T proxy wget -qO- --timeout=3 "http://api:4000/health" >/dev/null 2>&1; then
     echo "    healthy after ${attempt} attempt(s)"
     break
   fi
