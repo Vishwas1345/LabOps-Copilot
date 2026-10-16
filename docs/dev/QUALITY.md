@@ -56,7 +56,7 @@ Workflows under `.github/workflows/`:
 
 | Workflow | Role |
 |---|---|
-| `changes.yml` | Runs on pushes and pull requests to `main`. Detects whether a change touched `apps/web` or `apps/api` (the root `package.json`, lockfile and ESLint config count for both; `docker-compose.yml` for the api), dispatches only the matching pipeline, and runs the **compose smoke and e2e** job: build both images, boot the stack, run the smoke script, then reset the stack and run the Playwright journey |
+| `changes.yml` | Runs on pushes and pull requests to `main`. Detects whether a change touched `apps/web` or `apps/api` (the root `package.json`, lockfile and ESLint config count for both; `docker-compose.yml` for the api), dispatches only the matching pipeline, runs the **deploy image smoke** job (`scripts/deploy-image-smoke.sh`) builds `deploy/Dockerfile` and boots it under 512 MB, twice, against a throwaway database when an app or `deploy/`/`render.yaml` changed, and runs the **compose smoke and e2e** job: build both images, boot the stack, run the smoke script, then reset the stack and run the Playwright journey |
 | `api.yml` | Build, lint, unit tests, integration tests (real Postgres + Redis), coverage, schema drift, quality gate |
 | `web.yml` | Build, lint, unit tests, coverage, quality gate |
 | `llm-live.yml` | Opt-in, manual only: the one job that calls a real model |
@@ -65,9 +65,9 @@ The api and web pipelines each end in a quality gate that runs even when an upst
 failed (`if: always()`): a secret scan, a dependency audit, and a check that
 the scripts the pipeline depends on still exist.
 
-A change only to `deploy/`, `render.yaml` or `scripts/` triggers no pipeline,
-and CI never builds `deploy/Dockerfile`:
-the live deploy's image is built by Render on merge, not in CI.
+Render deploys only after every check on the commit passes
+(`autoDeployTrigger: checksPass` in `render.yaml`), so nothing that fails CI
+goes live.
 
 ### Dependency audit
 

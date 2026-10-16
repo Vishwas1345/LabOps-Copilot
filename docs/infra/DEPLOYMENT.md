@@ -26,8 +26,11 @@ can trigger a scenario. The script fixes `APP_ENV`, `SESSION_COOKIE_SECURE`,
 unreachable from outside), `API_PORT` and `API_INTERNAL_URL` after the
 platform's environment, so the dashboard cannot contradict the production
 checks; `CORS_ORIGIN` falls back to Render's `RENDER_EXTERNAL_URL`, and Next.js
-listens on Render's `PORT`. Render's health check is `GET /login`. CI never
-builds `deploy/Dockerfile`; Render builds it on every push to `main`.
+listens on Render's `PORT`. Render's health check is `GET /login`. Render deploys
+a commit on `main` only after every CI check on it passes
+(`autoDeployTrigger: checksPass`); one of those checks builds `deploy/Dockerfile`
+and boots it under 512 MB (`scripts/deploy-image-smoke.sh`). A failed build on
+Render also leaves the previous version serving.
 
 **Verified live** (2026-10-16): the login page answers 200 over HTTPS and
 reports `API: ok · PostgreSQL: up`, the five security headers are present, and
@@ -146,6 +149,6 @@ The rest is in `docs/GAPS.md`.
 
 1. Read `AGENTS.md` and `CLAUDE.md`. `AGENTS.md` §13 is the current task list.
 2. Read `docs/GAPS.md` before describing this project's capabilities to anyone.
-3. The deploy redeploys on every push to `main`, and every boot resets the demo.
+3. A push to `main` goes live once its CI passes, and every boot resets the demo.
 4. The open item is Google sign-in against a real OAuth client (`AGENTS.md`
    §13a): every test so far stubs Google.

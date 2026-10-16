@@ -210,8 +210,8 @@ labops-copilot/
 ├── deploy/                      Dockerfile and start.sh for the live
 │                                single-container deploy
 ├── docs/                        Overview docs, dev/, infra/, specs/, images
-├── scripts/                     compose-smoke, clean-db-check, audit-gate,
-│                                check-required-scripts
+├── scripts/                     compose-smoke, deploy-image-smoke, clean-db-check,
+│                                audit-gate, check-required-scripts
 ├── .github/workflows/           CI pipelines
 ├── ARCHITECTURE.md              System architecture and trade-offs
 ├── CLAUDE.md, AGENTS.md         Rules and context for changing the code
@@ -243,6 +243,7 @@ labops-copilot/
 | `npm run seed:operator -w @labops/api` | Create or reset the operator from `SEED_OPERATOR_*` |
 | `npm run seed:demo -w @labops/api` | Ingest the demo scenario where demo routes are off; safe to re-run |
 | `scripts/clean-db-check.sh` | Integration tests twice on a throwaway database, then drop it |
+| `scripts/deploy-image-smoke.sh` | Build the live deploy's image and boot it twice under 512 MB, as CI does before Render may deploy |
 
 ### Checks before you commit
 
