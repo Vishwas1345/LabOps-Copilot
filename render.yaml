@@ -10,6 +10,9 @@ services:
     # Keep this and the Key Value region the same as the Neon project's.
     region: singapore
     dockerfilePath: ./deploy/Dockerfile
+    # Deploy only after every CI check on the commit passes, so code that fails
+    # lint, tests or the deploy image smoke never goes live.
+    autoDeployTrigger: checksPass
     dockerContext: .
     healthCheckPath: /login
     envVars:
