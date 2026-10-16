@@ -5,9 +5,11 @@
 // no values in between. Data arrives as props from the server; the browser
 // never calls the API.
 
+import { useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { bucketLabel, colourFor } from '@/lib/charts';
 import { humanise } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import type { FailureSeries } from '@/lib/schemas';
 
 type TooltipEntry = { dataKey?: unknown; value?: unknown; color?: string };
@@ -31,6 +33,17 @@ function TimelineTooltip({ active, payload, label }: { active?: boolean; payload
 
 export function FailureTimeline({ series }: { series: FailureSeries }) {
   const categories = Object.keys(series.totals).filter((category) => (series.totals[category] ?? 0) > 0);
+  // Categories the operator switched off in the legend, to isolate one signal.
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  const visible = categories.filter((category) => !hidden.has(category));
+  const toggle = (category: string) =>
+    setHidden((current) => {
+      const next = new Set(current);
+      if (next.has(category)) next.delete(category);
+      // Never hide the last one: an empty chart reads as "no failures".
+      else if (visible.length > 1) next.add(category);
+      return next;
+    });
   const data = series.buckets.map((bucket) => ({
     label: bucketLabel(bucket.start, series.bucketMs ?? 60_000),
     ...bucket.counts,
@@ -44,26 +57,40 @@ export function FailureTimeline({ series }: { series: FailureSeries }) {
             <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={11} stroke="var(--muted-foreground)" minTickGap={24} />
             <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={11} stroke="var(--muted-foreground)" />
             <Tooltip content={<TimelineTooltip />} cursor={{ fill: 'var(--muted)' }} />
-            {categories.map((category, index) => (
+            {visible.map((category, index) => (
               <Bar
                 key={category}
                 dataKey={category}
                 stackId="failures"
                 fill={colourFor(category)}
-                radius={index === categories.length - 1 ? [3, 3, 0, 0] : 0}
-                isAnimationActive={false}
+                radius={index === visible.length - 1 ? [3, 3, 0, 0] : 0}
+                animationDuration={700}
+                animationEasing="ease-out"
               />
             ))}
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        {categories.map((category) => (
-          <li key={category} className="flex items-center gap-1.5">
-            <span className="size-2 rounded-full" style={{ background: colourFor(category) }} />
-            {humanise(category)}
-          </li>
-        ))}
+      <ul className="flex flex-wrap gap-2 text-xs">
+        {categories.map((category) => {
+          const on = !hidden.has(category);
+          return (
+            <li key={category}>
+              <button
+                type="button"
+                aria-pressed={on}
+                onClick={() => toggle(category)}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full border px-2.5 py-1 transition-colors hover:bg-muted',
+                  on ? 'text-foreground' : 'text-muted-foreground line-through opacity-60',
+                )}
+              >
+                <span className="size-2 rounded-full" style={{ background: colourFor(category) }} />
+                {humanise(category)}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
