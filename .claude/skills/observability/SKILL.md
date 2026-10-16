@@ -88,7 +88,8 @@ not go in the README, the dashboard or a commit message.
 ## Verify
 
 ```bash
-npm run build -w @labops/api
+npm run lint && npm run typecheck && npm run test
+npm run test:integration -w @labops/api   # real Postgres + Redis
 ```
 
 Then run the full seeded scenario with `compose.tracing.yml` and confirm in

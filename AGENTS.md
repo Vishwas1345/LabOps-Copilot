@@ -5,40 +5,49 @@ Read this first, then `CLAUDE.md`, which is the full rulebook and wins on any
 conflict. This file adds what the rulebook cannot: **how we have been working,
 what is built, what is in flight, and what to do next.**
 
-Last updated: 2026-10-15, evening (all phases 0 to 15 merged, plus the folder
-restructure and vendor-neutral naming in #32; sections 8a to 8c keep the
-per-phase notes as history).
+Last updated: 2026-10-16 (phases 0 to 15, the #32 restructure, and #34 to #43:
+Google sign-in, GAPS.md, both deploy paths, security headers, the README split,
+the demo reset and the VM fixes; sections 8a to 8c keep the per-phase notes as
+history).
 
 ## 0. Current state: start here
 
 - **`main`** has every phase (0 to 15), the UI revamp, the issue fixes, the
   doc sync (#31), and the folder restructure with vendor-neutral naming (#32;
-  section 1b and section 4). Optional Google sign-in (OIDC, PKCE, exact-email
-  allow-list; `docs/specs/google-sign-in/`) sits beside password sign-in, in
-  `platform/auth/google.ts` and the web's `app/auth/google/`. Nothing is
-  half-built or in flight.
-- **Docs match the code.** Three audits plus a second pass checked every
-  present-tense claim in every doc and skill against the code. Keep it that
-  way: when code changes, update the doc that describes it in the same PR, and
-  grep the docs for any path you rename.
+  section 1b and section 4). Nothing is half-built or in flight. Since then:
+  - **Google sign-in** (#34): optional, OIDC with PKCE and an exact-email
+    allow-list, beside password sign-in (`platform/auth/google.ts`, the web's
+    `app/auth/google/`, `docs/specs/google-sign-in/`).
+  - **Production hardening** (#38): `APP_ENV=production` refuses to start
+    without a Secure cookie and `TRUST_PROXY_HOPS`, or with demo routes on
+    (`platform/config/env.ts`); investigations are rate limited to 10 a minute
+    (`modules/investigations/routes.ts`).
+  - **Security headers** (#40): the web app sends them itself
+    (`apps/web/next.config.mjs`), so every host has them.
+  - **Docs split** (#41): `README.md` is the plain-language overview; setup,
+    design, the API and testing are in `docs/dev/`.
+- **Live at https://labops.onrender.com** (#39): one Render container runs the
+  API, worker and web app; Redis is Render Key Value, PostgreSQL is Neon.
+  Every boot resets the database and reseeds the `demo` operator and scenario
+  (`reset-demo.ts`, `seed-demo.ts`, #42). `render.yaml`, `deploy/render/`,
+  `docs/infra/DEPLOYMENT.md` §0.
+- **The VM path** (`docker-compose.prod.yml` behind Caddy, `scripts/deploy.sh`,
+  `backup.sh`, `restore.sh`; #38) was run end to end locally in #43, which
+  fixed eight bugs; it has never run on a real host.
+- **Keep docs matching the code.** When code changes, update the doc that
+  describes it in the same PR, and grep the docs for any path you rename.
 - **Open, owner's side only:** rotate the Gemini key, add the
   `GEMINI_API_KEY` repository secret and dispatch `llm-live.yml` once (#20);
   branch protection on `main`.
-- **What to do next is section 13.** Two gaps stand between this project and a
-  demonstration anyone can watch end to end: Google sign-in has never been run
-  against a real Google client, and no scenario yet drives correlation,
-  investigation, policy, approval and verified recovery in one pass.
+- **What to do next is section 13.** The one product gap left: Google sign-in
+  has never been run against a real Google client.
 - **`docs/GAPS.md` is the honesty file.** It states plainly what the project does
   not do, starting with the two that matter: it connects to no external lab
   platform, and recovery repairs nothing. Read it before describing this
   project's capabilities to anyone.
-- **`docs/infra/DEPLOYMENT.md` is the deployment context** (merged in #38): why a single VM rather than
-  a serverless platform, the three API changes a public deploy required, two
-  bugs found while building it, the free-tier risks, the hostname options, and
-  an explicit list of what has *not* been verified. Read it before deploying.
-- **Free deployment without a card:** Render (one container: API, worker, web)
-  plus Neon PostgreSQL; `render.yaml`, `deploy/render/`, `DEPLOYMENT.md` §0.
-  Boot seeds the `demo` operator and the demo scenario (`dist/seed-demo.js`).
+- **`docs/infra/DEPLOYMENT.md` is the deployment context**: the live Render
+  path (§0), the VM path, every decision, the free-tier risks, and what has
+  *not* been verified. Read it before deploying.
 - **No phase is planned.** Anything new starts with the plan-first loop in
   section 3.
 
@@ -71,8 +80,10 @@ Docs: `CLAUDE.md` (rules), `ARCHITECTURE.md` (design, with "How Phase N
 implements it" sections), `docs/specs/labops-copilot/SPEC.md` (what and why),
 `docs/specs/labops-copilot/PLAN.md` (phase plan, status line, and a recorded
 **deviations** paragraph per phase), `docs/infra/INFRA.md` (processes, env,
-CI, known gaps), `docs/dev/` (setup, endpoints, testing, roadmap), and
-`README.md` (the plain-language overview for a reader, kept non-technical). The git-ignored
+CI, known gaps), `docs/infra/DEPLOYMENT.md` (both deploy paths),
+`docs/GAPS.md` (what the project does not do), `docs/dev/` (setup, endpoints,
+testing, roadmap), and `README.md` (the plain-language overview for a reader,
+kept non-technical). The git-ignored
 `LabOps_Copilot_Project_Specification-2.md` at the root is internal context:
 **never copy it into any tracked file.**
 
@@ -80,12 +91,13 @@ CI, known gaps), `docs/dev/` (setup, endpoints, testing, roadmap), and
 
 ```
 apps/api/src/
-  index.ts  worker.ts  app.ts  db.ts  seed-operator.ts   entrypoints: start here
+  index.ts  worker.ts  app.ts  db.ts                       entrypoints: start here
+  seed-operator.ts  seed-demo.ts  reset-demo.ts           one-shot boot commands
   platform/   config http auth audit observability secrets jobs events-stream
   modules/    labs events incidents investigations policies recovery
               integrations metrics demo
 apps/api/test/   unit/  integration/  live/  fixtures/      (mirrors src/)
-apps/web/src/    app/ (Next.js pages)  components/  lib/
+apps/web/src/    app/ (Next.js pages)  components/  lib/  middleware.ts
 apps/web/test/   unit/ (Vitest)  e2e/journey.spec.ts (Playwright)
 ```
 
@@ -148,9 +160,9 @@ steps:**.
 2. Branch from `main`: `feat/LOC-<story>-<slug>` (fixes: `fix/<slug>`).
    Move the Jira story to In Progress.
 3. Implement; **one commit per subtask**, Conventional Commits, imperative
-   lowercase subject, body explaining why. **The owner allows direct pushes to
-   `main`** (changed 2026-10-15), so a branch and a PR are no longer required;
-   use whichever is proportionate to the change.
+   lowercase subject, body explaining why. **Bug fixes and code or file
+   changes go through a branch and a PR.** Only small, trivial changes (a
+   typo, a doc line) may be pushed straight to `main` (CLAUDE.md §10).
 4. Every behaviour ships with tests, including the negative case. **Mutation-
    check each safety test**: break the guard, confirm a test fails, restore
    (keep a backup copy; verify with `diff`/`git status` that it is restored).
@@ -159,7 +171,8 @@ steps:**.
    held row lock plus `pg_stat_activity` wait polling, see
    `apps/api/test/fixtures/incident.fixture.ts` `untilBlocked`).
 5. Update docs in the same PR: `PLAN.md` status line + a "Phase N deviations"
-   paragraph, `ARCHITECTURE.md`, `README.md`, `INFRA.md`.
+   paragraph, `ARCHITECTURE.md`, `docs/dev/`, `INFRA.md` (and `README.md` only
+   when what a reader sees changes).
 6. Run the full verification routine (section 5).
 7. **Adversarial self-review** of the whole diff before calling it ready:
    prove each suspect with a throwaway probe test (`test/integration/probe.int.test.ts`,
@@ -170,10 +183,8 @@ steps:**.
    the routine; update the PR body ("Self-review fixes"); `gh pr ready`.
 9. Jira: subtasks Done, story In Testing, a comment with PR link,
    deviations, verification numbers.
-10. **The owner merges, or it goes straight to `main`.** With a PR:
-    `gh pr merge N --rebase`, never `--delete-branch` (branches are kept). For a
-small change the owner allows a direct push instead. Then pull `main` and
-    move the story to Done.
+10. **The owner merges:** `gh pr merge N --rebase`, never `--delete-branch`
+    (branches are kept). Then pull `main` and move the story to Done.
 
 ## 4. Non-negotiable rules (condensed from CLAUDE.md)
 
@@ -209,11 +220,13 @@ small change the owner allows a direct push instead. Then pull `main` and
   `platform/` is cross-cutting and imports no module. No upward imports
   (`import/no-cycle` enforces cycles). The two read-only exceptions are noted in
   `ARCHITECTURE.md §4`.
-- **Vendor-neutral, by the owner's decision.** No vendor or company name
-  appears anywhere in code, comments, tests, docs, skills or UI. The only
-  mention is the README's closing "About this project" note. The integration
-  target is the generic "external lab platform" (provider id `lab-platform`).
-  Never imply that any existing platform lacks a capability.
+- **Vendor-neutral, by the owner's decision.** No lab-platform vendor or
+  prospective-employer company name appears in code, comments, tests, docs,
+  skills or UI; the only mention is the README's closing "About this project"
+  note. Names of tools and hosts the project uses (Google, Gemini, Render,
+  Neon, Caddy, Jira) are fine. The integration target is the generic "external
+  lab platform" (provider id `lab-platform`). Never imply that any existing
+  platform lacks a capability.
 - **Deny by default:** every API route needs a session unless it sets
   `config: { public: true }`; a test requests every registered route
   anonymously. Human audit actors come from `actorOf(request)`.
@@ -286,8 +299,8 @@ the verification event. It passes on a fresh stack and on a re-run.
 - **On a Windows box without Git Bash** (where Phases 11 and 13 were built),
   `scripts/*.sh` cannot run: the only `bash.exe` is the WSL launcher, with
   neither this project's Node nor its Docker context. CI's compose smoke job
-  runs `compose-smoke.sh` on every PR; on macOS or Linux the scripts run
-  directly. On Windows, a native
+  runs `compose-smoke.sh` on every push or PR to `main` that touches the api
+  or web; on macOS or Linux the scripts run directly. On Windows, a native
   `clean-db-check` was run by hand instead: create the throwaway database with
   `docker compose exec -T postgres psql`, export `TEST_DATABASE_URL` to it, run
   the suite twice, confirm `_prisma_migrations` exists there (that is the proof
@@ -311,8 +324,10 @@ the verification event. It passes on a fresh stack and on a re-run.
   password: edit root `.env`, then `docker compose up -d migrate` (log shows
   `outcome":"updated"`; re-seeding with the same password is a no-op).
   `npm run seed:operator -w @labops/api` does the same for the host dev loop.
-- Login is rate limited to 5/min per client IP, and all dashboard logins come
-  from the web server's IP, so it is effectively **global** (known gap). Too
+- Login (password and Google) is rate limited to 5/min and investigations to
+  10/min, keyed on the client IP. Every dashboard call reaches the API from the
+  web server, which forwards no client address, so both are effectively
+  **global** (known gap). Too
   many attempts shows "Too many sign-in attempts"; wait a minute. The audit
   trail (`auth.login` entries) tells "unknown username" from "wrong password".
 - **Prisma queries are lazy:** `void prisma.x.update(...)` never runs. Always
@@ -386,8 +401,9 @@ the verification event. It passes on a fresh stack and on a re-run.
 
 ## 7. What is built (phase by phase)
 
-All phases are merged to `main` (Phase 15 is PR #30). Jira: story
-for Phase N is `LOC-(5+N)`.
+All phases are merged to `main` (Phase 15 is PR #30), and so is the work after
+them (#31 to #43; #35 was closed unmerged). Jira: story for Phase N is
+`LOC-(5+N)`.
 
 | Phase | Jira | PR | What |
 |---|---|---|---|
@@ -405,9 +421,18 @@ for Phase N is `LOC-(5+N)`.
 | 14 | LOC-19 | #25 | Playwright journey in CI against compose; metrics derived from committed rows (`/api/metrics`) |
 | — | — | #26, #28 | UI revamp: shell, dark mode, design tokens; dashboard with KPI tiles, charts and a time window |
 | — | — | #29 | Fixes #22, #23, #24 (the fixture now shows the policy block), #27 |
-| 15 | LOC-20 | #30 | Delivery: one incident is one trace, opt-in Jaeger, README walkthrough; local-only |
+| 15 | LOC-20 | #30 | Delivery: one incident is one trace, opt-in Jaeger, README walkthrough; local-only at the time (deploys followed in #38, #39) |
 | — | — | #31 | Docs synced with the code after a full audit; `db:up` starts Redis; dead `withContext` removed |
 | — | — | #32 | Folder restructure (section 1b) and vendor-neutral naming; screenshots retaken from the README walkthrough |
+| — | — | #33, #36 | AGENTS.md handoff and follow-up list |
+| — | — | #34 | Optional Google sign-in: OIDC with PKCE, exact-email allow-list, `OperatorIdentity` |
+| — | — | #37 | `docs/GAPS.md`: what the project does not do |
+| — | — | #38 | VM production stack behind Caddy (`docker-compose.prod.yml`), investigation rate limit (10/min), `TRUST_PROXY_HOPS`, `APP_ENV=production` startup checks, deploy/backup/restore scripts |
+| — | — | #39 | Free single-container deploy on Render with Neon (`render.yaml`, `deploy/render/`, `seed-demo.ts`); live at https://labops.onrender.com |
+| — | — | #40 | Security headers sent by the web app (`next.config.mjs`) |
+| — | — | #41 | Plain-language README; the technical detail moved to `docs/dev/` |
+| — | — | #42 | Demo reset on every Render boot (`reset-demo.ts`, `DEMO_RESET_ON_BOOT`) |
+| — | — | #43 | VM stack run end to end locally; eight bugs fixed (exec bits, Caddy config, restore format, first-deploy backup, empty `CREDENTIALS_KEY`, stream via the web relay, Redis `noeviction`, health check) |
 
 Key behaviours worth knowing (details in `ARCHITECTURE.md`):
 
@@ -429,9 +454,9 @@ Key behaviours worth knowing (details in `ARCHITECTURE.md`):
   one poller per API process; heartbeat re-checks the session; web relays the
   stream (`app/api/events/stream/route.ts`) and `LiveRefresh` refreshes pages.
 
-Latest verified numbers (after Google sign-in): API unit 675, integration 232
-(twice on a fresh DB); web 139 tests; coverage api 98.5%, web 93.2%; fresh
-clone, compose smoke and the browser journey green on a fresh stack.
+Latest verified numbers (after #43): API unit 693, integration 238 (twice on
+a fresh DB); web unit 141; coverage api 98.4% lines, web 93.2%. The fresh
+clone, compose smoke and browser journey were last run green after #34.
 
 ## 8a. Phase 10 (PR #16): merged
 
@@ -462,7 +487,7 @@ with the schema accepted throughout. Gemini enforced **shape**, not **values**,
 and could not enforce length or range at all. Had this pipeline trusted
 `responseSchema` as its boundary, a model would have handed it a free-text
 recovery action. Zod rejected both. That is the argument for Phase 7's boundary
-restated with evidence. `ARCHITECTURE.md` §9 and `README.md` carry the
+restated with evidence. `ARCHITECTURE.md` §9 carries the
 enforcement table.
 
 **Also learned, from calling the API rather than reading the docs:** the docs
@@ -547,17 +572,24 @@ database, fresh clone, and compose smoke fresh and on a re-run. LOC-18 is Done.
 ## 9. What is left
 
 All phases (0 to 15) are done; `docs/specs/labops-copilot/PLAN.md` records
-each. Nothing is in flight. Open, owner's side only: rotate the Gemini key, add the `GEMINI_API_KEY` repository secret and
-dispatch `llm-live.yml` once (issue #20); branch protection on `main`.
-Anything new follows the plan-first loop above.
+each, and section 7 lists the work since. Nothing is in flight. Open: run
+Google sign-in against a real OAuth client (section 13a). Owner's side only:
+rotate the Gemini key, add the `GEMINI_API_KEY` repository secret and dispatch
+`llm-live.yml` once (issue #20); branch protection on `main`. Anything new
+follows the plan-first loop above.
 
 ## 10. Known gaps (recorded in INFRA / PLAN; do not rediscover them)
 
-- Login rate limit is effectively global behind the BFF (fails safe); Google
-  sign-in shares it.
-- Real Google sign-in is tested only by hand with an owner's OAuth client;
-  the suites sign ID tokens with a local key and stub the token endpoint.
-- `trustProxy` is off; behind a load balancer it must name the real hops.
+- The rate limits are effectively global (fail safe): login and Google
+  sign-in (5/min) and investigations (10/min) key on the client IP, and every
+  dashboard call reaches the API from the web server, which forwards no client
+  address. Fix: forward the client address from the web server and count it as
+  a trusted hop.
+- `TRUST_PROXY_HOPS` is unset locally (trusts nothing); `APP_ENV=production`
+  refuses to start without it. Both deploys set 1.
+- Google sign-in has never been run against a real OAuth client; the suites
+  sign ID tokens with a local key and stub the token endpoint. The web flow
+  cookie binds `state` and `nonce` to the browser, but it is unsigned.
 - A long-open transaction anywhere on the DB server delays all live updates.
 - Self-approval is allowed (single operator, no roles yet).
 - The sweep's status re-check under its row lock has no test (needs an
@@ -588,10 +620,15 @@ scripts/compose-smoke.sh       # against a running stack (needs the root .env lo
 scripts/clean-db-check.sh      # integration twice on a throwaway DB
 npm run test:e2e -w @labops/web    # Playwright journey; needs a fresh stack
 npm run test:live -w @labops/api   # real model; needs LLM_API_KEY, opt-in only
+npm run seed:operator -w @labops/api   # create or reset the operator (host loop)
+npm run seed:demo -w @labops/api       # ingest the demo scenario where demo routes are off
 docker compose -f docker-compose.yml -f compose.tracing.yml up --build -d   # + Jaeger :16686
 WEB_HOST_PORT=3010 docker compose up -d   # when another project holds :3000
 gh pr create --draft ... ; gh pr ready N ; gh pr checks N
 ```
+
+Production: `docs/infra/DEPLOYMENT.md` (Render: `render.yaml`, `deploy/render/`;
+VM: `docker-compose.prod.yml`, `scripts/deploy.sh`, `backup.sh`, `restore.sh`).
 
 ## 12. Jira reference
 
@@ -605,89 +642,60 @@ to In Testing with the PR and to Done after the owner merges.
 
 ## 13. Follow-up list — next session
 
-Everything on `main` is done and merged. These are the two gaps between this
-project and a demonstration someone can watch start to finish, plus the state
-the owner should know about. Read `CLAUDE.md` before touching any of it.
+Everything on `main` is done and merged. One product gap is left (13a), plus
+the state the owner should know about. Read `CLAUDE.md` before touching any of
+it.
 
 ### 13a. Google sign-in — configure and test, do not rebuild
 
-**The UI side already exists** (merged in `e5d980d`). Building it again would be
+**The UI side already exists** (merged in #34). Building it again would be
 wasted work:
 
 - `apps/web/src/app/auth/google/start/route.ts` and `.../callback/route.ts`
-- `apps/web/src/lib/google-flow.ts` (PKCE, state, nonce)
+- `apps/web/src/lib/google-flow.ts` (PKCE, state, nonce, constant-time state
+  check)
 - `login/page.tsx` offers the button only when `/api/auth/providers` reports
   Google configured; any failure hides it
 
 What is actually missing:
 
 1. **An OAuth client and the four env vars.** `GOOGLE_CLIENT_ID`,
-   `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` (must be
-   `http://localhost:3000/auth/google/callback` locally), `GOOGLE_ALLOWED_EMAILS`
-   in the **root** `.env`. All four or startup fails; empty counts as unset.
-2. **It has never been tested against a real Google client.** Every test signs an
+   `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `GOOGLE_ALLOWED_EMAILS`. All
+   four or startup fails; empty counts as unset. Locally they go in the root
+   `.env` with redirect `http://localhost:3000/auth/google/callback`; on the
+   live deploy, in the Render service's environment with redirect
+   `https://labops.onrender.com/auth/google/callback`.
+2. **It has never been run against a real Google client.** Every test signs an
    ID token with a local key and stubs the token endpoint. One manual run through
    a real browser is what is missing, and it is the primary goal.
-3. **Known design gap, decide before the demo.** `authorization-url` accepts
-   `state`, `codeChallenge` and `nonce` from the request body and stores nothing;
-   `POST /api/auth/google` then compares the token's nonce against the
-   *client-supplied* nonce. That proves the client repeated a value, so there is
-   **no login-CSRF protection** — which is what `state` exists for. PKCE still
-   protects against an interposer, which is a different threat. Options: accept
-   it for a local demo and record it in section 10, or fix it with server-side
-   storage in Redis. The login rate limiter already proves that pattern and Redis
-   is already there, so fixing it properly is the better answer.
+3. **Known limit, recorded in section 10.** The web server binds `state`,
+   the PKCE verifier and `nonce` to the browser in an httpOnly cookie scoped to
+   `/auth/google` and checks `state` in constant time on the callback, so the
+   browser flow has login-CSRF protection. The API endpoints themselves store
+   nothing and trust the values the web server sends, and the flow cookie is
+   unsigned; acceptable for this demo.
 
-### 13b. A scenario that drives the whole chain in one pass
+### 13b. Done: a scenario that drives the whole chain
 
-Every stage exists and is tested in isolation. None has been run as one
-demonstration, start to finish:
-
-```
-simulated lab failures
-  -> events ingested (validated, redacted, deduped, lab transitioned)
-  -> correlate job -> incident
-  -> AI investigation -> proposed actions
-  -> policy (7 steps) -> proposal awaiting approval
-  -> approval -> execute (policy re-checked) -> simulated recovery
-  -> verification -> resolved
-  -> every step in the audit trail, streamed live to the dashboard
-```
-
-**The gap is the data, not the code.** `modules/labs/simulator.ts` (`SCENARIOS`,
-reached by `POST /api/demo/scenarios/:name`) already produces labs, dependencies
-and failures, and it drives the backend end-to-end test. What is missing is a
-scenario *shaped* so the correlation engine fires for a real reason:
-
-- **Two or more labs must fail on one shared dependency.** `schema.prisma` says
-  this is the strongest correlation signal, so independent failures will not group
-  convincingly. Verify the scenario puts more than one lab on the same
-  `Dependency`.
-- Failure `occurredAt` values must land inside **one correlation window**, or the
-  anchor scoring will not cluster them.
-- It should produce at least one **policy-allowed** action so the run reaches
-  approval and a verified recovery, and ideally one **blocked** action too,
-  because the blocked path is the more interesting one to show and the fixture
-  provider is written to produce both.
-- **Seed and stable:** the same seed must give the same run, or the numbers in
-  `docs/dev/DESIGN.md` cannot be trusted.
-- Then walk it in the browser and retake the README screenshots from that run
-  (`AGENTS.md` §6: screenshots must come from a run that follows the walkthrough
-  exactly).
+The `training-event` scenario (`modules/labs/simulator.ts`) already does it: 40
+labs on a shared image registry, a burst of 12 failures inside one correlation
+window, one policy-allowed retry and one policy-blocked one. The compose smoke
+test drives it to verified resolution, and the live deploy seeds it on every
+boot. Kept as a heading only because other notes cite 13b.
 
 ### 13c. Known issues to record, not defects to fix
 
 - Everything in the demo is **simulated**. Recovery changes no real
   infrastructure and the UI must keep saying so on every page.
-- The login rate limit is effectively global behind the BFF (already section 10).
+- The rate limits are effectively global behind the BFF (already section 10).
 - Self-approval is allowed: one operator, no roles yet (already section 10).
-- If 13a's decision is to accept the OIDC gap, it belongs in section 10 with the
-  rest, stated plainly rather than left in a commit message.
+- The live demo is shared, and every boot resets it, so anything a visitor does
+  is gone after the service sleeps (`docs/infra/DEPLOYMENT.md` §0).
 
 ### 13d. Dropped, so nobody rebuilds it
 
 A **signed webhook receiver** (`POST /api/webhooks/mock-platform`, HMAC over the
 raw body) and a **mock lab platform app** were both built, then dropped on the
-owner's decision: not worth adding to a local-only prototype. PR #35 carried the
-receiver and was closed. The branches still exist if it is ever wanted, but
-nothing in the code, docs or tests refers to them.
+owner's decision: not worth adding to the prototype. PR #35 carried the
+receiver and was closed; its branch (`feat/webhook-receiver`) still exists on
+origin. Nothing in the code, docs or tests refers to either.

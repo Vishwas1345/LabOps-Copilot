@@ -15,9 +15,15 @@ demonstrable without touching real cloud resources.
 
 ```
 apps/api/src/modules/labs/
-  simulator.ts     scenario generation, failure injection
-  transitions.ts   legal Lab status transitions
-  service.ts       lab reads and lifecycle
+  simulator.ts            scenario generation, failure injection
+  failures.ts             ERROR_CATEGORIES, the contract correlation groups on
+  transitions.ts          legal Lab status transitions
+  recovery-simulator.ts   deterministic outcome of a simulated recovery
+  actions.ts              the recovery action allow-list (ACTION_TYPES)
+  service.ts              lab reads and lifecycle
+apps/api/src/modules/demo/
+  service.ts              runs a scenario through the real ingestion path
+  reset.ts                demo hosts only: empties the database at boot
 ```
 
 ## Procedure
@@ -33,8 +39,9 @@ apps/api/src/modules/labs/
    }
    ```
 
-2. **Use normalised error categories, never raw strings.** The enum is the
-   contract correlation depends on:
+2. **Use normalised error categories, never raw strings.** `ERROR_CATEGORIES`
+   (`labs/failures.ts`), kept equal to the database enum by a type assertion,
+   is the contract correlation depends on:
 
    ```
    PROVISION_TIMEOUT | NETWORK_CONFIG | PERMISSION_DENIED
@@ -59,8 +66,9 @@ apps/api/src/modules/labs/
    A scenario where everything succeeds demonstrates nothing.
 
 5. **Never import the simulator from the API or worker paths that handle real
-   provider data.** The simulator is one implementation behind the same
-   interface as a provider adapter.
+   provider data.** Simulated events enter through the same `ingestEvent` path
+   real provider events would; the simulator adapter only reports
+   capabilities.
 
 ## Lab state machine
 
@@ -99,7 +107,8 @@ An illegal transition throws identically in the API, the worker and the tests.
 
 ```bash
 npm run db:migrate && npm run db:generate
-npm run build -w @labops/api
+npm run lint && npm run typecheck && npm run test
+npm run test:integration -w @labops/api   # real Postgres + Redis
 ```
 
 Trigger the scenario twice and diff the resulting events. If they differ, the

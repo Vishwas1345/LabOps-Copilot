@@ -55,20 +55,23 @@ generic and imports no feature module. **The worker never serves HTTP.**
    the prior result instead of re-applying.
 
 5. **Persist job state in Postgres.** `JobExecution` mirrors queue state. If
-   Redis is flushed, business history survives and the worker reconciles
-   orphaned `running` rows on startup.
+   Redis is flushed, business history survives: the worker reconciles
+   `queued` and `running` rows older than `LEASE_MS` at startup and on every
+   tick (`platform/jobs/reconcile.ts`).
 
-6. **Fail loudly but bounded.** After `attempts` is exhausted: mark the row
-   `failed`, move the incident to `manual_review`, write an audit entry with a
-   redacted error summary. Never swallow an error into a log line only.
+6. **Fail loudly but bounded.** After `attempts` is exhausted the runner marks
+   the row `failed` and writes a `job.failed` audit entry with a redacted error
+   summary, then the job's `onExhausted` hook settles domain state in the same
+   transaction (investigate moves the incident to `manual_review`). Never
+   swallow an error into a log line only.
 
 ## Error handling rules
 
 - Redact before logging. An error summary in the DB is redacted, not the raw
   error.
 - Retriable vs permanent: a Zod failure from an LLM is **not** retriable — it is
-  a deterministic rejection and must mark the investigation `error` and leave
-  incident state untouched. See `CLAUDE.md §5`.
+  a deterministic rejection and must mark the investigation `error` and return
+  the incident to `open`, storing nothing from the answer. See `CLAUDE.md §5`.
 - A job must never hold a database transaction open while calling an external
   service.
 
@@ -83,7 +86,8 @@ generic and imports no feature module. **The worker never serves HTTP.**
 ## Verify
 
 ```bash
-npm run build -w @labops/api
+npm run lint && npm run typecheck && npm run test
+npm run test:integration -w @labops/api   # real Postgres + Redis
 ```
 
 Run the worker against real Redis and confirm the job actually executes. A unit

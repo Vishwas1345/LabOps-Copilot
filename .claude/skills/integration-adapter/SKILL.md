@@ -72,7 +72,8 @@ and delivery records.
 
 - Submitted **server-side over HTTPS**. Never through a URL, never from browser
   storage, never in a `NEXT_PUBLIC_*` variable.
-- Encrypted at rest with an envelope key from the environment.
+- Sealed at rest with AES-256-GCM using `CREDENTIALS_KEY` from the environment
+  (`platform/secrets/crypto.ts`).
 - **Never returned by any endpoint. Never logged. Never in an AI context.**
 - Least privilege and read-only by default.
 - Real recovery actions against a live provider stay disabled behind a
@@ -81,7 +82,8 @@ and delivery records.
 
 ## Webhook receiver
 
-Inbound deliveries are untrusted input:
+None exists today; this applies only once a receiver is verified against a
+provider's documentation and built. Inbound deliveries are untrusted input:
 
 1. Verify the **documented** signature or token. If signing is unsupported,
    apply the strongest documented authentication and record the limitation.
@@ -95,6 +97,8 @@ debugging, redact it and time-box it.
 
 ## Mandatory negative tests
 
+The three webhook cases apply once a receiver exists:
+
 - Unsigned / wrongly signed webhook → rejected, delivery logged as rejected
 - Replayed webhook inside the window → deduplicated, no second incident
 - Oversized body → rejected before parsing
@@ -105,7 +109,8 @@ debugging, redact it and time-box it.
 ## Verify
 
 ```bash
-npm run build -w @labops/api
+npm run lint && npm run typecheck && npm run test
+npm run test:integration -w @labops/api   # real Postgres + Redis
 ```
 
 If any live capability is genuinely verified and implemented, update

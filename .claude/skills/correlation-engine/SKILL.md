@@ -94,7 +94,8 @@ This is the single most important test in the project:
 ## Verify
 
 ```bash
-npm run build -w @labops/api
+npm run lint && npm run typecheck && npm run test
+npm run test:integration -w @labops/api   # real Postgres + Redis
 ```
 
 Run correlation over a seeded scenario and read the persisted `IncidentLab`

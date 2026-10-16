@@ -127,8 +127,8 @@ after.
 **Nothing is finished until this passes.**
 
 ```bash
-npm run build -w @labops/api        # backend typecheck
-npx tsc --noEmit -p apps/web        # frontend typecheck
+npm run lint && npm run typecheck && npm run test   # both workspaces
+npm run test:integration -w @labops/api             # real Postgres + Redis
 ```
 
 Plus the tests for what you changed, run against real infrastructure where the
@@ -139,7 +139,8 @@ layer requires it (integration tests use real Postgres + Redis — see
 
 - [ ] A test for the new behaviour
 - [ ] Its **negative** case — see `.claude/skills/negative-case-testing`
-- [ ] Tests pass twice in a row from a clean database (proves determinism)
+- [ ] Tests pass twice in a row from a clean database (proves determinism;
+      `scripts/clean-db-check.sh`)
 - [ ] No test output contains a secret
 - [ ] `CLAUDE.md §12` definition of done, item by item
 

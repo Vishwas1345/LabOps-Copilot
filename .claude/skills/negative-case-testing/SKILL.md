@@ -9,7 +9,7 @@ description: Use when writing or reviewing any test in this repository, and befo
 
 Read `CLAUDE.md §8` and `CLAUDE.md §12`.
 
-**This project's interview value is the failure paths.** A feature with only a
+**This project is judged on its failure paths.** A feature with only a
 happy-path test is incomplete, regardless of how well the happy path works.
 
 ## Rules for every test
@@ -40,7 +40,7 @@ happy-path test is incomplete, regardless of how well the happy path works.
 - Prompt injection inside event text → inert; does not change the proposed
   action or the schema honoured
 - Model names a lab outside the incident → target discarded
-- Timeout / refusal → incident stays `open`
+- Timeout / refusal → investigation `error`, incident back to `open`
 
 ### Policy and approval
 
@@ -101,4 +101,5 @@ Before declaring work complete:
 - [ ] The behaviour has its **negative** test
 - [ ] Tests are deterministic and pass twice in a row from a clean database
 - [ ] No test output contains a secret
-- [ ] `npm run build -w @labops/api` passes
+- [ ] `npm run lint && npm run typecheck && npm run test` passes, and
+      `scripts/clean-db-check.sh` for integration tests

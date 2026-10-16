@@ -8,8 +8,9 @@ description: Use when adding a new executable recovery action, changing policy e
 ## Preconditions
 
 Read `CLAUDE.md §6` (recovery actions) and `ARCHITECTURE.md §10` (safety model).
-This is the highest-risk surface in the repository. A mistake here is a real
-side effect on real infrastructure.
+This is the highest-risk surface in the repository. Every action is simulated
+today, but a mistake here would be a real side effect once a live provider
+exists.
 
 ## The one rule
 
@@ -20,22 +21,29 @@ model-supplied input, stop — that action does not exist and must not be built.
 ## Where things go
 
 ```
-apps/api/src/modules/labs/actions.ts   the ActionType allow-list enum
-apps/api/src/modules/policies/         pure evaluator: the seven steps, ACTION_POLICIES,
-                               preconditions, retry limits, cooldown
-apps/api/src/modules/recovery/         propose.ts, approve.ts (approve/reject),
-                               expire.ts, jobs/execute.job.ts (revalidate, act,
-                               verify)
+apps/api/src/modules/labs/actions.ts              ACTION_TYPES, the allow-list
+apps/api/src/modules/labs/recovery-simulator.ts   the simulated outcome of each action
+apps/api/src/modules/policies/                    pure evaluator: the seven steps,
+                                                  ACTION_POLICIES, preconditions,
+                                                  retry limits, cooldown
+apps/api/src/modules/recovery/services/           propose.ts, approve.ts
+                                                  (approve/reject), expire.ts
+apps/api/src/modules/recovery/jobs/execute.job.ts revalidate, act, verify
 ```
 
 ## Procedure
 
-1. **Add the action to the enum**, and in the same change:
-   - add it to the allow-list table in `ARCHITECTURE.md §10`
-   - add it to the policy engine
-   - add it to the closed enum in the AI output schema (`ai-investigation`)
+1. **Add the action everywhere it is enumerated**, in the same change:
+   - `ACTION_TYPES` in `labs/actions.ts` **and** the Prisma `ActionType` enum
+     with its migration (a type assertion in `labs/actions.ts` fails the
+     typecheck if they differ)
+   - an entry in `ACTION_POLICIES` (`policies/actions.ts`)
+   - its row in the allow-list table in `ARCHITECTURE.md §10`
+   - its simulated outcome and verification (`labs/recovery-simulator.ts`,
+     `recovery/jobs/execute.job.ts`)
 
-   Missing any one of the three is an incomplete change.
+   The AI output schema and prompt read `ACTION_TYPES`, so they pick the action
+   up without an edit. Missing any of the rest is an incomplete change.
 
 2. **Implement preconditions and rate limits in `policies/`.** Per-action
    attempt caps and cooldown windows are data, not scattered `if` statements.
@@ -91,7 +99,8 @@ The negative suite is not optional for this module:
 ## Verify
 
 ```bash
-npm run build -w @labops/api
+npm run lint && npm run typecheck && npm run test
+npm run test:integration -w @labops/api   # real Postgres + Redis
 ```
 
 Execute the action against a seeded scenario and read the full audit trail. Every
