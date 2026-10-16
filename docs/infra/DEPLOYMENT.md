@@ -49,15 +49,23 @@ memory figures below were measured locally under the same caps, not on the host.
 - **Any process exiting stops the container**, so the platform restarts all
   three together rather than serving a site whose worker is dead.
 - **750 free hours a month**, shared: exactly one always-on service fits.
-- **Every boot starts from an empty database** (`DEMO_RESET_ON_BOOT=true` in
-  `render.yaml`): `dist/reset-demo.js` drops the schema, then the boot migrates
-  and seeds. A shared demo would otherwise stay resolved after its first
-  visitor and age out of the dashboard's 7-day window. Anything a visitor did
-  is gone after the service sleeps, so there is nothing to back up. The reset
-  needs both `DEMO_RESET_ON_BOOT` and `APP_ENV=production`, and refuses,
-  failing the boot, if any lab or event is not simulated; it drops the schema
-  because the audit trail's triggers block deleting rows
+- **A boot resets an idle demo** (`DEMO_RESET_ON_BOOT=true` in `render.yaml`):
+  `dist/prepare-demo.js` drops the schema if nothing was audited in the last
+  `DEMO_RESET_IDLE_MINUTES` (10), then migrates and seeds. Waking from sleep
+  means at least 15 idle minutes, so every wake starts fresh; a deploy beside a
+  container in use keeps the demo. A shared demo would otherwise stay resolved
+  after its first visitor and age out of the dashboard's 7-day window. Anything
+  a visitor did is gone after the service sleeps, so there is nothing to back
+  up. The reset needs both `DEMO_RESET_ON_BOOT` and `APP_ENV=production`, and
+  refuses, failing the boot, if any lab or event is not simulated; it drops the
+  schema because the audit trail's triggers block deleting rows
   (`apps/api/src/modules/demo/reset.ts`).
+- **Boots take a lock.** A deploy runs the new container beside the live one on
+  the same database. Reset, migrate and both seeds run under one Postgres
+  advisory lock, so two boots never interleave; the second sees the first's
+  fresh demo and keeps it. Without the lock, the 2026-10-16 deploy failed: each
+  reset dropped the schema under the other, and the new container's operator
+  seed found no `Operator` table.
 
 **Standing it up:**
 
@@ -149,6 +157,7 @@ The rest is in `docs/GAPS.md`.
 
 1. Read `AGENTS.md` and `CLAUDE.md`. `AGENTS.md` §13 is the current task list.
 2. Read `docs/GAPS.md` before describing this project's capabilities to anyone.
-3. A push to `main` goes live once its CI passes, and every boot resets the demo.
+3. A push to `main` goes live once its CI passes, and a boot after 10 idle
+   minutes resets the demo.
 4. The open item is Google sign-in against a real OAuth client (`AGENTS.md`
    §13a): every test so far stubs Google.

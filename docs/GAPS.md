@@ -106,8 +106,9 @@ platform. The *action* would not.
 - **No alerting or notification of any kind.** No email, no chat integration, no
   webhook outbound. An incident created at 2am is visible only to whoever opens
   the dashboard. `/api/metrics` reports a long open transaction if someone looks.
-- **No backups.** The live deploy has no backup step, by design: every boot
-  wipes and reseeds its demo database, so there is nothing to keep.
+- **No backups.** The live deploy has no backup step, by design: a boot after
+  10 idle minutes wipes and reseeds its demo database, so there is nothing to
+  keep.
 
 ## 4. Data handling
 
@@ -174,10 +175,11 @@ platform. The *action* would not.
 - **It sleeps after 15 minutes without a request**, worker included. The first
   visit after that waits for a cold boot (about 2.5 minutes, measured locally
   under the same 0.1 CPU cap, not on the host).
-- **The demo resets on every boot.** Each boot (a wake from sleep or a redeploy)
-  drops and reseeds the demo database (`DEMO_RESET_ON_BOOT`), so anything a
-  visitor did is gone after the service sleeps. Every visitor shares the one
-  `demo` login.
+- **The demo resets when idle.** A boot after 10 idle minutes (every wake from
+  sleep) drops and reseeds the demo database (`DEMO_RESET_ON_BOOT`), so
+  anything a visitor did is gone after the service sleeps. A deploy during
+  that idle stretch resets it too, under the container being replaced. Every
+  visitor shares the one `demo` login.
 - **The demo's AI is the fixture**, not a model (`LLM_PROVIDER=fixture`), so
   every investigation on the live site is identical by design.
 - **Render deploys from `main` only after every CI check passes**, including a

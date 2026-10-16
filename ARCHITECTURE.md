@@ -182,8 +182,8 @@ apps/api/
     seed-operator.ts    one-shot: creates or resets the demo operator
     seed-demo.ts        one-shot: ingests the demo scenario where the demo
                         routes are off (APP_ENV=production); replay-safe
-    reset-demo.ts       one-shot, demo hosts only: drops the schema before a
-                        boot migrates and seeds again (modules/demo/reset.ts)
+    prepare-demo.ts     one-shot, demo hosts only: under a boot lock, resets an
+                        idle demo, migrates and seeds (modules/demo/reset.ts)
 
     platform/           cross-cutting plumbing; holds no business rules
       config/           env parsing (Zod), feature flags
@@ -1005,7 +1005,7 @@ sent; a field added to a view by mistake fails the request with a 500.
 | Wrong client address | `TRUST_PROXY_HOPS` sets how many proxy hops Fastify trusts for the client IP (unset trusts none). The deploy sets 1 |
 | Clickjacking, sniffing, downgrade | The web app sends `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`, `nosniff`, `Referrer-Policy` and HSTS on every response, and no `X-Powered-By` (`next.config.mjs`), so every host sends them, not only one behind a proxy |
 | Demo endpoints in production | `/api/demo/*` gated behind a flag that is off outside local/demo environments. `APP_ENV=production` refuses to start if `DEMO_ENABLED` is true, the session cookie is not Secure, or `TRUST_PROXY_HOPS` is unset |
-| Demo reset wiping a real database | `reset-demo` runs only with both `DEMO_RESET_ON_BOOT=true` and `APP_ENV=production`, and refuses any database holding a lab or event that is not simulated (`modules/demo/reset.ts`) |
+| Demo reset wiping a real database, or a demo in use | `prepare-demo` runs only with both `DEMO_RESET_ON_BOOT=true` and `APP_ENV=production`, refuses any database holding a lab or event that is not simulated, keeps a demo with activity in the last `DEMO_RESET_IDLE_MINUTES` (10), and serialises concurrent boots on an advisory lock (`modules/demo/reset.ts`) |
 
 ---
 
@@ -1155,7 +1155,7 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | Optional Google sign-in: OIDC code flow, PKCE, exact-email allow-list, `OperatorIdentity` | Done (after Phase 15) | Never run against a real Google client |
 | Hardening: `APP_ENV=production` startup checks, `TRUST_PROXY_HOPS`, investigation rate limit, security headers from the web app | Done (after Phase 15) | Forward the client address from the web server, so rate limits are per operator |
 | Free deploy on Render + Neon, single container, live | Done (after Phase 15) | — |
-| Demo reset on every boot of the live deploy (`reset-demo`, guarded) | Done (after Phase 15) | — |
+| Demo reset on the live deploy when idle, under a boot lock (`prepare-demo`, guarded) | Done (after Phase 15) | — |
 
 Build order follows the spec's phases: vertical slice first — simulator →
 events → correlation → investigation → recovery → verification — so a working

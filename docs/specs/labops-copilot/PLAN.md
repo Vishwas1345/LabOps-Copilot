@@ -535,6 +535,11 @@ Work that followed the phases, one pull request each:
   `docs/dev/`.
 - **#42 Demo reset on every Render boot:** `reset-demo.ts`, so a shared demo
   never stays resolved or ages out of the dashboard.
+- **The reset made deploy-safe:** a deploy overlaps two containers on one
+  database, and two unlocked resets failed one on 2026-10-16. `prepare-demo.ts`
+  now resets only an idle demo (10 minutes) and runs reset, migrate and seeds
+  under a Postgres advisory lock; the deploy image smoke boots two containers
+  at once to prove it.
 - **#43 The self-hosted stack made to work:** run end to end locally for the
   first time; six blocking bugs fixed.
 - **Afterwards: the self-hosted stack removed.** The VM path (#38, #43) went,
