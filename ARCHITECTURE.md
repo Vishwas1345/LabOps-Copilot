@@ -128,9 +128,8 @@ flowchart TB
 | `postgres` | 5432 | All durable business state | — |
 | `redis` | 6379 | Queue transport, sign-in and investigation rate-limit counters | Be the source of truth for business state |
 
-This is the local layout. The two production shapes differ: the VM stack adds
-a Caddy proxy in front of `web`, and the Render deploy runs `api`, `worker` and
-`web` as three processes in one container (§16).
+This is the local layout. The deploy runs `api`, `worker` and `web` as three
+processes in one container (§16).
 
 ### Why SSE and not WebSockets
 
@@ -1003,7 +1002,7 @@ sent; a field added to a view by mistake fails the request with a 500.
 | Credential guessing | scrypt hashing; password and Google sign-in each limited to 5 a minute through Redis (fails closed); unknown user and wrong password answer identically and cost the same hash time. The limit keys on the client IP, but every sign-in reaches the API from the web server, which forwards no client address, so in practice the limit is shared by all operators |
 | Unauthorised approval | Audit `actorId` comes from the session, never the request body; RBAC if time permits |
 | Resource exhaustion | Body size limits; sign-in limited to 5 a minute and investigations (the only route that can spend money) to 10 a minute, both through Redis and failing closed, and both shared by all operators in practice (see above); bounded evidence, bounded queues and retries, timeouts on all outbound calls |
-| Wrong client address | `TRUST_PROXY_HOPS` sets how many proxy hops Fastify trusts for the client IP (unset trusts none). Both deploys set 1 |
+| Wrong client address | `TRUST_PROXY_HOPS` sets how many proxy hops Fastify trusts for the client IP (unset trusts none). The deploy sets 1 |
 | Clickjacking, sniffing, downgrade | The web app sends `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`, `nosniff`, `Referrer-Policy` and HSTS on every response, and no `X-Powered-By` (`next.config.mjs`), so every host sends them, not only one behind a proxy |
 | Demo endpoints in production | `/api/demo/*` gated behind a flag that is off outside local/demo environments. `APP_ENV=production` refuses to start if `DEMO_ENABLED` is true, the session cookie is not Secure, or `TRUST_PROXY_HOPS` is unset |
 | Demo reset wiping a real database | `reset-demo` runs only with both `DEMO_RESET_ON_BOOT=true` and `APP_ENV=production`, and refuses any database holding a lab or event that is not simulated (`modules/demo/reset.ts`) |
@@ -1065,9 +1064,8 @@ whether a commit touched `apps/web`, `apps/api`, or shared root tooling, then
 dispatches only the matching pipeline via `workflow_call`. A frontend-only
 change never starts the backend pipeline. Root manifests and the ESLint config
 map to **both** services, because a shared-tooling change can break either.
-Deploy files (`deploy/`, `render.yaml`, `docker-compose.prod.yml`, `scripts/`)
-match no filter, so they start no pipeline, and CI never builds
-`deploy/render/Dockerfile`.
+Deploy files (`deploy/`, `render.yaml`, `scripts/`) match no filter, so they
+start no pipeline, and CI never builds `deploy/Dockerfile`.
 
 `api.yml` — build (`tsc` plus `prisma validate`), lint, unit tests, integration
 tests against real PostgreSQL and Redis service containers, coverage with
@@ -1095,25 +1093,21 @@ Gates are split by ownership: checks that belong to one job run in that job
 (lint, coverage thresholds), and checks that span the pipeline run in the gate
 (secret scan, dependency audit, required-script contract).
 
-**Production shapes** — two, both with `APP_ENV=production` (Secure cookie,
+**Production shape** — one, with `APP_ENV=production` (Secure cookie,
 `TRUST_PROXY_HOPS=1`, demo routes off). `docs/infra/DEPLOYMENT.md` has the
 steps and the costs.
 
 - **Render (live at https://labops.onrender.com).** One free web service runs
-  `deploy/render/Dockerfile`: `start.sh` resets the demo database
+  `deploy/Dockerfile`: `start.sh` resets the demo database
   (`DEMO_RESET_ON_BOOT`), migrates, seeds the operator, starts the worker, the
   API (on 127.0.0.1 only) and the web app as three processes under `tini`, then
   ingests the demo scenario (`seed-demo`). Any process exiting stops the
   container, so all three restart together. Redis is Render Key Value
   (private, `noeviction`); PostgreSQL is Neon. TLS and the hostname are
-  Render's. Every push to `main` redeploys it.
-- **Single VM (`docker-compose.prod.yml`).** Caddy is the only published port
-  and proxies everything, the live stream included, to `web`; postgres, redis
-  (`noeviction`) and the API have no ports. Deployed by hand with
-  `scripts/deploy.sh`, backed up by `backup.sh`. Run end to end locally only;
-  never on a public host.
+  Render's. Every push to `main` redeploys it. 512 MB holds all three
+  processes (about 145 MB measured locally under the same cap).
 
-Not configured in either: an OTel export backend, a platform secret store, or
+Not configured: an OTel export backend, a platform secret store, or
 a database role restricted to the app's schema.
 
 ---
@@ -1158,7 +1152,6 @@ Phases refer to `docs/specs/labops-copilot/PLAN.md`.
 | React Flow dependency graph | Dropped (owner decision) | — |
 | Optional Google sign-in: OIDC code flow, PKCE, exact-email allow-list, `OperatorIdentity` | Done (after Phase 15) | Never run against a real Google client |
 | Hardening: `APP_ENV=production` startup checks, `TRUST_PROXY_HOPS`, investigation rate limit, security headers from the web app | Done (after Phase 15) | Forward the client address from the web server, so rate limits are per operator |
-| Production stack on one VM: `docker-compose.prod.yml`, Caddy, deploy, backup and restore scripts | Done; run end to end locally | Never stood up on a public host |
 | Free deploy on Render + Neon, single container, live | Done (after Phase 15) | — |
 | Demo reset on every boot of the live deploy (`reset-demo`, guarded) | Done (after Phase 15) | — |
 
@@ -1201,5 +1194,4 @@ end-to-end workflow exists before breadth is added.
 5. **Retention** — how long to keep raw event payloads. Default is metadata and
    redacted excerpts only, with raw retention opt-in and time-boxed.
 6. **Deployment target** — *resolved:* Phase 15 shipped local-only; afterwards
-   a free Render + Neon deploy went live, and a single-VM stack behind Caddy is
-   documented (§16).
+   a free Render + Neon deploy went live (§16).

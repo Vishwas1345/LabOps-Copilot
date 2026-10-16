@@ -537,6 +537,9 @@ Work that followed the phases, one pull request each:
   never stays resolved or ages out of the dashboard.
 - **#43 The self-hosted stack made to work:** run end to end locally for the
   first time; six blocking bugs fixed.
+- **Afterwards: the self-hosted stack removed.** The VM path (#38, #43) went,
+  because the Render deploy alone serves the need; the hardening it brought
+  stays.
 
 `docs/infra/DEPLOYMENT.md` records how each deploy runs and what is unverified.
 
@@ -574,5 +577,5 @@ Work that followed the phases, one pull request each:
 | 2 | **LLM provider not chosen.** | *Resolved in Phase 11:* Gemini over plain `fetch`, opt-in; the fixture provider stays the default. |
 | 3 | **Correlation window boundaries.** A burst that straddles two time buckets could split into two incidents. | Correlate against the current and previous bucket; anchor the window key on the earliest event. Covered by a dedicated test in Phase 5. |
 | 4 | **Auth depth.** Session auth for seeded operators covers the spec's "simple operator role". | RBAC only if time remains after Phase 15. Google sign-in was added after Phase 15; RBAC is still not built. |
-| 5 | **Deployment target.** | Decided in Phase 15: local-only. *Reversed after Phase 15:* Render with Neon (live), plus a self-hosted compose stack behind Caddy; see `docs/infra/DEPLOYMENT.md`. |
+| 5 | **Deployment target.** | Decided in Phase 15: local-only. *Reversed after Phase 15:* Render with Neon (live); see `docs/infra/DEPLOYMENT.md`. |
 | 6 | **Scope creep from the "nice to have" items** (React Flow, Grafana, RBAC). | Keep them in Phase 15 or later; none is in the §21 success criteria. |

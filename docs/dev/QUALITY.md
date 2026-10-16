@@ -65,8 +65,8 @@ The api and web pipelines each end in a quality gate that runs even when an upst
 failed (`if: always()`): a secret scan, a dependency audit, and a check that
 the scripts the pipeline depends on still exist.
 
-A change only to `deploy/`, `render.yaml`, `docker-compose.prod.yml` or
-`scripts/` triggers no pipeline, and CI never builds `deploy/render/Dockerfile`:
+A change only to `deploy/`, `render.yaml` or `scripts/` triggers no pipeline,
+and CI never builds `deploy/Dockerfile`:
 the live deploy's image is built by Render on merge, not in CI.
 
 ### Dependency audit
@@ -98,7 +98,7 @@ done.
 | 13 | Integration settings and sealed secrets, adapter-gated (no live connector: the gate is closed) |
 | 14 | Browser journey in CI, measured metrics |
 | 15 | Delivery: one incident as one trace, the opt-in trace viewer, this walkthrough |
-| After 15 | Optional Google sign-in; a production stack behind Caddy; the free live deploy on Render and Neon, reset on every boot ([`docs/infra/DEPLOYMENT.md`](../infra/DEPLOYMENT.md) §0); security headers from the web app |
+| After 15 | Optional Google sign-in; the free live deploy on Render and Neon, reset on every boot ([`docs/infra/DEPLOYMENT.md`](../infra/DEPLOYMENT.md) §0); security headers from the web app |
 
 ---
 
@@ -112,9 +112,8 @@ for a deployment meant to hold real work, beyond the live demo
   an exact-email allow-list is configured (`AGENTS.md` section 13a). That is the
   real gate on a public deployment.
 - **One host is one point of failure.** The live deploy runs the API, the
-  worker and the web app in one container (`docs/infra/DEPLOYMENT.md` §0); the
-  VM path puts everything, backups included, on one machine. Neither has
-  failover.
+  worker and the web app in one container (`docs/infra/DEPLOYMENT.md` §0), with
+  no second instance and no failover.
 - **The live demo keeps nothing.** It wipes and reseeds its database on every
   boot, so it is a demonstration, not a place to keep work.
 - **Rate limits are shared.** Sign-in and investigation limits see the web

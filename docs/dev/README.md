@@ -11,7 +11,7 @@ the code.
 | [QUALITY.md](QUALITY.md) | Testing, observability, CI, the dependency audit, roadmap, what is left before production, non-goals |
 | [ARCHITECTURE.md](../../ARCHITECTURE.md) | The full design and every trade-off |
 | [infra/INFRA.md](../infra/INFRA.md) | Processes, ports, containers, env vars, migrations, CI |
-| [infra/DEPLOYMENT.md](../infra/DEPLOYMENT.md) | The live deploy (Render and Neon) and the VM path |
+| [infra/DEPLOYMENT.md](../infra/DEPLOYMENT.md) | The live deploy (Render and Neon) |
 | [specs/](../specs/) | What each feature is meant to do, and the build plan |
 | [GAPS.md](../GAPS.md) | What the project does not do |
 | [CLAUDE.md](../../CLAUDE.md), [AGENTS.md](../../AGENTS.md) | Rules and context for anyone, human or agent, changing the code |

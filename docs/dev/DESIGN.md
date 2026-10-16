@@ -190,7 +190,7 @@ rather than a principle.
 | Metrics | SQL over committed rows | Served by `/api/metrics`; never estimated |
 | Tests | Vitest, Playwright | Unit, integration and E2E |
 | Delivery | Docker, Docker Compose, GitHub Actions | Reproducible environment and CI |
-| Hosting | Render (one container: api, worker, web), Render Key Value, Neon PostgreSQL | The live demo; a VM stack behind Caddy is the self-hosted path (`docs/infra/DEPLOYMENT.md`) |
+| Hosting | Render (one container: api, worker, web), Render Key Value, Neon PostgreSQL | The live demo (`docs/infra/DEPLOYMENT.md`) |
 
 Node.js is the only backend runtime — no Python services. The architecture is a
 modular monolith with a separate worker process rather than microservices;

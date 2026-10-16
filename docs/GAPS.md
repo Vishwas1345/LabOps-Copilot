@@ -90,7 +90,7 @@ platform. The *action* would not.
   sent; that matters only where the API is directly reachable (the dev compose
   on port 4000).
 - **`TRUST_PROXY_HOPS` is required in production but has nothing to act on.**
-  Both deploys set it to 1 to pass the startup check, but the API sits behind
+  The deploy sets it to 1 to pass the startup check, but the API sits behind
   the web server, which sends no `X-Forwarded-For`, so the address it sees is
   always the web server's. Making the limits per person means forwarding the
   client address from the web server and trusting that hop.
@@ -106,11 +106,8 @@ platform. The *action* would not.
 - **No alerting or notification of any kind.** No email, no chat integration, no
   webhook outbound. An incident created at 2am is visible only to whoever opens
   the dashboard. `/api/metrics` reports a long open transaction if someone looks.
-- **Backups exist only on the VM path.** `scripts/backup.sh` dumps before every
-  deploy and prunes to the seven newest; `scripts/restore.sh` proves a dump into
-  a scratch database (both run end to end locally). There is no second copy off
-  the host, so losing the VM loses everything in it. The live Render deploy has
-  no backup at all, by design: every boot wipes and reseeds its demo database.
+- **No backups.** The live deploy has no backup step, by design: every boot
+  wipes and reseeds its demo database, so there is nothing to keep.
 
 ## 4. Data handling
 
@@ -184,24 +181,15 @@ platform. The *action* would not.
 - **The demo's AI is the fixture**, not a model (`LLM_PROVIDER=fixture`), so
   every investigation on the live site is identical by design.
 - **Render redeploys on every push to `main`**, gated only by what CI checks,
-  and CI never builds `deploy/render/Dockerfile`.
-- **The VM path is documented and run end to end locally, never on a real
-  host.** `docker-compose.prod.yml` runs everything on one machine behind Caddy,
-  deployed by hand with `./scripts/deploy.sh`; no image registry and no
-  automated rollout. A real host, a public certificate and public traffic are
-  untested.
+  and CI never builds `deploy/Dockerfile`.
 - **A production boot refuses unsafe configuration.** `APP_ENV=production`
   makes the API fail at startup if the session cookie is not Secure, if no proxy
   hop count is given, or if demo routes are enabled. A Secure cookie over plain
   http is never sent, so that combination means nobody can sign in at all.
-- **Secrets live in the environment.** On Render they are service variables in
-  its dashboard, and Render generates `CREDENTIALS_KEY`; on the VM path they sit
-  in `.env.production`, mode 600 and git-ignored. A secret in the environment
+- **Secrets live in the environment.** They are service variables in Render's
+  dashboard, and Render generates `CREDENTIALS_KEY`. A secret in the environment
   is readable by anything that can read the process, and rotating
   `CREDENTIALS_KEY` means re-sealing every stored credential.
-- **VM path only: the hostname may be a shared one.** With no purchased domain,
-  the certificate is issued for an IP-based hostname from a free resolver, which
-  thousands of sites share; a certificate can occasionally fail to issue.
 - **Branch protection on `main` is off.**
 - **No incident list "likely cause" column.** The detail page shows the AI
   diagnosis; the list does not, because it would need an upward import or a
