@@ -18,6 +18,7 @@ export default defineConfig({
         'src/index.ts',
         'src/worker.ts',
         'src/seed-operator.ts',
+        'src/seed-demo.ts',
       ],
       thresholds: {
         lines: 70,
