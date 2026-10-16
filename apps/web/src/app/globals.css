@@ -105,3 +105,76 @@
 body {
   @apply bg-background text-foreground antialiased;
 }
+
+/* Motion: entrances, the confidence gauge and evidence highlights. Plain CSS so
+   server components animate without client JavaScript. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes gauge-fill {
+  from {
+    stroke-dashoffset: var(--gauge-length);
+  }
+}
+
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes flash {
+  0%,
+  40% {
+    background-color: var(--info-bg);
+    box-shadow: inset 3px 0 0 var(--info);
+  }
+}
+
+@keyframes ping-soft {
+  75%,
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+.animate-rise {
+  animation: rise 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.animate-gauge {
+  animation: gauge-fill 1100ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.animate-grow-x {
+  transform-origin: left;
+  animation: grow-x 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.animate-ping-soft {
+  animation: ping-soft 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* A cited evidence link jumps to its event, which flashes so the eye lands on it. */
+.evidence-row {
+  scroll-margin-top: 6rem;
+}
+
+.evidence-row:target {
+  animation: flash 1.8s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise,
+  .animate-gauge,
+  .animate-grow-x,
+  .animate-ping-soft,
+  .evidence-row:target {
+    animation: none;
+  }
+}
