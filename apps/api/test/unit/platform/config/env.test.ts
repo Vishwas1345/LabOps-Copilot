@@ -185,6 +185,18 @@ describe('loadConfig', () => {
   });
 });
 
+describe('CREDENTIALS_KEY', () => {
+  // The production compose passes an empty string when the key is left out.
+  it('treats an empty key as unset', () => {
+    expect(loadConfig({ ...VALID, CREDENTIALS_KEY: '' }).CREDENTIALS_KEY).toBeUndefined();
+  });
+
+  // Negative: a key of the wrong length must never be accepted.
+  it('refuses a key that is not 32 bytes', () => {
+    expect(() => loadConfig({ ...VALID, CREDENTIALS_KEY: Buffer.alloc(16).toString('base64') })).toThrow(ConfigError);
+  });
+});
+
 describe('Google sign-in config', () => {
   const GOOGLE = {
     GOOGLE_CLIENT_ID: 'id.apps.googleusercontent.com',

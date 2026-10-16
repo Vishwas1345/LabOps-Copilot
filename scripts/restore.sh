@@ -30,24 +30,29 @@ if [[ "$DUMP" == "$LIVE_DB" ]]; then
   exit 1
 fi
 
-COMPOSE="docker compose -f docker-compose.prod.yml"
-PSQL=(docker compose -f docker-compose.prod.yml exec -T postgres psql -U "${POSTGRES_USER:-labops}" -d postgres)
+# One database per call; -d is never repeated, so there is no doubt which one runs it.
+psql_in() {
+  local db="$1"; shift
+  docker compose -f docker-compose.prod.yml exec -T postgres \
+    psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-labops}" -d "$db" "$@"
+}
 
 echo "==> dropping any previous scratch database"
-"${PSQL[@]}" -c "DROP DATABASE IF EXISTS ${SCRATCH_DB}" >/dev/null
+psql_in postgres -c "DROP DATABASE IF EXISTS ${SCRATCH_DB}" >/dev/null
 
 echo "==> creating ${SCRATCH_DB}"
-"${PSQL[@]}" -c "CREATE DATABASE ${SCRATCH_DB}" >/dev/null
+psql_in postgres -c "CREATE DATABASE ${SCRATCH_DB}" >/dev/null
 
 echo "==> restoring into ${SCRATCH_DB}"
-docker compose -f docker-compose.prod.yml exec -T postgres \
-  pg_restore --no-owner --no-privileges -U "${POSTGRES_USER:-labops}" -d "${SCRATCH_DB}" < "$DUMP"
+# backup.sh writes plain SQL, which psql replays; pg_restore reads only the
+# custom and directory formats and would refuse it.
+psql_in "$SCRATCH_DB" -q < "$DUMP" >/dev/null
 
 echo "==> checking the restored data is actually there"
 # Counting is the point: a restore that produces an empty schema has restored
 # nothing, and exits non-zero, which is what a cron wrapper would notice.
-TABLES=$("${PSQL[@]}" -t -c "SELECT count(*) FROM pg_tables WHERE schemaname='public'")
-AUDIT=$("${PSQL[@]}" -d "$SCRATCH_DB" -t -c 'SELECT count(*) FROM "AuditEntry"' 2>/dev/null || echo 0)
+TABLES=$(psql_in "$SCRATCH_DB" -tA -c "SELECT count(*) FROM pg_tables WHERE schemaname='public'")
+AUDIT=$(psql_in "$SCRATCH_DB" -tA -c 'SELECT count(*) FROM "AuditEntry"')
 
 echo "    ${TABLES} tables, ${AUDIT} audit entries"
 
@@ -60,7 +65,7 @@ if [[ "${KEEP:-0}" == "1" ]]; then
   echo "==> leaving ${SCRATCH_DB} in place for inspection"
 else
   echo "==> dropping ${SCRATCH_DB}"
-  "${PSQL[@]}" -c "DROP DATABASE ${SCRATCH_DB}" >/dev/null
+  psql_in postgres -c "DROP DATABASE ${SCRATCH_DB}" >/dev/null
 fi
 
 echo "==> the dump restores. The live database was not touched."
