@@ -37,8 +37,8 @@ down here.
    explainable, so the reason lives with the row, not in a log line.
 
 5. **Store nothing you cannot explain.** No secrets in plaintext. Any
-   credential column holds an envelope-encrypted value and is never selected
-   into an API response. See `CLAUDE.md §5`.
+   credential column holds an AES-256-GCM sealed value
+   (`platform/secrets/crypto.ts`) and is never selected into an API response. See `CLAUDE.md §5`.
 
 6. **Redacted, not raw.** Event `metadata` holds redacted structured data. Do
    not add a column that stores the full unredacted provider payload.
@@ -53,7 +53,7 @@ npm run prisma:migrate:dev -w @labops/api -- --name <change> --create-only
 # constraints and triggers is added here too.
 npm run prisma:migrate:dev -w @labops/api
 npm run db:generate
-npm run build -w @labops/api
+npm run typecheck
 ```
 
 ## Mandatory negative test
@@ -75,7 +75,8 @@ This is an integration test against real Postgres. See `CLAUDE.md §8`.
 ## Verify
 
 ```bash
-npm run build -w @labops/api
+npm run lint && npm run typecheck && npm run test
+npm run test:integration -w @labops/api   # real Postgres + Redis
 ```
 
 Confirm no other module started reaching into this model directly. Modules own

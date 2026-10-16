@@ -16,7 +16,7 @@ rules) first. Confirm which module owns the data being exposed.
 apps/api/src/modules/<feature>/
   routes.ts     HTTP surface only — validation, auth, delegate to service
   service.ts    business logic, transactions, audit writes
-  schemas.ts    Zod schemas for body / params / query (events/ uses schema.ts)
+  schemas.ts    Zod schemas for body / params / query
 ```
 
 Never put query logic in `src/app.ts`. Never import another domain's Prisma
@@ -33,7 +33,8 @@ model — import its service. See `CLAUDE.md §4`.
 
 3. **Write the transition and its audit entry in one transaction.** If the
    handler changes state, the `AuditEntry` insert is in the same
-   `prisma.$transaction([...])`. Never a separate call afterwards.
+   `prisma.$transaction(async (tx) => ...)`, with `tx` passed to `writeAudit`.
+   Never a separate call afterwards.
 
 4. **Long work goes to the queue.** If the work takes more than a few hundred
    milliseconds, or touches an LLM or a simulator mutation, enqueue and return
@@ -77,8 +78,10 @@ Long-running work is not done here: the service writes a job row with
 
 - No business rule decided inside the handler that a worker also needs. If both
   need it, it belongs in the service.
-- Idempotency: a write endpoint carries an idempotency key. On conflict, return
-  the prior result — never re-execute. See `CLAUDE.md §6`.
+- Idempotency: every write is idempotent on a key the server derives (an
+  event's `deduplicationKey`, `execute-<actionId>` for an execution). A repeat
+  returns the prior result, 200 instead of 201, and never re-executes. See
+  `CLAUDE.md §6`.
 - List endpoints are paginated from the start. No unbounded `findMany`.
 - Never return a credential, encrypted or not. See `CLAUDE.md §5`.
 - Read-only endpoints still validate `params` and `query`.
@@ -90,14 +93,15 @@ refuses an unauthorised call:
 
 - body fails Zod → 4xx, no row written, no audit `success` entry
 - unknown body field → rejected (because `.strict()`)
-- calling the handler twice with the same idempotency key → one effect
+- the same request twice → one row, one effect, and the second response 200
 
 Integration test hits the real database. See `CLAUDE.md §8`.
 
 ## Verify
 
 ```bash
-npm run build -w @labops/api
+npm run lint && npm run typecheck && npm run test
+npm run test:integration -w @labops/api   # real Postgres + Redis
 ```
 
 Then update the endpoint table in `docs/dev/DESIGN.md` and any flow diagram in

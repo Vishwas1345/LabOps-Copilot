@@ -25,7 +25,10 @@ lab failures → correlate into explainable incidents → AI investigation
 **Framing matters.** This is AI-assisted incident correlation and safe recovery
 orchestration for cloud lab operations: an engineering demonstration. Never
 write documentation, commit messages, comments or UI copy that claims any
-existing platform lacks a capability, or that names a specific vendor.
+existing platform lacks a capability, or that names a lab-platform vendor or
+the prospective employer (the README's closing "About this project" note is the
+only exception). Names of tools and hosts the project uses, such as Google,
+Gemini, Render, Neon and Caddy, are fine.
 
 **All lab infrastructure is simulated.** There is no live lab platform
 connection and the MVP never touches real cloud resources. Any UI or log surface that shows
@@ -47,8 +50,11 @@ overview, and `docs/dev/` for setup, the API and testing.
 | Doc | Use it for |
 |---|---|
 | `docs/specs/labops-copilot/SPEC.md` | What is being built and why: rules, scope, acceptance criteria |
-| `docs/specs/labops-copilot/PLAN.md` | The phase-by-phase build plan. **Work one phase at a time, in order.** |
+| `docs/specs/labops-copilot/PLAN.md` | The phase-by-phase build plan (complete: phases 0-15, and the work since). New work starts a new `docs/specs/<feature>/` |
 | `docs/infra/INFRA.md` | Processes, ports, containers, env vars, migrations, CI |
+| `docs/infra/DEPLOYMENT.md` | The live Render deploy and the VM path |
+| `docs/GAPS.md` | What the project does not do; read before describing its capabilities |
+| `docs/dev/` | Setup, design, the API, testing and the roadmap |
 
 - Before starting a phase, read its section in `PLAN.md`. When it lands, update
   `PLAN.md` and `INFRA.md` in the same pull request.
@@ -116,8 +122,8 @@ Vitest coverage thresholds are set at 70% for lines, functions, branches and
 statements. In the api, `npm run coverage` counts unit **and** integration specs
 together (`vitest.coverage.config.ts`, needs a migrated database), so code that
 talks to PostgreSQL is measured rather than excluded. Only the process
-entrypoints (`src/index.ts`, `src/worker.ts`, `src/seed-operator.ts`) are
-excluded. The web config excludes `src/app/**/*.tsx` (pages and route
+entrypoints (`src/index.ts`, `src/worker.ts`, `src/seed-operator.ts`,
+`src/seed-demo.ts`, `src/reset-demo.ts`) are excluded. The web config excludes `src/app/**/*.tsx` (pages and route
 components), which the Playwright journey covers. Every exclusion carries a
 comment saying why.
 Adding exclusions to make a number look better is the same as disabling a test.
@@ -151,7 +157,8 @@ human actions take their audit actor from `actorOf(request)`, never the body.
 
 ```
 investigations → recovery → {policies, incidents} → events → labs
-audit, observability, config, http, auth  (import no domain module)
+platform/* (config, http, auth, audit, observability, secrets, jobs,
+events-stream)  (import no domain module)
 ```
 
 `investigations` sits above `recovery` (a diagnosis is proposed in the same
@@ -279,7 +286,8 @@ Long-running work must never hold a transaction open.
 
 ### Recovery actions
 
-- Only predefined, parameterised actions exist.
+- Only predefined actions exist. Each declares a strict parameter schema; none
+  accepts parameters today, and any sent are rejected.
 - Policy evaluation order is fixed: structural → target validity → state →
   concurrency → rate limits → authorisation → idempotency. Record which step
   blocked an action and why.
@@ -374,8 +382,8 @@ Non-negotiable:
   output may contain a secret.
 
 Vitest is configured in both workspaces. The api `test` script is unit-only;
-integration tests (real Postgres + Redis) land as `test:integration` and are
-wired into `api.yml`. No test may depend on a live LLM — use the fixture
+integration tests (real Postgres + Redis) run as `test:integration`, wired into
+`api.yml`. No test may depend on a live LLM — use the fixture
 provider.
 
 ---
@@ -403,7 +411,10 @@ provider.
 - Run the typecheck before committing.
 - Do not commit: secrets, `.env`, `node_modules`, `.next`, `dist`, generated
   Prisma output, or the internal project specification document.
-- Never commit directly to `main`. Open a pull request.
+- Bug fixes and code or file changes go through a branch and a pull request,
+  which the owner merges (`gh pr merge N --rebase`, never `--delete-branch`).
+  Only small, trivial changes (a typo, a doc line) may be pushed straight to
+  `main`.
 
 ---
 
@@ -451,8 +462,9 @@ The recipes below are the short form.
 1. Add to the action enum.
 2. Add the entry to the allow-list table in `ARCHITECTURE.md §10`.
 3. Implement preconditions and rate limits in `policies/`.
-4. Implement execution in `recovery/` — parameterised, idempotent, no arbitrary
-   input reaching a shell or an SDK call.
+4. Implement execution in `recovery/` — idempotent, parameters (if any)
+   declared in a strict schema, no arbitrary input reaching a shell or an SDK
+   call.
 5. Implement verification — how success is confirmed from resulting state.
 6. Add unit tests for the policy decision **and** the negative case.
 
