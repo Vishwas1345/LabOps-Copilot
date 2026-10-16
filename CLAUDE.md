@@ -123,7 +123,7 @@ statements. In the api, `npm run coverage` counts unit **and** integration specs
 together (`vitest.coverage.config.ts`, needs a migrated database), so code that
 talks to PostgreSQL is measured rather than excluded. Only the process
 entrypoints (`src/index.ts`, `src/worker.ts`, `src/seed-operator.ts`,
-`src/seed-demo.ts`, `src/reset-demo.ts`) are excluded. The web config excludes `src/app/**/*.tsx` (pages and route
+`src/seed-demo.ts`, `src/prepare-demo.ts`) are excluded. The web config excludes `src/app/**/*.tsx` (pages and route
 components), which the Playwright journey covers. Every exclusion carries a
 comment saying why.
 Adding exclusions to make a number look better is the same as disabling a test.

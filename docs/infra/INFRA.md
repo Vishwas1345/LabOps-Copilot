@@ -118,7 +118,8 @@ reach another project's instance.
 | `NEXT_PUBLIC_API_URL` | web | `http://localhost:4000` | API URL fallback (URLs only, never tokens) |
 | `SESSION_COOKIE_SECURE` | web | `true` (`false` in compose) | The web origin's session cookie only over https; off only for local http |
 | `API_INTERNAL_URL` | web | falls back to `NEXT_PUBLIC_API_URL` | API URL for server-side rendering |
-| `DEMO_RESET_ON_BOOT` | Render boot | unset | `true` in `render.yaml` only: each boot drops and reseeds the demo database. Also needs `APP_ENV=production`; refuses non-simulated data |
+| `DEMO_RESET_ON_BOOT` | Render boot | unset | `true` in `render.yaml` only: `prepare-demo.js` runs reset, migrate and seeds under a boot lock, dropping and reseeding the demo database when idle. Also needs `APP_ENV=production`; refuses non-simulated data |
+| `DEMO_RESET_IDLE_MINUTES` | Render boot (`prepare-demo.js`) | `10` | 0 to 1440. A demo with an audit entry newer than this is kept; waking from sleep is always older. The deploy image smoke sets 0 to force a reset |
 | `API_HEAP_MB`, `WORKER_HEAP_MB`, `WEB_HEAP_MB` | Render boot | `128`, `128`, `160` | Per-process heap caps so three Node processes fit in 512 MB |
 | `PORT`, `RENDER_EXTERNAL_URL` | Render boot | set by Render | The web app listens on `PORT`; `CORS_ORIGIN` falls back to `RENDER_EXTERNAL_URL` |
 
@@ -149,7 +150,8 @@ than the code: the free tier returns 503 under load, and retired models answer
 - Schema changes are checked-in migrations in `apps/api/prisma/migrations`,
   applied with `prisma migrate deploy` everywhere: `npm run db:migrate` locally,
   the `integration-test` CI job, the compose `migrate` service, and
-  `deploy/start.sh` on every boot of the live deploy.
+  `deploy/start.sh` on every boot of the live deploy (inside the boot lock,
+  via `prepare-demo.js`).
 - New migration: edit `schema.prisma`, then
   `npm run prisma:migrate:dev -w @labops/api -- --name <change>`. Raw SQL for
   partial unique indexes, `CHECK` constraints and triggers goes in the
@@ -225,7 +227,7 @@ a running stack with `scripts/compose-smoke.sh`.
 The api coverage job runs unit and integration specs together against a
 migrated Postgres service container, so database code is measured, not
 excluded; only the process entrypoints (`src/index.ts`, `src/worker.ts`,
-`src/seed-operator.ts`, `src/seed-demo.ts`, `src/reset-demo.ts`) are left out. The web job
+`src/seed-operator.ts`, `src/seed-demo.ts`, `src/prepare-demo.ts`) are left out. The web job
 excludes server components, which only E2E can reach.
 
 **Known gaps**
@@ -261,11 +263,11 @@ a dashboard setting cannot contradict the production checks.
 
 **Deploying.** Render deploys a push to `main` once every CI check on it
 passes, the deploy image smoke included; there is no manual step and no image
-registry. Migrations run at boot, before the processes start,
-which is safe because every boot also starts from an empty demo database.
+registry. Migrations run at boot, before the processes start, inside the boot
+lock, so a deploy's overlapping containers never migrate or reset at once.
 
-**Backups and secrets.** There are no backups: every boot wipes and reseeds the
-demo database, so it never holds anything worth keeping. Secrets
+**Backups and secrets.** There are no backups: a boot after 10 idle minutes
+wipes and reseeds the demo database, so it never holds anything worth keeping. Secrets
 (`DATABASE_URL`, `SEED_OPERATOR_PASSWORD`) are service variables in the Render
 dashboard, and Render generates `CREDENTIALS_KEY`.
 

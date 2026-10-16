@@ -28,8 +28,10 @@ history).
     design, the API and testing are in `docs/dev/`.
 - **Live at https://labops.onrender.com** (#39): one Render container runs the
   API, worker and web app; Redis is Render Key Value, PostgreSQL is Neon.
-  Every boot resets the database and reseeds the `demo` operator and scenario
-  (`reset-demo.ts`, `seed-demo.ts`, #42). `render.yaml`, `deploy/`,
+  Each boot runs `prepare-demo.ts` under a database lock: it resets the demo if
+  it has been idle 10 minutes (so every wake from sleep is fresh, while a
+  deploy beside a running container keeps it), then migrates and reseeds the
+  `demo` operator and scenario (#42, refined after a deploy race). `render.yaml`, `deploy/`,
   `docs/infra/DEPLOYMENT.md`. It is the only deployment: the owner decided it
   never needs more than Render's 512 MB, so the VM path (#38, #43) was removed.
 - **Keep docs matching the code.** When code changes, update the doc that
@@ -90,7 +92,7 @@ kept non-technical). The git-ignored
 ```
 apps/api/src/
   index.ts  worker.ts  app.ts  db.ts                       entrypoints: start here
-  seed-operator.ts  seed-demo.ts  reset-demo.ts           one-shot boot commands
+  seed-operator.ts  seed-demo.ts  prepare-demo.ts         one-shot boot commands
   platform/   config http auth audit observability secrets jobs events-stream
   modules/    labs events incidents investigations policies recovery
               integrations metrics demo
@@ -274,9 +276,11 @@ projects. That rule was broken once, and it is not optional.
    "verified"). Check image build times if in doubt.
 
 7b. **The live image**, whenever an app, `deploy/` or `render.yaml` changed:
-   `scripts/deploy-image-smoke.sh` builds `deploy/Dockerfile` and boots it
-   twice under 512 MB against a throwaway database. CI runs the same, and
-   Render deploys only once every check passes (`checksPass`).
+   `scripts/deploy-image-smoke.sh` builds `deploy/Dockerfile`, starts two
+   containers at once on one throwaway database (one must reset, the other
+   keep), then a third past the idle threshold (it must reset), all under
+   512 MB. CI runs the same, and Render deploys only once every check passes
+   (`checksPass`).
 
 8. **The browser journey** on a fresh stack (the smoke run used the demo, so
    reset first):
@@ -434,7 +438,7 @@ them (#31 to #43; #35 was closed unmerged). Jira: story for Phase N is
 | — | — | #39 | Free single-container deploy on Render with Neon (`render.yaml`, `deploy/` (then `deploy/render/`), `seed-demo.ts`); live at https://labops.onrender.com |
 | — | — | #40 | Security headers sent by the web app (`next.config.mjs`) |
 | — | — | #41 | Plain-language README; the technical detail moved to `docs/dev/` |
-| — | — | #42 | Demo reset on every Render boot (`reset-demo.ts`, `DEMO_RESET_ON_BOOT`) |
+| — | — | #42 | Demo reset on every Render boot (`reset-demo.ts`, `DEMO_RESET_ON_BOOT`); refined after a deploy race into `prepare-demo.ts`: a boot lock and an idle threshold |
 | — | — | #43 | VM stack run end to end locally; eight bugs fixed (exec bits, Caddy config, restore format, first-deploy backup, empty `CREDENTIALS_KEY`, stream via the web relay, Redis `noeviction`, health check); VM path removed in the cleanup after #44 |
 
 Key behaviours worth knowing (details in `ARCHITECTURE.md`):
@@ -606,6 +610,11 @@ follows the plan-first loop above.
   do).
 - Nothing alerts on a long open transaction; `/api/metrics` only shows it.
 - `docs/dev/QUALITY.md` "Before production" lists the deployment-only gaps.
+- A deploy during an idle stretch still resets the demo under the container it
+  replaces, which sees missing tables for the seconds until it is replaced.
+  Concurrent boots cannot collide (boot lock, `modules/demo/reset.ts`); the
+  2026-10-16 deploy that failed with "table public.Operator does not exist"
+  was two unlocked resets under each other.
 
 ## 11. Commands cheat sheet
 
@@ -691,8 +700,9 @@ boot. Kept as a heading only because other notes cite 13b.
   infrastructure and the UI must keep saying so on every page.
 - The rate limits are effectively global behind the BFF (already section 10).
 - Self-approval is allowed: one operator, no roles yet (already section 10).
-- The live demo is shared, and every boot resets it, so anything a visitor does
-  is gone after the service sleeps (`docs/infra/DEPLOYMENT.md` §0).
+- The live demo is shared, and a boot after 10 idle minutes resets it, so
+  anything a visitor does is gone after the service sleeps
+  (`docs/infra/DEPLOYMENT.md` §0).
 
 ### 13d. Dropped, so nobody rebuilds it
 

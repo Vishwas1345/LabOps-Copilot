@@ -194,7 +194,7 @@ labops-copilot/
 │   │   ├── prisma/              Data model and migrations
 │   │   ├── src/
 │   │   │   ├── index.ts, worker.ts, app.ts   Entrypoints: start here
-│   │   │   ├── seed-operator.ts, seed-demo.ts, reset-demo.ts  One-shot jobs
+│   │   │   ├── seed-operator.ts, seed-demo.ts, prepare-demo.ts  One-shot jobs
 │   │   │   ├── platform/        Cross-cutting: config, http, auth, audit,
 │   │   │   │                    observability, secrets, jobs, events-stream
 │   │   │   └── modules/         One folder per feature: labs, events,
@@ -243,7 +243,7 @@ labops-copilot/
 | `npm run seed:operator -w @labops/api` | Create or reset the operator from `SEED_OPERATOR_*` |
 | `npm run seed:demo -w @labops/api` | Ingest the demo scenario where demo routes are off; safe to re-run |
 | `scripts/clean-db-check.sh` | Integration tests twice on a throwaway database, then drop it |
-| `scripts/deploy-image-smoke.sh` | Build the live deploy's image and boot it twice under 512 MB, as CI does before Render may deploy |
+| `scripts/deploy-image-smoke.sh` | Build the live deploy's image; boot two containers at once on one database (one resets, one keeps), then one past the idle threshold (it resets), under 512 MB, as CI does before Render may deploy |
 
 ### Checks before you commit
 

@@ -98,7 +98,7 @@ done.
 | 13 | Integration settings and sealed secrets, adapter-gated (no live connector: the gate is closed) |
 | 14 | Browser journey in CI, measured metrics |
 | 15 | Delivery: one incident as one trace, the opt-in trace viewer, this walkthrough |
-| After 15 | Optional Google sign-in; the free live deploy on Render and Neon, reset on every boot ([`docs/infra/DEPLOYMENT.md`](../infra/DEPLOYMENT.md) §0); security headers from the web app |
+| After 15 | Optional Google sign-in; the free live deploy on Render and Neon, reset when idle ([`docs/infra/DEPLOYMENT.md`](../infra/DEPLOYMENT.md) §0); security headers from the web app |
 
 ---
 
