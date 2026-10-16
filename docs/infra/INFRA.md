@@ -237,6 +237,12 @@ not Vercel or Netlify, every configuration variable, the free-tier risks, the
 hostname options, what has and has not been verified, and the order of work
 before it is genuinely public. The summary:
 
+**Without a card: Render and Neon** (`render.yaml`, `deploy/render/`). One
+container runs the API, worker and web app as three processes, with Redis on
+Render Key Value and PostgreSQL on Neon. It boots by migrating, seeding the
+`demo` operator and ingesting the demo scenario (`dist/seed-demo.js`), and it
+sleeps after 15 minutes idle. `DEPLOYMENT.md` §0 has the costs and the steps.
+
 **A single VM, deployed by hand.** `docker-compose.prod.yml` is a standalone
 file, not an overlay on the development one, and the reason is recorded in its
 header: compose merges sequences, so an overlay inherited the development file's

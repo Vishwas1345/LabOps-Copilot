@@ -32,11 +32,13 @@ per-phase notes as history).
   not do, starting with the two that matter: it connects to no external lab
   platform, and recovery repairs nothing. Read it before describing this
   project's capabilities to anyone.
-- **`docs/infra/DEPLOYMENT.md` is the deployment context.** On
-  `feat/production-deploy` (PR #38), not yet merged: why a single VM rather than
+- **`docs/infra/DEPLOYMENT.md` is the deployment context** (merged in #38): why a single VM rather than
   a serverless platform, the three API changes a public deploy required, two
   bugs found while building it, the free-tier risks, the hostname options, and
   an explicit list of what has *not* been verified. Read it before deploying.
+- **Free deployment without a card:** Render (one container: API, worker, web)
+  plus Neon PostgreSQL; `render.yaml`, `deploy/render/`, `DEPLOYMENT.md` §0.
+  Boot seeds the `demo` operator and the demo scenario (`dist/seed-demo.js`).
 - **No phase is planned.** Anything new starts with the plan-first loop in
   section 3.
 

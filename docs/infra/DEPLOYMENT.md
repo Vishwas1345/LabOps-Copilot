@@ -12,6 +12,53 @@ and §12 is what must happen before the site is genuinely public.
 
 ---
 
+## 0. The free path with no card: Render and Neon
+
+Every free VM (Oracle, Google Cloud, AWS, Azure) needs a card to sign up, and
+Hugging Face Docker Spaces need a paid plan. Without a card, this is the path:
+
+| Piece | Where | Why |
+|---|---|---|
+| API, worker, web | One Render free web service, one container (`deploy/render/`) | Render has no free background worker, so the three run as separate processes in one container; the worker still never serves HTTP |
+| Redis | Render Key Value, free, private network only | `noeviction`, because BullMQ must never lose a queued job. No per-command quota, unlike free hosted Redis that idle BullMQ polling exhausts |
+| PostgreSQL | Neon, free | Permanent. Render's free Postgres is deleted after 30 days plus a 14-day grace period |
+| HTTPS, hostname | Render, `<service>.onrender.com` | Included |
+
+`render.yaml` describes it; `deploy/render/start.sh` boots it: migrate, seed the
+demo operator (`SEED_OPERATOR_USERNAME=demo`), start the three processes, then
+ingest the demo scenario through the real ingestion path
+(`dist/seed-demo.js`). Both seeds are idempotent, so every boot runs them. The
+demo routes stay off; nothing on the internet can trigger a scenario.
+
+**What this costs, plainly:**
+
+- **It sleeps after 15 minutes without a request**, worker included. Locally,
+  capped at 0.1 CPU, a boot took about 2.5 minutes to serve the login page
+  (migrate, seed, then Next.js alone about 45 s). Warm it before showing it.
+- **512 MB and 0.1 CPU** for three Node processes. Measured locally under the
+  same caps: about 145 MB for the whole container, through a full incident
+  journey. Each heap is capped anyway (`API_HEAP_MB`, `WORKER_HEAP_MB`,
+  `WEB_HEAP_MB`).
+- **Any process exiting stops the container**, so the platform restarts all
+  three together rather than serving a site whose worker is dead.
+- **750 free hours a month**, shared: exactly one always-on service fits.
+- **Data persists in Neon**, so an incident a visitor resolves stays resolved;
+  the seed only adds what is missing.
+
+**Standing it up:**
+
+1. Neon: create a project in the region matching `render.yaml` (`singapore`;
+   change both if not) and copy the **direct** connection string, not the
+   pooled one: `prisma migrate deploy` takes an advisory lock.
+2. Render: **New, Blueprint**, pick this repository. Enter `DATABASE_URL` and
+   `SEED_OPERATOR_PASSWORD` (12+ characters) when prompted.
+3. Wait for the deploy, open `https://<service>.onrender.com`, sign in as
+   `demo`.
+4. Optional Google sign-in: add the four `GOOGLE_*` variables in the service's
+   environment, with redirect `https://<service>.onrender.com/auth/google/callback`.
+
+---
+
 ## 1. Where it runs, and why
 
 **One VM running the whole compose stack, behind Caddy.**
@@ -23,8 +70,8 @@ question most likely to be re-litigated later.
 |---|---|---|
 | **Single VM (chosen)** | Yes | One host, one compose file, the existing Dockerfiles unchanged, no cross-origin auth |
 | Vercel / Netlify | **Rejected** | They can host the Next.js app and nothing else. See §2 |
-| Render | Rejected | Free web services sleep after 15 minutes idle, which breaks the live stream, and the free Postgres tier expires |
-| Fly.io | Viable second choice | Runs containers with a real worker, so it fits the architecture. Free allowance is smaller; pin a card to avoid surprise shutdowns |
+| Render | **The no-card path (§0)** | Free web services sleep after 15 minutes idle and the free Postgres expires, so it runs as one container with Neon for the database |
+| Fly.io | Rejected | No free allowance for new accounts since October 2024: a short trial, then billing |
 
 The intended host is a cloud free tier, because this is a prototype with no
 budget. See §9 for the free-tier risks, which are real.
