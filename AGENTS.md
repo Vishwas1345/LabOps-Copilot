@@ -6,8 +6,8 @@ conflict. This file adds what the rulebook cannot: **how we have been working,
 what is built, what is in flight, and what to do next.**
 
 Last updated: 2026-10-16 (phases 0 to 15, the #32 restructure, and #34 to #43:
-Google sign-in, GAPS.md, both deploy paths, security headers, the README split,
-the demo reset and the VM fixes; sections 8a to 8c keep the per-phase notes as
+Google sign-in, GAPS.md, the Render deploy, security headers, the README split
+and the demo reset, then the VM path's removal; sections 8a to 8c keep the per-phase notes as
 history).
 
 ## 0. Current state: start here
@@ -29,11 +29,9 @@ history).
 - **Live at https://labops.onrender.com** (#39): one Render container runs the
   API, worker and web app; Redis is Render Key Value, PostgreSQL is Neon.
   Every boot resets the database and reseeds the `demo` operator and scenario
-  (`reset-demo.ts`, `seed-demo.ts`, #42). `render.yaml`, `deploy/render/`,
-  `docs/infra/DEPLOYMENT.md` §0.
-- **The VM path** (`docker-compose.prod.yml` behind Caddy, `scripts/deploy.sh`,
-  `backup.sh`, `restore.sh`; #38) was run end to end locally in #43, which
-  fixed eight bugs; it has never run on a real host.
+  (`reset-demo.ts`, `seed-demo.ts`, #42). `render.yaml`, `deploy/`,
+  `docs/infra/DEPLOYMENT.md`. It is the only deployment: the owner decided it
+  never needs more than Render's 512 MB, so the VM path (#38, #43) was removed.
 - **Keep docs matching the code.** When code changes, update the doc that
   describes it in the same PR, and grep the docs for any path you rename.
 - **Open, owner's side only:** rotate the Gemini key, add the
@@ -46,8 +44,8 @@ history).
   platform, and recovery repairs nothing. Read it before describing this
   project's capabilities to anyone.
 - **`docs/infra/DEPLOYMENT.md` is the deployment context**: the live Render
-  path (§0), the VM path, every decision, the free-tier risks, and what has
-  *not* been verified. Read it before deploying.
+  path, every decision, the free-tier risks, and what has *not* been
+  verified. Read it before deploying.
 - **No phase is planned.** Anything new starts with the plan-first loop in
   section 3.
 
@@ -80,7 +78,7 @@ Docs: `CLAUDE.md` (rules), `ARCHITECTURE.md` (design, with "How Phase N
 implements it" sections), `docs/specs/labops-copilot/SPEC.md` (what and why),
 `docs/specs/labops-copilot/PLAN.md` (phase plan, status line, and a recorded
 **deviations** paragraph per phase), `docs/infra/INFRA.md` (processes, env,
-CI, known gaps), `docs/infra/DEPLOYMENT.md` (both deploy paths),
+CI, known gaps), `docs/infra/DEPLOYMENT.md` (the Render deploy),
 `docs/GAPS.md` (what the project does not do), `docs/dev/` (setup, endpoints,
 testing, roadmap), and `README.md` (the plain-language overview for a reader,
 kept non-technical). The git-ignored
@@ -224,7 +222,7 @@ steps:**.
   prospective-employer company name appears in code, comments, tests, docs,
   skills or UI; the only mention is the README's closing "About this project"
   note. Names of tools and hosts the project uses (Google, Gemini, Render,
-  Neon, Caddy, Jira) are fine. The integration target is the generic "external
+  Neon, Jira) are fine. The integration target is the generic "external
   lab platform" (provider id `lab-platform`). Never imply that any existing
   platform lacks a capability.
 - **Deny by default:** every API route needs a session unless it sets
@@ -427,12 +425,12 @@ them (#31 to #43; #35 was closed unmerged). Jira: story for Phase N is
 | — | — | #33, #36 | AGENTS.md handoff and follow-up list |
 | — | — | #34 | Optional Google sign-in: OIDC with PKCE, exact-email allow-list, `OperatorIdentity` |
 | — | — | #37 | `docs/GAPS.md`: what the project does not do |
-| — | — | #38 | VM production stack behind Caddy (`docker-compose.prod.yml`), investigation rate limit (10/min), `TRUST_PROXY_HOPS`, `APP_ENV=production` startup checks, deploy/backup/restore scripts |
-| — | — | #39 | Free single-container deploy on Render with Neon (`render.yaml`, `deploy/render/`, `seed-demo.ts`); live at https://labops.onrender.com |
+| — | — | #38 | VM production stack behind Caddy (`docker-compose.prod.yml`), investigation rate limit (10/min), `TRUST_PROXY_HOPS`, `APP_ENV=production` startup checks, deploy/backup/restore scripts (VM path removed in the cleanup after #44) |
+| — | — | #39 | Free single-container deploy on Render with Neon (`render.yaml`, `deploy/` (then `deploy/render/`), `seed-demo.ts`); live at https://labops.onrender.com |
 | — | — | #40 | Security headers sent by the web app (`next.config.mjs`) |
 | — | — | #41 | Plain-language README; the technical detail moved to `docs/dev/` |
 | — | — | #42 | Demo reset on every Render boot (`reset-demo.ts`, `DEMO_RESET_ON_BOOT`) |
-| — | — | #43 | VM stack run end to end locally; eight bugs fixed (exec bits, Caddy config, restore format, first-deploy backup, empty `CREDENTIALS_KEY`, stream via the web relay, Redis `noeviction`, health check) |
+| — | — | #43 | VM stack run end to end locally; eight bugs fixed (exec bits, Caddy config, restore format, first-deploy backup, empty `CREDENTIALS_KEY`, stream via the web relay, Redis `noeviction`, health check); VM path removed in the cleanup after #44 |
 
 Key behaviours worth knowing (details in `ARCHITECTURE.md`):
 
@@ -586,7 +584,7 @@ follows the plan-first loop above.
   address. Fix: forward the client address from the web server and count it as
   a trusted hop.
 - `TRUST_PROXY_HOPS` is unset locally (trusts nothing); `APP_ENV=production`
-  refuses to start without it. Both deploys set 1.
+  refuses to start without it. The Render boot sets 1 (`deploy/start.sh`).
 - Google sign-in has never been run against a real OAuth client; the suites
   sign ID tokens with a local key and stub the token endpoint. The web flow
   cookie binds `state` and `nonce` to the browser, but it is unsigned.
@@ -627,8 +625,7 @@ WEB_HOST_PORT=3010 docker compose up -d   # when another project holds :3000
 gh pr create --draft ... ; gh pr ready N ; gh pr checks N
 ```
 
-Production: `docs/infra/DEPLOYMENT.md` (Render: `render.yaml`, `deploy/render/`;
-VM: `docker-compose.prod.yml`, `scripts/deploy.sh`, `backup.sh`, `restore.sh`).
+Production: `docs/infra/DEPLOYMENT.md` (Render: `render.yaml`, `deploy/`).
 
 ## 12. Jira reference
 

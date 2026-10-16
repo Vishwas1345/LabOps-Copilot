@@ -192,4 +192,4 @@ screen that proves each one.
 | Which AI provider? | *Decided (PLAN Phase 11):* a fixed test provider by default; Gemini, opt-in, over plain `fetch`. |
 | How long should an approval stay valid? | 30 minutes by default, configurable — long enough to review, short enough that state is unlikely to have drifted. |
 | How long are raw event details kept? | Keep metadata and redacted excerpts only; raw retention opt-in and time-boxed. |
-| Is there a deployment target? | *Decided after Phase 15:* a free single-container deploy (Render with Neon PostgreSQL), live at https://labops.onrender.com; a self-hosted compose stack behind Caddy is also provided. See `docs/infra/DEPLOYMENT.md`. |
+| Is there a deployment target? | *Decided after Phase 15:* a free single-container deploy (Render with Neon PostgreSQL), live at https://labops.onrender.com. See `docs/infra/DEPLOYMENT.md`. |

@@ -28,7 +28,7 @@ write documentation, commit messages, comments or UI copy that claims any
 existing platform lacks a capability, or that names a lab-platform vendor or
 the prospective employer (the README's closing "About this project" note is the
 only exception). Names of tools and hosts the project uses, such as Google,
-Gemini, Render, Neon and Caddy, are fine.
+Gemini, Render and Neon, are fine.
 
 **All lab infrastructure is simulated.** There is no live lab platform
 connection and the MVP never touches real cloud resources. Any UI or log surface that shows
@@ -52,7 +52,7 @@ overview, and `docs/dev/` for setup, the API and testing.
 | `docs/specs/labops-copilot/SPEC.md` | What is being built and why: rules, scope, acceptance criteria |
 | `docs/specs/labops-copilot/PLAN.md` | The phase-by-phase build plan (complete: phases 0-15, and the work since). New work starts a new `docs/specs/<feature>/` |
 | `docs/infra/INFRA.md` | Processes, ports, containers, env vars, migrations, CI |
-| `docs/infra/DEPLOYMENT.md` | The live Render deploy and the VM path |
+| `docs/infra/DEPLOYMENT.md` | The live Render deploy |
 | `docs/GAPS.md` | What the project does not do; read before describing its capabilities |
 | `docs/dev/` | Setup, design, the API, testing and the roadmap |
 

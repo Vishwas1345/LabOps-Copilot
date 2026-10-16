@@ -207,19 +207,17 @@ labops-copilot/
 │   └── web/                     Next.js operator dashboard
 │       ├── src/                 app/ (pages), components/, lib/, middleware.ts
 │       └── test/                unit/ (Vitest), e2e/ (Playwright journey)
-├── deploy/                      Caddyfile (VM path); render/ Dockerfile and
-│                                start.sh for the single-container deploy
+├── deploy/                      Dockerfile and start.sh for the live
+│                                single-container deploy
 ├── docs/                        Overview docs, dev/, infra/, specs/, images
 ├── scripts/                     compose-smoke, clean-db-check, audit-gate,
-│                                check-required-scripts, deploy, backup, restore
+│                                check-required-scripts
 ├── .github/workflows/           CI pipelines
 ├── ARCHITECTURE.md              System architecture and trade-offs
 ├── CLAUDE.md, AGENTS.md         Rules and context for changing the code
 ├── docker-compose.yml           The full stack, for development
-├── docker-compose.prod.yml      The VM production stack behind Caddy
 ├── compose.tracing.yml          Opt-in Jaeger trace viewer
 ├── render.yaml                  The live deploy (Render Blueprint)
-├── .env.production.example      Placeholders for the VM stack
 └── package.json                 npm workspaces + root scripts
 ```
 
