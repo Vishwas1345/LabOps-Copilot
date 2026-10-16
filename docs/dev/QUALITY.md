@@ -56,7 +56,7 @@ Workflows under `.github/workflows/`:
 
 | Workflow | Role |
 |---|---|
-| `changes.yml` | Runs on pushes and pull requests to `main`. Detects whether a change touched `apps/web` or `apps/api` (root manifests count for both), dispatches only the matching pipeline, and runs the **compose smoke and e2e** job: build both images, boot the stack, run the smoke script, then reset the stack and run the Playwright journey |
+| `changes.yml` | Runs on pushes and pull requests to `main`. Detects whether a change touched `apps/web` or `apps/api` (the root `package.json`, lockfile and ESLint config count for both; `docker-compose.yml` for the api), dispatches only the matching pipeline, and runs the **compose smoke and e2e** job: build both images, boot the stack, run the smoke script, then reset the stack and run the Playwright journey |
 | `api.yml` | Build, lint, unit tests, integration tests (real Postgres + Redis), coverage, schema drift, quality gate |
 | `web.yml` | Build, lint, unit tests, coverage, quality gate |
 | `llm-live.yml` | Opt-in, manual only: the one job that calls a real model |
@@ -64,6 +64,10 @@ Workflows under `.github/workflows/`:
 The api and web pipelines each end in a quality gate that runs even when an upstream job
 failed (`if: always()`): a secret scan, a dependency audit, and a check that
 the scripts the pipeline depends on still exist.
+
+A change only to `deploy/`, `render.yaml`, `docker-compose.prod.yml` or
+`scripts/` triggers no pipeline, and CI never builds `deploy/render/Dockerfile`:
+the live deploy's image is built by Render on merge, not in CI.
 
 ### Dependency audit
 
@@ -93,14 +97,16 @@ done.
 | 10–12 | Live updates, the opt-in real model, the operator dashboard |
 | 13 | Integration settings and sealed secrets, adapter-gated (no live connector: the gate is closed) |
 | 14 | Browser journey in CI, measured metrics |
-| 15 | Delivery: one incident as one trace, the opt-in trace viewer, this walkthrough (local-only by decision) |
+| 15 | Delivery: one incident as one trace, the opt-in trace viewer, this walkthrough |
+| After 15 | Optional Google sign-in; a production stack behind Caddy; the free live deploy on Render and Neon, reset on every boot ([`docs/infra/DEPLOYMENT.md`](../infra/DEPLOYMENT.md) §0); security headers from the web app |
 
 ---
 
 ## Before production
 
 Known and deliberate. `docs/GAPS.md` is the full list; this is what is left
-after deploying the stack in [`docs/infra/INFRA.md`](../infra/INFRA.md) section 7.
+for a deployment meant to hold real work, beyond the live demo
+([`docs/infra/INFRA.md`](../infra/INFRA.md) section 7).
 
 - **Access control is one shared operator password** until Google sign-in with
   an exact-email allow-list is configured (`AGENTS.md` section 13a). That is the
@@ -109,6 +115,10 @@ after deploying the stack in [`docs/infra/INFRA.md`](../infra/INFRA.md) section 
   worker and the web app in one container (`docs/infra/DEPLOYMENT.md` §0); the
   VM path puts everything, backups included, on one machine. Neither has
   failover.
+- **The live demo keeps nothing.** It wipes and reseeds its database on every
+  boot, so it is a demonstration, not a place to keep work.
+- **Rate limits are shared.** Sign-in and investigation limits see the web
+  server's address, not each operator's, because the web server forwards none.
 - **No uptime monitoring and no alerting.** Nothing pings the site, and nothing
   tells an operator an incident was created while they were away.
 - **Event ingestion is still not rate limited** (`POST /api/events`); sign-in and
@@ -130,7 +140,7 @@ Deliberately out of scope for the MVP:
 - Assuming access to any platform's private systems or undocumented endpoints
 - Real recovery execution against a live platform, unless separately authorised
   and sandboxed
-- Real Azure/AWS provisioning or destructive cloud operations
+- Real cloud provisioning or destructive cloud operations
 - Replacing a lab platform, or becoming a general-purpose lab creation platform
 - Arbitrary command execution by an LLM
 - Kubernetes or multi-service deployment

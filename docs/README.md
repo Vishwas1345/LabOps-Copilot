@@ -8,12 +8,12 @@
 | `specs/google-sign-in/` | Optional Google sign-in beside password sign-in: spec and plan. | You touch sign-in or the operator model |
 | `dev/` | Developer docs: setup, design and API, testing and delivery. Start at `dev/README.md`. | You want to run, change or review the code |
 | `infra/INFRA.md` | How it runs: processes, ports, containers, env vars, migrations, CI. Marks what exists vs planned. | You touch Docker, CI, env config or the database setup |
-| `infra/DEPLOYMENT.md` | The deployment runbook: why a single VM and not a serverless platform, every decision, the free-tier risks, and what is unverified. | You are deploying it, or picking up someone else's deployment |
+| `infra/DEPLOYMENT.md` | The deployment runbook: the live free path (Render and Neon, one container), the VM path behind Caddy, every decision, the free-tier risks, and what is unverified. | You are deploying it, or picking up someone else's deployment |
 
 Related, at the repo root:
 
 - `ARCHITECTURE.md`: the design and the reasoning behind it (trust boundaries, data model, state machines, safety model).
-- `README.md`: setup and project overview.
+- `README.md`: plain-language overview and the live demo; setup is in `dev/SETUP.md`.
 - `CLAUDE.md`: rules for anyone, human or agent, changing the code.
 
 **Keeping docs true.** When a phase lands, update the matching rows in `PLAN.md`

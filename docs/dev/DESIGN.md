@@ -29,9 +29,10 @@ labs, failures and incidents every run.
 4. **Investigate.** The AI analyst (a deterministic fixture by default; Gemini
    is opt-in) returns a likely cause, the evidence for it, what is missing and
    its confidence, and recommends `RETRY_PROVISIONING` on the 12 labs.
-5. **Policy, then a human.** The seven policy steps pass, so the action waits
-   for approval with its targets and expiry. **Approve** it: the worker
-   re-checks policy, retries, then verifies by re-reading every lab. The
+5. **Policy, then a human.** The five proposal-time policy steps pass, so the
+   action waits for approval with its targets and expiry. **Approve** it: the
+   worker re-runs steps 3-7 against fresh state, retries, then verifies by
+   re-reading every lab. The
    incident resolves only because verification passed, and the page updates
    without a reload.
 6. **The refusal.** Open a `PERMISSION_DENIED` incident and **Investigate**. The
@@ -67,7 +68,7 @@ docker compose logs worker | grep <traceId>
 
 ### Numbers from a real run
 
-From one run of the scenario on an Apple M4 laptop (Docker, fixture model),
+From one run of the scenario on an arm64 laptop (Docker, fixture model),
 read from `GET /api/metrics`. Nothing here is estimated.
 
 | Figure | p50 | Note |
@@ -126,6 +127,8 @@ proposal engine, never an execution authority.**
 | Model failure | Non-destructive. The incident stays `open` with an audit entry |
 | Secrets | Encrypted at rest, never returned by an API, redacted from logs and from AI context |
 | Durable state | PostgreSQL is the source of truth. Redis is queue transport, never the record |
+| Clickjacking on Approve | The web app sends `X-Frame-Options: DENY` and `frame-ancestors 'none'`, plus `nosniff`, `Referrer-Policy` and HSTS, on every response (`next.config.mjs`), so every host has them |
+| Request floods | Sign-in is limited to 5 attempts a minute and investigations to 10 a minute, in Redis; both fail closed, refusing rather than allowing, if Redis is down. Behind the web server both limits are shared by all operators |
 
 Correlation follows the same rule: **grouping is deterministic and
 explainable**, not model-generated. Every lab in an incident stores why it was
@@ -183,9 +186,11 @@ rather than a principle.
 | AI | LLM API with structured outputs | Evidence-based diagnosis and action recommendation |
 | Real-time | Server-Sent Events | Live dashboard updates |
 | Logging | Pino | Structured logs |
-| Tracing / metrics | OpenTelemetry | End-to-end observability |
+| Tracing | OpenTelemetry | One trace per incident across the api and the worker |
+| Metrics | SQL over committed rows | Served by `/api/metrics`; never estimated |
 | Tests | Vitest, Playwright | Unit, integration and E2E |
 | Delivery | Docker, Docker Compose, GitHub Actions | Reproducible environment and CI |
+| Hosting | Render (one container: api, worker, web), Render Key Value, Neon PostgreSQL | The live demo; a VM stack behind Caddy is the self-hosted path (`docs/infra/DEPLOYMENT.md`) |
 
 Node.js is the only backend runtime — no Python services. The architecture is a
 modular monolith with a separate worker process rather than microservices;
@@ -207,8 +212,8 @@ implementation status, and the trade-offs taken.
 
 ## API overview
 
-Every route needs a signed-in operator except health, sign-in and the demo
-trigger. Request bodies, params and queries are Zod-validated; errors share one
+Every route needs a signed-in operator except health, sign-in (password and
+Google) and the demo trigger. Request bodies, params and queries are Zod-validated; errors share one
 envelope.
 
 | Method | Endpoint | Purpose |
@@ -224,7 +229,7 @@ envelope.
 | `POST` | `/api/events` | Ingest an event: validated, redacted, deduplicated; 201 new, 200 duplicate |
 | `GET` | `/api/incidents`, `/api/incidents/:id` | Incidents with filters; one incident with each lab's reason and score |
 | `GET` | `/api/incidents/:id/audit` | The incident's full history, including steps that name it |
-| `POST` | `/api/incidents/:id/investigate` | Queue an AI investigation; 202, or 200 with the active one |
+| `POST` | `/api/incidents/:id/investigate` | Queue an AI investigation; 202, or 200 with the active one; rate limited (10 a minute) |
 | `GET` | `/api/incidents/:id/investigations` | Investigation results, newest first |
 | `POST` | `/api/incidents/:id/recovery-proposals` | Propose an action; policy records allowed or blocked, with the step and reason |
 | `GET` | `/api/incidents/:id/recovery-actions` | Proposals with their policy decisions and verification |
@@ -237,6 +242,10 @@ envelope.
 | `PUT` / `DELETE` | `/api/integrations/:provider` | Store a sealed credential (never echoed), or remove it |
 | `POST` | `/api/integrations/:provider/test` | Run the adapter's own probe |
 | `POST` | `/api/demo/scenarios/:name` | Run a seeded scenario; idempotent per seed; only when `DEMO_ENABLED` |
+
+The browser never calls these. It talks only to the web app, which serves
+`/auth/google/start`, `/auth/google/callback` and a relay of the live stream at
+`/api/events/stream`, and calls the API server-side.
 
 Sync, webhook and delivery endpoints for the lab platform are **not built on purpose**:
 their contract is unverified (`ARCHITECTURE.md` section 13).
