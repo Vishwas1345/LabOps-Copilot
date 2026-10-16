@@ -215,4 +215,4 @@ should not be "fixed":
 | Redaction depth limit | `AGENTS.md` §10 |
 | Google sign-in untested, no login-CSRF | `AGENTS.md` §13a |
 | No RBAC | `AGENTS.md` §10 |
-| Deployment gaps | `README.md` "Before production" |
+| Deployment gaps | `docs/dev/QUALITY.md` "Before production" |

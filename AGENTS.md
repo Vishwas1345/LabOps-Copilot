@@ -71,7 +71,8 @@ Docs: `CLAUDE.md` (rules), `ARCHITECTURE.md` (design, with "How Phase N
 implements it" sections), `docs/specs/labops-copilot/SPEC.md` (what and why),
 `docs/specs/labops-copilot/PLAN.md` (phase plan, status line, and a recorded
 **deviations** paragraph per phase), `docs/infra/INFRA.md` (processes, env,
-CI, known gaps), `README.md` (setup, endpoints, roadmap). The git-ignored
+CI, known gaps), `docs/dev/` (setup, endpoints, testing, roadmap), and
+`README.md` (the plain-language overview for a reader, kept non-technical). The git-ignored
 `LabOps_Copilot_Project_Specification-2.md` at the root is internal context:
 **never copy it into any tracked file.**
 
@@ -373,11 +374,11 @@ the verification event. It passes on a fresh stack and on a re-run.
   Three times a merge landed one commit before the final work.
   `gh pr view N --json headRefOid` should match the commit named as final.
 - **README screenshots must come from a run that follows the README
-  walkthrough exactly.** Images from a test run that also rejected a proposal
-  showed a different timeline and trace than a reader would get. Capture them
-  with a throwaway Playwright script (deleted afterwards) on a fresh stack
-  with `compose.tracing.yml`, and read the README's numbers table from that
-  same run.
+  walkthrough exactly** (its "Try it" section). Images from a test run that
+  also rejected a proposal showed a different timeline and trace than a reader
+  would get. Capture them with a throwaway Playwright script (deleted
+  afterwards) on a fresh stack with `compose.tracing.yml`, and read the numbers
+  table in `docs/dev/DESIGN.md` from that same run.
 - **Docs drift where they were written before the code.** Architecture
   diagrams and skill templates described the plan, never the build. Audit
   claim by claim against the code, then audit the fixes again: a second pass
@@ -569,7 +570,7 @@ Anything new follows the plan-first loop above.
 - API request logs carry no trace id until HTTP spans are added (worker logs
   do).
 - Nothing alerts on a long open transaction; `/api/metrics` only shows it.
-- The README's "Before production" section lists the deployment-only gaps.
+- `docs/dev/QUALITY.md` "Before production" lists the deployment-only gaps.
 
 ## 11. Commands cheat sheet
 
@@ -668,8 +669,8 @@ scenario *shaped* so the correlation engine fires for a real reason:
   approval and a verified recovery, and ideally one **blocked** action too,
   because the blocked path is the more interesting one to show and the fixture
   provider is written to produce both.
-- **Seed and stable:** the same seed must give the same run, or the README's
-  numbers cannot be trusted.
+- **Seed and stable:** the same seed must give the same run, or the numbers in
+  `docs/dev/DESIGN.md` cannot be trusted.
 - Then walk it in the browser and retake the README screenshots from that run
   (`AGENTS.md` §6: screenshots must come from a run that follows the walkthrough
   exactly).

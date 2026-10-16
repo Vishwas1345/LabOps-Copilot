@@ -100,5 +100,5 @@ Integration test hits the real database. See `CLAUDE.md §8`.
 npm run build -w @labops/api
 ```
 
-Then update the endpoint table in `README.md` and any flow diagram in
+Then update the endpoint table in `docs/dev/DESIGN.md` and any flow diagram in
 `ARCHITECTURE.md §5` that this endpoint changes.

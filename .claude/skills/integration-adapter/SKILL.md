@@ -109,6 +109,6 @@ npm run build -w @labops/api
 ```
 
 If any live capability is genuinely verified and implemented, update
-`ARCHITECTURE.md §13` and the endpoint table in `README.md`. If it is not, say
+`ARCHITECTURE.md §13` and the endpoint table in `docs/dev/DESIGN.md`. If it is not, say
 so plainly — an honest `not_configured` is the correct outcome, not a stub that
 pretends to work.
