@@ -77,7 +77,7 @@ export default async function OverviewPage({
   const header = (
     <PageHeader
       title="Overview"
-      description="Simulated lab operations. Every figure is measured from committed records."
+      description="Simulated lab operations. Every figure is measured from committed records, and the demo creates them all when it is seeded, so a longer window can show the same figures."
       actions={
         totalLabs > 0 && (
           <FilterGroup
