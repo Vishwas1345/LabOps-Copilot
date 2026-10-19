@@ -71,7 +71,13 @@ export const incidentListSchema = z.object({
 export const incidentDetailSchema = z.object({
   data: incidentSummary.extend({
     anchorEventId: z.string(),
-    correlationReason: z.object({ summary: z.string().optional() }).passthrough(),
+    correlationReason: z
+      .object({
+        summary: z.string().optional(),
+        // The closest failure that did not join, kept so a split can be explained.
+        nearMiss: z.object({ score: z.number(), reasons: z.array(z.string()) }).nullable().optional(),
+      })
+      .passthrough(),
     labs: z.array(
       z.object({
         labId: z.string(),

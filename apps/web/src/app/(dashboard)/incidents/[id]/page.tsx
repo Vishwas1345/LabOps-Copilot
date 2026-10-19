@@ -434,6 +434,12 @@ export default async function IncidentPage({
               <CardTitle>Why these labs are grouped</CardTitle>
               <CardDescription>
                 Deterministic scoring, never the model. {incident.correlationReason.summary}
+                {incident.correlationReason.nearMiss && (
+                  <span className="mt-1 block">
+                    Closest miss: scored {formatScore(incident.correlationReason.nearMiss.score)} against
+                    another incident, too low to join ({incident.correlationReason.nearMiss.reasons.join('; ')}).
+                  </span>
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent>
