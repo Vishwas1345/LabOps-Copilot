@@ -8,10 +8,16 @@ measured numbers. The full design is [ARCHITECTURE.md](../../ARCHITECTURE.md).
 The plain-language walkthrough is in the [README](../../README.md#try-it).
 This is the developer view of the same run.
 
-The seeded **training-event** scenario: 40 simulated labs, a burst of 12
-provisioning timeouts on one shared image registry, scattered permission and
-network failures, and one redelivered event. The same seed gives the same
-labs, failures and incidents every run.
+Two seeded scenarios, 55 simulated labs. The same seed gives the same labs,
+failures and incidents every run.
+
+- **training-event** (40 labs): a burst of 12 provisioning timeouts on one
+  shared image registry, scattered permission and network failures, and one
+  redelivered event. The steps below follow it.
+- **shared-outages** (15 labs, later the same day on its own dependencies):
+  a 6-lab license-server outage, a 5-lab quota exhaustion, and two timeouts
+  on one artifact cache 25 minutes apart. It covers the paths the first never
+  takes; see [Every path](#every-path-one-incident-each) below.
 
 1. **Run demo scenario** on the overview. The tiles, the failure timeline and
    the labs donut fill in live; the burst is one tall bar on the timeline.
@@ -42,6 +48,27 @@ labs, failures and incidents every run.
    ![A retry blocked by policy](../images/policy-blocked.png)
 
 7. **The audit trail** records every step, with who or what did it and when.
+
+### Every path, one incident each
+
+What each seeded incident shows with the fixture model, and where it ends.
+Every state comes from the real pipeline; nothing is written in by hand.
+
+| Incident | Operator does | Path | Ends |
+|---|---|---|---|
+| `PROVISION_TIMEOUT on image-registry` (12) | Investigate, Approve | `RETRY_PROVISIONING` passes policy, waits for approval (30-minute expiry), retries, verifies | `resolved` |
+| the same | Investigate, Reject | the proposal is rejected; Investigate proposes again | `open` |
+| `PERMISSION_DENIED on lab …` (4 × 1) | Investigate | the fixture wrongly recommends a retry; policy blocks it at `state` | `manual_review` |
+| `NETWORK_CONFIG on lab …` (3 × 1) | Investigate | `insufficient_evidence`: one failure, no shared cause; nothing proposed | `open` |
+| `DEPENDENCY_UNAVAILABLE on license-server` (6) | Investigate, Approve | `RECHECK_DEPENDENCY`, targeting the dependency (server-side truth, not the model's lab list), passes policy and runs; a recheck changes no lab, so verification fails | `manual_review` |
+| the same, again within 5 minutes | Investigate | the same recheck is blocked at `rate_limit` (its cooldown) | `manual_review` |
+| `QUOTA_EXCEEDED on subscription-quota` (5) | Investigate | `ESCALATE_MANUAL`: no automated fix, so nothing is offered for approval | `manual_review` |
+| `PROVISION_TIMEOUT on artifact-cache` (2 × 1) | Open the later one | same category and dependency, 25 minutes apart: time scores 0, so 0.60 < 0.70; the near miss is shown | two incidents |
+
+Not reachable with the fixture model, so proven by tests instead (the
+[acceptance map](../specs/labops-copilot/ACCEPTANCE.md) names each one): model timeouts and malformed output, a target
+outside the incident, prompt injection in event text, the double-approval
+race, an approval expiring or blocked when re-checked at execution.
 
 ### Follow it through a trace and the logs
 

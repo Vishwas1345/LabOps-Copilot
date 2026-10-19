@@ -1019,9 +1019,9 @@ Tests mirror the boundaries, so a failure points at a boundary.
 | Integration | Event ingestion → DB, ingestion → enqueue, worker retry/failure, approval + policy enforcement, execution + verification, audit writes, metrics, one incident one trace | Real Postgres + Redis (compose) |
 | E2E (Playwright) | Full operator journey, plus the negative cases visible in the UI | Fixture model, seeded scenario, the built compose stack |
 
-Determinism rules: a fixed seed produces an identical scenario (40 labs, 19
-failures, one redelivery)
-every run; the LLM is mocked in all CI tests with one opt-in job against a real
+Determinism rules: a fixed seed produces an identical scenario (the training
+event: 40 labs, 19 failures, one redelivery; shared outages: 15 labs, 13
+failures) every run; the LLM is mocked in all CI tests with one opt-in job against a real
 model; no test asserts on wall-clock timings or generated prose.
 
 The negative suite is as important as the happy path: unrelated-but-similar

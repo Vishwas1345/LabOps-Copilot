@@ -545,6 +545,11 @@ Work that followed the phases, one pull request each:
 - **Afterwards: the self-hosted stack removed.** The VM path (#38, #43) went,
   because the Render deploy alone serves the need; the hardening it brought
   stays.
+- **A second demo scenario, `shared-outages`:** 15 more labs, seeded beside the
+  training event, so a reviewer can click through every path the fixture model
+  reaches: a dependency recheck that fails verification, its cooldown, an
+  escalation, and a near-miss pair that stays apart (now shown on the incident
+  page). The paths are listed in `docs/dev/DESIGN.md`.
 
 `docs/infra/DEPLOYMENT.md` records how each deploy runs and what is unverified.
 
