@@ -97,6 +97,32 @@ describe('POST /api/demo/scenarios/:name', () => {
     expect(audit[0].outcome).toBe('already_present');
   });
 
+  it('runs the shared-outages scenario too', async () => {
+    const prefix = `sim-shared-outages-${SEED}-`;
+    try {
+      const response = await enabled.inject({
+        method: 'POST',
+        url: '/api/demo/scenarios/shared-outages',
+        payload: { seed: SEED },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(response.json().data).toMatchObject({
+        scenarioRunId: `shared-outages:${SEED}`,
+        source: 'simulated',
+        labs: 15,
+        dependencies: 3,
+        eventsIngested: 15,
+        duplicatesSkipped: 0,
+      });
+      const labs = await prisma.lab.findMany({ where: { id: { startsWith: prefix } } });
+      expect(labs.filter((lab) => lab.status === 'failed')).toHaveLength(13);
+    } finally {
+      await prisma.lab.deleteMany({ where: { id: { startsWith: prefix } } });
+      await prisma.dependency.deleteMany({ where: { id: { startsWith: prefix } } });
+    }
+  });
+
   it.each([
     ['an unknown scenario', '/api/demo/scenarios/apocalypse', { seed: SEED }],
     ['a negative seed', URL, { seed: -1 }],

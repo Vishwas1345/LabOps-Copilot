@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Scenario } from '../../../../src/modules/labs/simulator.js';
 import { SCENARIOS } from '../../../../src/modules/labs/simulator.js';
 import { clusterFailures } from '../../../../src/modules/incidents/clustering.js';
 import type { FailureEvent } from '../../../../src/modules/incidents/scoring.js';
@@ -131,14 +132,13 @@ describe('clusterFailures', () => {
   });
 });
 
-// The real demo data: across many seeds, the burst is one incident and every
-// unrelated failure stands alone.
-describe.each(Array.from({ length: 50 }, (_, i) => i + 1))('training-event seed %i', (seed) => {
-  const scenario = SCENARIOS['training-event'](seed);
+// The real demo data, across many seeds: each scenario's bursts are one
+// incident each, and every unrelated failure stands alone.
+const failuresOf = (scenario: Scenario): FailureEvent[] => {
   const labType = new Map(scenario.labs.map((lab) => [lab.id, lab.labType]));
   const kind = new Map(scenario.dependencies.map((d) => [d.id, d.kind]));
   const seen = new Set<string>();
-  const failures: FailureEvent[] = scenario.events
+  return scenario.events
     .filter((e) => e.errorCategory && !seen.has(e.providerEventId) && seen.add(e.providerEventId))
     .map((e) => ({
       id: e.providerEventId,
@@ -149,13 +149,41 @@ describe.each(Array.from({ length: 50 }, (_, i) => i + 1))('training-event seed 
       labType: labType.get(e.labId)!,
       occurredAt: new Date(e.occurredAt),
     }));
+};
+const sizesOf = (clusters: { members: unknown[] }[]) =>
+  clusters.map((c) => c.members.length + 1).sort((x, y) => y - x);
+
+describe.each(Array.from({ length: 50 }, (_, i) => i + 1))('training-event seed %i', (seed) => {
+  const failures = failuresOf(SCENARIOS['training-event'](seed));
 
   it('forms one 12-lab timeout incident and 7 single-lab incidents', () => {
     const { clusters } = clusterFailures(failures, []);
-    const sizes = clusters.map((c) => c.members.length + 1).sort((x, y) => y - x);
 
-    expect(sizes).toEqual([12, 1, 1, 1, 1, 1, 1, 1]);
+    expect(sizesOf(clusters)).toEqual([12, 1, 1, 1, 1, 1, 1, 1]);
     const burst = clusters.find((c) => c.members.length === 11);
     expect(burst?.anchor.errorCategory).toBe('PROVISION_TIMEOUT');
+  });
+});
+
+describe.each(Array.from({ length: 50 }, (_, i) => i + 1))('shared-outages seed %i', (seed) => {
+  const failures = failuresOf(SCENARIOS['shared-outages'](seed));
+
+  it('forms a 6-lab outage, a 5-lab quota incident and two lookalikes apart', () => {
+    const { clusters } = clusterFailures(failures, []);
+
+    expect(sizesOf(clusters)).toEqual([6, 5, 1, 1]);
+    const lookalikes = clusters.filter((c) => c.anchor.errorCategory === 'PROVISION_TIMEOUT');
+    expect(lookalikes).toHaveLength(2);
+    // Same category and dependency, too far apart: kept as a near miss.
+    const second = lookalikes.find((c) => c.nearMiss !== null);
+    expect(second?.nearMiss?.score.score).toBeGreaterThanOrEqual(0.6);
+    expect(second?.nearMiss?.score.score).toBeLessThan(JOIN_THRESHOLD);
+  });
+
+  // Negative: both demo scenarios together still never merge across them.
+  it('never merges with the training event', () => {
+    const both = [...failures, ...failuresOf(SCENARIOS['training-event'](seed))];
+
+    expect(sizesOf(clusterFailures(both, []).clusters)).toEqual([12, 6, 5, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
   });
 });

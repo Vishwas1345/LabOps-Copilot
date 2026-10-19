@@ -60,6 +60,20 @@ function shuffle<T>(items: readonly T[], random: () => number): T[] {
 const MINUTE = 60_000;
 const LAB_TYPES = ['azure-vm', 'aws-ec2', 'k8s-workshop'] as const;
 
+type Failure = Pick<SimulatedEvent, 'errorCategory' | 'dependencyId' | 'message'>;
+
+/** A lab's one provisioning outcome; its id is stable, so a redelivery reuses it. */
+function provisionEvent(lab: SimulatedLab, occurredAt: string, failure?: Failure): SimulatedEvent {
+  return {
+    providerEventId: `${lab.id}-provision`,
+    labId: lab.id,
+    type: failure ? 'provision_failed' : 'provision_succeeded',
+    ...(failure ?? { message: 'Provisioning completed' }),
+    occurredAt,
+    source: 'simulated',
+  };
+}
+
 // A training event: 40 labs; one shared dependency degrades and times out a
 // burst of 12, while permission and network failures are scattered and
 // unrelated. They must not merge with the burst, which is what makes it a test.
@@ -88,24 +102,12 @@ export function createTrainingEvent(seed: number, epoch: Date): Scenario {
   const networkConfig = order.slice(16, 19);
   const succeeded = order.slice(19);
 
-  const event = (
-    lab: SimulatedLab,
-    occurredAt: string,
-    failure?: Pick<SimulatedEvent, 'errorCategory' | 'dependencyId' | 'message'>,
-  ): SimulatedEvent => ({
-    providerEventId: `${lab.id}-provision`,
-    labId: lab.id,
-    type: failure ? 'provision_failed' : 'provision_succeeded',
-    ...(failure ?? { message: 'Provisioning completed' }),
-    occurredAt,
-    source: 'simulated',
-  });
 
   const events: SimulatedEvent[] = [
-    ...succeeded.map((lab) => event(lab, at(between(0, 30 * MINUTE)))),
+    ...succeeded.map((lab) => provisionEvent(lab, at(between(0, 30 * MINUTE)))),
     // The burst: one degraded dependency, all within a five-minute window.
     ...timeouts.map((lab) =>
-      event(lab, at(between(10 * MINUTE, 15 * MINUTE)), {
+      provisionEvent(lab, at(between(10 * MINUTE, 15 * MINUTE)), {
         errorCategory: 'PROVISION_TIMEOUT',
         dependencyId: registry.id,
         message: 'VM provisioning timed out pulling the base image',
@@ -113,14 +115,14 @@ export function createTrainingEvent(seed: number, epoch: Date): Scenario {
     ),
     // Unrelated: a per-lab role assignment problem, hours apart.
     ...permissionDenied.map((lab, i) =>
-      event(lab, at((60 + i * 90) * MINUTE + between(0, 10 * MINUTE)), {
+      provisionEvent(lab, at((60 + i * 90) * MINUTE + between(0, 10 * MINUTE)), {
         errorCategory: 'PERMISSION_DENIED',
         message: 'Deployment identity lacks the Contributor role',
       }),
     ),
     // Unrelated: per-lab subnet misconfiguration, also spread out.
     ...networkConfig.map((lab, i) =>
-      event(lab, at((45 + i * 120) * MINUTE + between(0, 10 * MINUTE)), {
+      provisionEvent(lab, at((45 + i * 120) * MINUTE + between(0, 10 * MINUTE)), {
         errorCategory: 'NETWORK_CONFIG',
         message: 'Subnet address range overlaps an existing range',
       }),
@@ -146,11 +148,89 @@ export function createTrainingEvent(seed: number, epoch: Date): Scenario {
   };
 }
 
+// Shared outages: 15 labs on three dependencies, for the paths the training
+// event never takes. A license server outage (a dependency recheck, which
+// fixes nothing, so verification fails), a quota exhausted (no automated fix:
+// the model escalates to a human), and two timeouts on one cache 25 minutes
+// apart: alike, but too far apart in time to merge.
+export function createSharedOutages(seed: number, epoch: Date): Scenario {
+  const random = createPrng(seed);
+  const at = (offsetMs: number) => new Date(epoch.getTime() + offsetMs).toISOString();
+  const between = (min: number, max: number) => min + Math.floor(random() * (max - min));
+  const prefix = `sim-shared-outages-${seed}`;
+
+  const license = { id: `${prefix}-dep-license-server`, kind: 'license-server' };
+  const quota = { id: `${prefix}-dep-subscription-quota`, kind: 'subscription-quota' };
+  const cache = { id: `${prefix}-dep-artifact-cache`, kind: 'artifact-cache' };
+
+  const labs: SimulatedLab[] = Array.from({ length: 15 }, (_, i) => {
+    const n = String(i + 1).padStart(2, '0');
+    return {
+      id: `${prefix}-lab-${n}`,
+      name: `Workshop Lab ${n}`,
+      labType: LAB_TYPES[Math.floor(random() * LAB_TYPES.length)],
+      dependencyIds: [license.id, quota.id, cache.id],
+    };
+  });
+
+  const order = shuffle(labs, random);
+  const unavailable = order.slice(0, 6);
+  const quotaExceeded = order.slice(6, 11);
+  const [cacheFirst, cacheSecond] = order.slice(11, 13);
+  const succeeded = order.slice(13);
+
+  const cacheTimeout = {
+    errorCategory: 'PROVISION_TIMEOUT',
+    dependencyId: cache.id,
+    message: 'Provisioning timed out fetching lab artifacts',
+  } as const;
+
+  const events: SimulatedEvent[] = [
+    ...succeeded.map((lab) => provisionEvent(lab, at(between(0, 30 * MINUTE)))),
+    ...unavailable.map((lab) =>
+      provisionEvent(lab, at(between(10 * MINUTE, 15 * MINUTE)), {
+        errorCategory: 'DEPENDENCY_UNAVAILABLE',
+        dependencyId: license.id,
+        message: 'License server did not respond during software activation',
+      }),
+    ),
+    ...quotaExceeded.map((lab) =>
+      provisionEvent(lab, at(between(60 * MINUTE, 65 * MINUTE)), {
+        errorCategory: 'QUOTA_EXCEEDED',
+        dependencyId: quota.id,
+        message: 'Subscription vCPU quota exhausted for the region',
+      }),
+    ),
+    // Past the 15-minute nearby limit, so time scores 0 and the pair stays
+    // below the join threshold: the near miss operators can inspect.
+    provisionEvent(cacheFirst, at(120 * MINUTE), cacheTimeout),
+    provisionEvent(cacheSecond, at(145 * MINUTE), cacheTimeout),
+  ];
+
+  events.sort(
+    (a, b) =>
+      a.occurredAt.localeCompare(b.occurredAt) ||
+      a.providerEventId.localeCompare(b.providerEventId),
+  );
+
+  return {
+    name: 'shared-outages',
+    seed,
+    labs,
+    dependencies: [license, quota, cache],
+    events,
+  };
+}
+
 /** Fixed epoch so timestamps are reproducible; not tied to the current date. */
 export const TRAINING_EVENT_EPOCH = new Date('2026-01-15T09:00:00.000Z');
+// Later the same day: after the training event's last failure, on its own
+// dependencies, so nothing from the two scenarios can correlate.
+export const SHARED_OUTAGES_EPOCH = new Date('2026-01-15T15:00:00.000Z');
 
 export const SCENARIOS = {
   'training-event': (seed: number) => createTrainingEvent(seed, TRAINING_EVENT_EPOCH),
+  'shared-outages': (seed: number) => createSharedOutages(seed, SHARED_OUTAGES_EPOCH),
 } as const;
 
 export type ScenarioName = keyof typeof SCENARIOS;
