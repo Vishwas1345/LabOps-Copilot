@@ -1,18 +1,22 @@
-// One-shot entrypoint: ingests the demo scenario, for a host where the demo
+// One-shot entrypoint: ingests the demo scenarios, for a host where the demo
 // routes are off (APP_ENV=production) and nothing else creates data. Safe to
 // run on every boot: a replay is recognised by its dedup keys and adds nothing.
 
 import { prisma } from './db.js';
 import { runScenario } from './modules/demo/service.js';
+import type { ScenarioName } from './modules/labs/simulator.js';
 import { closeQueues } from './platform/jobs/queues.js';
 import { logger } from './platform/observability/logger.js';
 
-const SCENARIO = 'training-event';
+// Between them, every path a reviewer can click through (docs/dev/DESIGN.md).
+const SCENARIOS: ScenarioName[] = ['training-event', 'shared-outages'];
 const SEED = 42;
 
 async function main() {
-  const run = await runScenario(SCENARIO, SEED);
-  logger.info({ simulated: true, ...run }, 'demo scenario seeded');
+  for (const scenario of SCENARIOS) {
+    const run = await runScenario(scenario, SEED);
+    logger.info({ simulated: true, ...run }, 'demo scenario seeded');
+  }
 }
 
 main()

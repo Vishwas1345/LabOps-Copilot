@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ERROR_CATEGORIES } from '../../../../src/modules/labs/failures.js';
 import { RECOVERY_OUTCOMES, simulateRetry } from '../../../../src/modules/labs/recovery-simulator.js';
 import type { SimulatedEvent } from '../../../../src/modules/labs/simulator.js';
-import { createTrainingEvent, SCENARIOS, TRAINING_EVENT_EPOCH } from '../../../../src/modules/labs/simulator.js';
+import {
+  createTrainingEvent,
+  SCENARIOS,
+  SHARED_OUTAGES_EPOCH,
+  TRAINING_EVENT_EPOCH,
+} from '../../../../src/modules/labs/simulator.js';
 
 const MINUTE = 60_000;
 const time = (e: SimulatedEvent) => Date.parse(e.occurredAt);
@@ -118,6 +123,51 @@ describe.each(Array.from({ length: 50 }, (_, i) => i + 1))('seed %i', (seed) => 
   });
 });
 
+describe.each(Array.from({ length: 50 }, (_, i) => i + 1))('shared-outages seed %i', (seed) => {
+  const scenario = SCENARIOS['shared-outages'](seed);
+  const dependency = (kind: string) => scenario.dependencies.find((d) => d.kind === kind)?.id;
+  const burst = (category: string, kind: string) => {
+    const events = ofCategory(scenario.events, category);
+    const times = events.map(time);
+    expect(events.every((e) => e.dependencyId === dependency(kind))).toBe(true);
+    expect(Math.max(...times) - Math.min(...times)).toBeLessThanOrEqual(5 * MINUTE);
+    return events;
+  };
+
+  it('has the expected composition, with no redelivery', () => {
+    expect(scenario.labs).toHaveLength(15);
+    expect(scenario.dependencies).toHaveLength(3);
+    expect(new Set(scenario.events.map((e) => e.providerEventId)).size).toBe(15);
+    expect(scenario.events).toHaveLength(15);
+    expect(scenario.events.every((e) => e.source === 'simulated')).toBe(true);
+  });
+
+  it('puts each outage on its own dependency within five minutes', () => {
+    expect(burst('DEPENDENCY_UNAVAILABLE', 'license-server')).toHaveLength(6);
+    expect(burst('QUOTA_EXCEEDED', 'subscription-quota')).toHaveLength(5);
+  });
+
+  // Negative material: the lookalike pair matches on category and dependency
+  // but must be past the nearby limit, or it would merge.
+  it('keeps the lookalike timeouts more than 15 minutes apart', () => {
+    const cache = ofCategory(scenario.events, 'PROVISION_TIMEOUT');
+
+    expect(cache).toHaveLength(2);
+    expect(cache.every((e) => e.dependencyId === dependency('artifact-cache'))).toBe(true);
+    expect(time(cache[1]) - time(cache[0])).toBeGreaterThan(15 * MINUTE);
+  });
+
+  // Negative: nothing here may correlate with the training event's failures.
+  it('starts after the training event and shares none of its dependencies', () => {
+    const training = SCENARIOS['training-event'](seed);
+    const lastTraining = Math.max(...training.events.map(time));
+    const theirs = new Set(training.dependencies.map((d) => d.id));
+
+    expect(Math.min(...scenario.events.map(time)) - lastTraining).toBeGreaterThan(15 * MINUTE);
+    expect(scenario.dependencies.some((d) => theirs.has(d.id))).toBe(false);
+  });
+});
+
 describe('recovery outcomes', () => {
   // The scenario's story: the burst recovers on retry, the scattered
   // configuration and permission failures do not.
@@ -134,5 +184,6 @@ describe('recovery outcomes', () => {
 
   it('uses a fixed epoch', () => {
     expect(TRAINING_EVENT_EPOCH.toISOString()).toBe('2026-01-15T09:00:00.000Z');
+    expect(SHARED_OUTAGES_EPOCH.toISOString()).toBe('2026-01-15T15:00:00.000Z');
   });
 });
