@@ -11,7 +11,7 @@ Test layers mirror architectural boundaries, so a failure points at one:
 |---|---|
 | Unit (Vitest) | Normalisation, dedup, correlation scoring, transitions, policy decisions, AI output validation, UI helpers |
 | Integration (Vitest, real Postgres + Redis) | Ingestion, queue and worker retries, correlation, investigation, approval races, execution and verification, audit, metrics, one-incident-one-trace |
-| End to end (Playwright) | The operator journey in a real browser against the built compose stack: grouping, the investigation, a rejection, a double-clicked approval that runs once, live verification with no reload, the policy block, the dashboard and its filter |
+| End to end (Playwright) | The operator journey in a real browser against the built compose stack: grouping, the investigation, a rejection, a double-clicked approval that runs once, live verification with no reload, the policy block, lookalike failures kept apart, a recheck that fails verification, the dashboard and its filter |
 
 Each SPEC acceptance criterion is mapped to the test that proves it in
 [`docs/specs/labops-copilot/ACCEPTANCE.md`](../specs/labops-copilot/ACCEPTANCE.md).

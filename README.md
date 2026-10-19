@@ -48,9 +48,11 @@ LabOps Copilot shows one way to handle that, in eight steps:
 
 ## Try it
 
-Sign in to the [live demo](https://labops.onrender.com). It already holds one
-scenario: 40 simulated labs, of which 12 failed together because of one shared
-image registry, plus a few unrelated failures.
+Sign in to the [live demo](https://labops.onrender.com). It already holds 55
+simulated labs from two scenarios: 12 labs that failed together because of one
+shared image registry, two smaller outages, and failures that only look
+related. The steps below follow the 12; [every path](#every-path-one-incident-each)
+lists what each of the other incidents shows.
 
 1. **Overview.** Counts, a failure timeline and labs by state. The burst of 12
    is the tall bar. Light and [dark](docs/images/dashboard-dark.png) themes
@@ -78,6 +80,28 @@ image registry, plus a few unrelated failures.
    ![A suggested fix blocked by the safety rules](docs/images/policy-blocked.png)
 
 7. **Audit.** Every step, with who or what did it and when.
+
+### Every path, one incident each
+
+Each incident on the demo takes a different route through the safety rules.
+Open it from **Incidents** and do what the middle column says.
+
+| Incident | Do this | What you should see |
+|---|---|---|
+| **PROVISION_TIMEOUT on image-registry** (12 labs) | Investigate, then Approve | The fix passes the rules and waits for you, with a 30-minute countdown. Approved, it runs, every lab is checked, and the incident closes. |
+| the same, instead | Investigate, then Reject, or leave it 30 minutes | Nothing runs. A rejection reopens the incident; an expired approval sends it to a person. Either way, Investigate again for a fresh suggestion. |
+| **PERMISSION_DENIED** (any of 4) | Investigate | The AI gets it wrong and suggests a retry. The rules refuse it: a retry cannot fix missing permissions. |
+| **NETWORK_CONFIG** (any of 3) | Investigate | One failure on its own is not enough to go on, so the AI suggests nothing. |
+| **DEPENDENCY_UNAVAILABLE on license-server** (6 labs) | Investigate, then Approve | The AI suggests re-checking the license server. You approve, it runs, and the check still fails: checking a server does not fix the labs. The incident stays open for a person. |
+| the same, straight after | Investigate again | The same check is refused: it ran less than 5 minutes ago. |
+| **QUOTA_EXCEEDED on subscription-quota** (5 labs) | Investigate | No safe automatic fix exists, so the AI hands it to a person. Nothing is offered for approval. |
+| **PROVISION_TIMEOUT on artifact-cache** (two incidents) | Open both | Same error, same cache, but 25 minutes apart, so they are kept separate. One says how close it came to joining the other. |
+
+Some failures cannot be triggered from the demo, because its AI stand-in
+always answers correctly formed: a model that times out or returns garbage, one
+that names a lab outside the incident, text in a log trying to give the AI
+orders, two people approving at once. Each has an automated test; the
+[acceptance map](docs/specs/labops-copilot/ACCEPTANCE.md) names them.
 
 ---
 
