@@ -1,19 +1,11 @@
 name: keep-warm
 
-# Keeps the live demo awake from 08:00 to midnight IST: the free Render service
-# sleeps after 15 idle minutes. It is left to sleep overnight on purpose, since
-# only a boot resets the demo (docs/infra/DEPLOYMENT.md §0), so each morning
-# starts fresh. An anonymous GET of the login page, never a sign-in: a sign-in
-# writes an audit entry, and the reset only runs once nothing was audited for
-# 10 minutes.
+# Wakes the live demo on demand. The daily keep-awake ping runs on cron-job.org
+# (docs/infra/DEPLOYMENT.md §0): GitHub's scheduler did not fire on time. An
+# anonymous GET of the login page, never a sign-in: a sign-in writes an audit
+# entry, and the demo only resets once nothing was audited for 10 minutes.
 
 on:
-  schedule:
-    # Cron is UTC; IST is UTC+5:30. Every 5 minutes, because GitHub can start a
-    # scheduled run late and 10 minutes would leave no margin before the sleep.
-    - cron: '30-55/5 2 * * *' # 08:00-08:25 IST
-    - cron: '*/5 3-17 * * *' # 08:30-23:25 IST
-    - cron: '0-25/5 18 * * *' # 23:30-23:55 IST
   workflow_dispatch:
 
 permissions: {}

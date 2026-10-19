@@ -42,14 +42,17 @@ memory figures below were measured locally under the same caps, not on the host.
 - **It sleeps after 15 minutes without a request**, worker included. Locally,
   capped at 0.1 CPU, a boot took about 2.5 minutes to serve the login page
   (migrate, seed, then Next.js alone about 45 s).
-- **It is kept awake from 08:00 to midnight IST.** `.github/workflows/keep-warm.yml`
-  GETs `/login` every 5 minutes in that window and lets it sleep overnight, so
-  each morning boots a fresh demo. Never a sign-in: that writes an audit entry,
-  which would stop the idle reset. About 480 of the 750 free hours a month, and
-  Neon's compute stays awake too, since the worker queries it on a timer.
-  GitHub can start a scheduled run late, so an occasional sleep in the window is
-  possible; a failed ping fails the run, and GitHub emails about it. Two
-  visitors on the same day share one demo.
+- **It is kept awake from 08:00 to midnight IST** by a free cron-job.org job,
+  configured outside this repository: GET `https://<service>.onrender.com/login`,
+  every 5 minutes, hours 8-23, timezone Asia/Kolkata, failure email on. It
+  sleeps overnight, so each morning boots a fresh demo. Never a sign-in: that
+  writes an audit entry, which would stop the idle reset. About 480 of the 750
+  free hours a month, and Neon's compute stays awake too, since the worker
+  queries it every minute. The 08:00 ping is logged as failed (the boot outlasts
+  cron-job.org's request timeout) but still wakes it. Two visitors on the same
+  day share one demo. GitHub Actions was tried first and dropped: its scheduled
+  runs never fired on time. `.github/workflows/keep-warm.yml` remains as a
+  manual warm-up (`gh workflow run keep-warm.yml`).
 - **512 MB and 0.1 CPU** for three Node processes. Measured locally under the
   same caps: about 145 MB for the whole container, through a full incident
   journey. Each heap is capped anyway (`API_HEAP_MB`, `WORKER_HEAP_MB`,
@@ -153,8 +156,8 @@ so they do not depend on a proxy in front of it.
 1. **Access control.** One shared `demo` password. "Known users only" is true
    only once Google sign-in with an exact-email allow-list is configured
    (`AGENTS.md` §13a). **This is the real gate.**
-2. **Uptime monitoring.** Only the keep-warm ping (§0), whose failed runs
-   email the workflow's author; nothing alerts on an incident being created.
+2. **Uptime monitoring.** Only the cron-job.org ping (§0), whose failures
+   email its account owner; nothing alerts on an incident being created.
 3. **Alerts on long open transactions.** The metric exists; nothing watches it.
 
 The rest is in `docs/GAPS.md`.
