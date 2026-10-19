@@ -40,6 +40,27 @@ describe('runDemoScenario', () => {
 
     await expect(runDemoScenario()).rejects.toThrow('NEXT_REDIRECT /?demo=unavailable');
   });
+
+  it('seeds both scenarios, then returns to the dashboard', async () => {
+    // A fresh response per call: a body can be read only once.
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: {} }), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(runDemoScenario()).rejects.toThrow(/^NEXT_REDIRECT \/$/);
+    expect(fetchMock.mock.calls.map(([url]: unknown[]) => String(url).split('/').pop())).toEqual([
+      'training-event',
+      'shared-outages',
+    ]);
+  });
+
+  // Negative: a failed first scenario stops before the second is sent.
+  it('stops at the first failure', async () => {
+    const fetchMock = respond(404, { error: { code: 'NOT_FOUND' } });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(runDemoScenario()).rejects.toThrow('NEXT_REDIRECT /?demo=unavailable');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('incident actions', () => {

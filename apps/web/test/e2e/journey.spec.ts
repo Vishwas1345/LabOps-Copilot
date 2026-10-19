@@ -35,12 +35,12 @@ test('operator journey: failures to verified recovery', async ({ page }) => {
 
   await test.step('1. failures arrive from the simulated scenario', async () => {
     await page.getByRole('button', { name: 'Run demo scenario' }).click();
-    await expect(page.getByText('40 simulated labs by state')).toBeVisible();
+    await expect(page.getByText('55 simulated labs by state')).toBeVisible();
   });
 
   await test.step('2. related failures group; the permission failure stays apart', async () => {
     await page.goto('/incidents');
-    const burst = page.getByRole('row').filter({ hasText: /PROVISION_TIMEOUT on/ });
+    const burst = page.getByRole('row').filter({ hasText: /PROVISION_TIMEOUT on image-registry/ });
     await expect(burst).toHaveCount(1);
     await expect(burst.getByRole('cell').nth(3)).toHaveText('12');
     await expect(page.getByRole('row').filter({ hasText: /PERMISSION_DENIED/ }).first()).toBeVisible();
@@ -115,6 +115,38 @@ test('operator journey: failures to verified recovery', async ({ page }) => {
     await expect(page.getByText('manual review', { exact: true }).first()).toBeVisible();
   });
 
+  // Negative: approved and run is not fixed. A dependency recheck changes no
+  // lab, so verification fails and the incident goes to a human.
+  // Negative: the same error on the same dependency, 25 minutes apart, stays
+  // two incidents, and the later one says how close it came.
+  await test.step('lookalike failures far apart in time stay separate', async () => {
+    await page.goto('/incidents');
+    const lookalikes = page.getByRole('row').filter({ hasText: /PROVISION_TIMEOUT on artifact-cache/ });
+    await expect(lookalikes).toHaveCount(2);
+    // Either may be listed first: both open, and exactly one is the near miss.
+    const hrefs = await lookalikes.getByRole('link').evaluateAll((links) =>
+      links.map((link) => link.getAttribute('href') ?? ''),
+    );
+    let nearMisses = 0;
+    for (const href of hrefs) {
+      await page.goto(href);
+      await expect(card(page, 'Why these labs are grouped')).toBeVisible();
+      nearMisses += await page.getByText(/^Closest miss: scored 0\.6\d against another incident/).count();
+    }
+    expect(nearMisses).toBe(1);
+  });
+
+  await test.step('a recheck that fixes nothing fails verification', async () => {
+    await page.goto('/incidents');
+    await page.getByRole('row').filter({ hasText: /DEPENDENCY_UNAVAILABLE/ }).getByRole('link').click();
+    await page.getByRole('button', { name: 'Investigate' }).click();
+    await expect(page.getByText('RECHECK_DEPENDENCY', { exact: true }).first()).toBeVisible();
+    await page.getByRole('button', { name: 'Approve' }).click();
+
+    await expect(page.getByText('Verification: failed')).toBeVisible();
+    await expect(page.getByText('manual review', { exact: true }).first()).toBeVisible();
+  });
+
   await test.step('the dashboard shows this run: tiles, charts, filters', async () => {
     await page.goto('/');
     const tile = (label: string) => page.getByText(label, { exact: true }).locator('xpath=../../p[1]');
@@ -122,14 +154,14 @@ test('operator journey: failures to verified recovery', async ({ page }) => {
     await expect(tile('Approval to verified')).not.toHaveText('—');
     await expect(tile('Blocked by policy')).toHaveText('1');
     await expect(card(page, 'Failures over time').locator('svg.recharts-surface')).toBeVisible();
-    await expect(card(page, 'Labs by state').getByText('40', { exact: true })).toBeVisible();
+    await expect(card(page, 'Labs by state').getByText('55', { exact: true })).toBeVisible();
 
     const pipeline = card(page, 'Pipeline health');
     await expect(pipeline.getByText(/^Last 24h, measured from committed rows/)).toBeVisible();
     const value = (label: string) =>
       pipeline.getByText(label, { exact: true }).locator('xpath=following-sibling::span');
     await expect(value('Incidents created')).not.toHaveText('0');
-    await expect(value('Recoveries succeeded / failed')).toHaveText('1 / 0');
+    await expect(value('Recoveries succeeded / failed')).toHaveText('1 / 1');
 
     // The window filter is a link: the URL carries it, and the page follows.
     await page.getByRole('link', { name: '1h', exact: true }).click();

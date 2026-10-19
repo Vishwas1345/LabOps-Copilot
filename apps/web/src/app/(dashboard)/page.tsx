@@ -102,8 +102,8 @@ export default async function OverviewPage({
           </span>
           <CardTitle>No labs yet</CardTitle>
           <CardDescription className="max-w-md text-sm">
-            Run the simulated training-event scenario: 40 labs, a burst of 12 timeouts on one
-            dependency, and a few unrelated failures.
+            Run the two simulated scenarios: 55 labs, a burst of 12 timeouts on one dependency,
+            two smaller outages, and unrelated failures that must stay apart.
           </CardDescription>
           {params.demo === 'unavailable' && (
             <p className="text-sm text-danger">The demo scenario is not enabled on this API.</p>
