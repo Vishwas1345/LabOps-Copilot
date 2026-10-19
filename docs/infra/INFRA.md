@@ -183,8 +183,9 @@ than the code: the free tier returns 503 under load, and retired models answer
 
 ## 6. CI pipelines
 
-Four workflows in `.github/workflows/`. Only `changes.yml` runs on pushes and pull
-requests to `main`; it calls `api.yml` and `web.yml`. `llm-live.yml` is manual.
+Five workflows in `.github/workflows/`. Only `changes.yml` runs on pushes and pull
+requests to `main`; it calls `api.yml` and `web.yml`. `llm-live.yml` is manual;
+`keep-warm.yml` runs on a schedule.
 
 | Workflow | Role |
 |---|---|
@@ -192,6 +193,7 @@ requests to `main`; it calls `api.yml` and `web.yml`. `llm-live.yml` is manual.
 | `api.yml` | build (`tsc` + `prisma validate`), lint and unit tests in parallel; then integration tests (real Postgres + Redis) and coverage; then the quality gate. Images are built by the compose smoke job whenever api or web changed |
 | `web.yml` | build, lint and unit tests in parallel; then coverage; then the quality gate. Images are built by the compose smoke job whenever api or web changed |
 | `llm-live.yml` | Manual only (`workflow_dispatch`): the one job that calls a real model; needs the `GEMINI_API_KEY` repository secret |
+| `keep-warm.yml` | Scheduled every 5 minutes from 08:00 to midnight IST (and manual): an anonymous GET of the live `/login`, so the free service does not sleep in that window. No secrets, `permissions: {}` |
 
 **Quality gate** (each pipeline, `if: always()` so it runs even after a failure):
 1. Fails unless every upstream job succeeded.
@@ -253,7 +255,8 @@ https://labops.onrender.com. One container runs the API, worker and web app as
 three processes, with Redis on Render Key Value and PostgreSQL on Neon. It
 boots by resetting the demo database (`DEMO_RESET_ON_BOOT`), migrating, seeding
 the `demo` operator and ingesting the demo scenario (`dist/seed-demo.js`), and
-it sleeps after 15 minutes idle. `DEPLOYMENT.md` §0 has the costs and the steps.
+it sleeps after 15 minutes idle (kept awake 08:00 to midnight IST by
+`keep-warm.yml`). `DEPLOYMENT.md` §0 has the costs and the steps.
 
 **`APP_ENV=production` changes what the API accepts.** It refuses to boot if
 `SESSION_COOKIE_SECURE` is not true (a Secure cookie over http is never sent,

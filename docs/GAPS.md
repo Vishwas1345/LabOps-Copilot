@@ -172,8 +172,9 @@ platform. The *action* would not.
   the API, the worker and the web app as three processes in one Render free
   service, with Redis on Render Key Value and PostgreSQL on Neon. Any process
   exiting restarts all three; there is no second instance and no failover.
-- **It sleeps after 15 minutes without a request**, worker included. The first
-  visit after that waits for a cold boot (about 2.5 minutes, measured locally
+- **It sleeps after 15 minutes without a request**, worker included, except
+  from 08:00 to midnight IST, when `keep-warm.yml` pings it. The first
+  visit after a sleep waits for a cold boot (about 2.5 minutes, measured locally
   under the same 0.1 CPU cap, not on the host).
 - **The demo resets when idle.** A boot after 10 idle minutes (every wake from
   sleep) drops and reseeds the demo database (`DEMO_RESET_ON_BOOT`), so
